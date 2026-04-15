@@ -104,9 +104,9 @@ async function initialize() {
 
     await conn.query(`
       CREATE TABLE IF NOT EXISTS settings (
-        \`key\`      VARCHAR(50)  PRIMARY KEY,
-        value        TEXT         NOT NULL DEFAULT '',
-        updated_at   DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        \`key\`      VARCHAR(50)   PRIMARY KEY,
+        value        VARCHAR(1000) NOT NULL DEFAULT '',
+        updated_at   DATETIME      DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
     `);
 
