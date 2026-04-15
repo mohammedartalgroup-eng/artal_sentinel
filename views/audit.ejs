@@ -28,11 +28,26 @@
 
   <!-- Top bar -->
   <header class="bg-white border-b border-[#eceef0] px-8 py-5 flex items-center justify-between sticky top-0 z-30">
-    <div>
-      <h1 class="text-xl font-bold text-[#001736]">سجل التدقيق</h1>
-      <p class="text-xs text-[#43474f] mt-0.5">
-        إجمالي السجلات: <strong><%= total %></strong>
-      </p>
+    <div class="flex items-center gap-3">
+      <% if (filters.applicant_id) { %>
+      <a href="/admin/applicants/<%= filters.applicant_id %>"
+         class="text-[#43474f] hover:text-[#001736] transition-colors">
+        <span class="material-symbols-outlined">arrow_forward</span>
+      </a>
+      <% } %>
+      <div>
+        <h1 class="text-xl font-bold text-[#001736]">سجل التدقيق</h1>
+        <p class="text-xs text-[#43474f] mt-0.5">
+          إجمالي السجلات: <strong><%= total %></strong>
+          <% if (filters.applicant_id && applicantName) { %>
+          &nbsp;·&nbsp;
+          <span class="text-[#405f91] font-semibold">
+            <span class="material-symbols-outlined text-xs align-middle">person_search</span>
+            مفلتر لـ: <%= applicantName %>
+          </span>
+          <% } %>
+        </p>
+      </div>
     </div>
     <div class="flex items-center gap-2 text-xs text-[#43474f]">
       <span class="material-symbols-outlined text-base text-[#7594ca]">verified_user</span>
@@ -79,6 +94,7 @@
                 <option value="status_change"  <%= filters.action === 'status_change'  ? 'selected' : '' %>>تغيير الحالة</option>
                 <option value="rating_change"  <%= filters.action === 'rating_change'  ? 'selected' : '' %>>تغيير التقييم</option>
                 <option value="note_add"       <%= filters.action === 'note_add'       ? 'selected' : '' %>>إضافة ملاحظة</option>
+                <option value="note_edit"      <%= filters.action === 'note_edit'      ? 'selected' : '' %>>تعديل ملاحظة</option>
                 <option value="note_delete"    <%= filters.action === 'note_delete'    ? 'selected' : '' %>>حذف ملاحظة</option>
                 <option value="applicant_delete" <%= filters.action === 'applicant_delete' ? 'selected' : '' %>>حذف متقدم</option>
                 <option value="export"         <%= filters.action === 'export'         ? 'selected' : '' %>>تصدير Excel</option>
@@ -106,6 +122,10 @@
             <input type="date" name="date_to" value="<%= filters.date_to || '' %>">
           </div>
         </div>
+        <!-- preserve applicant_id filter across form submissions -->
+        <% if (filters.applicant_id) { %>
+        <input type="hidden" name="applicant_id" value="<%= filters.applicant_id %>">
+        <% } %>
         <div class="mt-4 flex justify-end">
           <button type="submit"
             class="bg-[#001736] text-white text-sm font-medium px-6 py-2.5 rounded-xl hover:bg-[#002a5c] transition-colors flex items-center gap-2">
@@ -165,6 +185,7 @@
                     status_change:    { label: 'تغيير حالة',        bg: '#fff8e1', color: '#f57f17' },
                     rating_change:    { label: 'تغيير تقييم',       bg: '#f3e5f5', color: '#7b1fa2' },
                     note_add:         { label: 'ملاحظة جديدة',      bg: '#e0f2fe', color: '#0277bd' },
+                    note_edit:        { label: 'تعديل ملاحظة',      bg: '#e8f4fd', color: '#0369a1' },
                     note_delete:      { label: 'حذف ملاحظة',        bg: '#fff0f0', color: '#c62828' },
                     applicant_delete: { label: 'حذف متقدم',         bg: '#fce4ec', color: '#c62828' },
                     export:           { label: 'تصدير Excel',       bg: '#e8f5e9', color: '#1b5e20' },

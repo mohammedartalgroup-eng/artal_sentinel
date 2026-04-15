@@ -71,6 +71,12 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
       </p>
     </div>
     <div class="flex items-center gap-2">
+      <!-- Audit log button -->
+      <a href="/admin/audit?applicant_id=<%= applicant.id %>"
+         class="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[#405f91] bg-[#f2f4f6] hover:bg-[#e8ecf4] text-sm font-medium transition-colors">
+        <span class="material-symbols-outlined text-base">manage_search</span>
+        سجل التدقيق
+      </a>
       <!-- Print button -->
       <button onclick="window.print()"
               class="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[#405f91] bg-[#f2f4f6] hover:bg-[#e8ecf4] text-sm font-medium transition-colors">
@@ -380,7 +386,25 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
                     <span class="text-xs font-semibold <%= noteTypeColors[item.type] || 'bg-gray-100 text-gray-600' %> px-2 py-0.5 rounded-full">
                       <%= NOTE_TYPES[item.type]?.label || item.type %>
                     </span>
-                    <p class="text-sm text-[#191c1e] mt-2 leading-relaxed"><%= item.content %></p>
+                    <!-- عرض النص الأصلي -->
+                    <p class="text-sm text-[#191c1e] mt-2 leading-relaxed note-text" id="note-text-<%= item.id %>"><%= item.content %></p>
+                    <!-- حقل التعديل (مخفي افتراضياً) -->
+                    <div id="note-edit-<%= item.id %>" class="hidden mt-2">
+                      <textarea rows="3"
+                        class="w-full border border-[#7594ca] rounded-xl p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#7594ca]/30 resize-none"
+                        id="note-edit-input-<%= item.id %>"><%= item.content %></textarea>
+                      <div class="flex items-center gap-2 mt-2">
+                        <button onclick="saveEdit(<%= item.id %>)"
+                                class="bg-[#001736] text-white text-xs font-semibold px-4 py-1.5 rounded-lg hover:bg-[#002b5b] transition-colors flex items-center gap-1">
+                          <span class="material-symbols-outlined text-sm">check</span>
+                          حفظ
+                        </button>
+                        <button onclick="cancelEdit(<%= item.id %>)"
+                                class="text-[#43474f] text-xs px-3 py-1.5 rounded-lg bg-[#f2f4f6] hover:bg-[#eceef0] transition-colors">
+                          إلغاء
+                        </button>
+                      </div>
+                    </div>
                     <% } else { %>
                     <div class="text-sm text-[#43474f]">
                       <span class="font-medium text-[#191c1e]"><%= item.action %></span>
@@ -407,7 +431,18 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
                         <%= new Date(item.created_at).toLocaleDateString('ar-SA') %>
                         <%= new Date(item.created_at).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }) %>
                       </span>
+                      <% if (item.updated_at) { %>
+                      <span class="block text-[10px] text-[#9ca3af] whitespace-nowrap">
+                        عُدّل: <%= new Date(item.updated_at).toLocaleDateString('ar-SA') %>
+                      </span>
+                      <% } %>
                     </div>
+                    <% if (item._type === 'note') { %>
+                    <button onclick="startEdit(<%= item.id %>, this)"
+                            class="text-[#c4c6d0] hover:text-[#405f91] transition-colors" title="تعديل">
+                      <span class="material-symbols-outlined text-sm">edit</span>
+                    </button>
+                    <% } %>
                     <% if (item._type === 'note' && locals.adminRole === 'manager') { %>
                     <button onclick="deleteNote(<%= item.id %>)"
                             class="text-[#c4c6d0] hover:text-red-500 transition-colors" title="حذف">
@@ -738,6 +773,51 @@ function deleteApplicant() {
       setTimeout(() => location.href = '/admin/applicants', 800);
     }
   });
+}
+
+// ─── تعديل الملاحظة ───────────────────────────────────────────────────────────
+function startEdit(nid, btn) {
+  document.getElementById('note-text-'       + nid).classList.add('hidden');
+  document.getElementById('note-edit-'       + nid).classList.remove('hidden');
+  btn.classList.add('hidden');
+  const ta = document.getElementById('note-edit-input-' + nid);
+  ta.focus();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
+}
+
+function cancelEdit(nid) {
+  document.getElementById('note-text-'  + nid).classList.remove('hidden');
+  document.getElementById('note-edit-' + nid).classList.add('hidden');
+  // أعد إظهار زر التعديل
+  const row = document.getElementById('note-' + nid);
+  if (row) {
+    const editBtn = row.querySelector('[onclick^="startEdit"]');
+    if (editBtn) editBtn.classList.remove('hidden');
+  }
+}
+
+function saveEdit(nid) {
+  const content = document.getElementById('note-edit-input-' + nid).value.trim();
+  if (!content) { toast('لا يمكن حفظ ملاحظة فارغة', 'warning', true); return; }
+
+  fetch(`/admin/applicants/${APPLICANT_ID}/notes/${nid}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      // حدّث النص في الصفحة بدون ريلود
+      const textEl = document.getElementById('note-text-' + nid);
+      textEl.textContent = data.content;
+      cancelEdit(nid);
+      toast('تم حفظ التعديل', 'check_circle');
+    } else {
+      toast(data.error || 'خطأ في الحفظ', 'error', true);
+    }
+  })
+  .catch(() => toast('خطأ في الاتصال بالخادم', 'error', true));
 }
 </script>
 </body>

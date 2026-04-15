@@ -211,6 +211,13 @@ async function initialize() {
       await conn.query("ALTER TABLE applicant_notes ADD COLUMN user_name VARCHAR(100) DEFAULT NULL AFTER type");
       console.log('[DB] Migration: added column user_name to applicant_notes');
     }
+
+    // ─── ترحيل: إضافة updated_at إلى applicant_notes (لتتبع تعديل الملاحظات)
+    const [anUpdCols] = await conn.query("SHOW COLUMNS FROM applicant_notes LIKE 'updated_at'");
+    if (anUpdCols.length === 0) {
+      await conn.query("ALTER TABLE applicant_notes ADD COLUMN updated_at DATETIME DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP AFTER created_at");
+      console.log('[DB] Migration: added column updated_at to applicant_notes');
+    }
     const [aaCols] = await conn.query("SHOW COLUMNS FROM applicant_activity LIKE 'user_name'");
     if (aaCols.length === 0) {
       await conn.query("ALTER TABLE applicant_activity ADD COLUMN user_name VARCHAR(100) DEFAULT NULL AFTER new_value");

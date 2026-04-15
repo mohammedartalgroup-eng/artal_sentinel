@@ -426,6 +426,38 @@ router.delete('/applicants/:id/notes/:nid', async (req, res) => {
   }
 });
 
+// ─── Edit Note ────────────────────────────────────────────────────────────────
+
+router.patch('/applicants/:id/notes/:nid', async (req, res) => {
+  try {
+    const { content } = req.body;
+    if (!content || !content.trim()) return res.status(400).json({ error: 'المحتوى فارغ' });
+
+    const note = await db.get(
+      'SELECT * FROM applicant_notes WHERE id = ? AND applicant_id = ?',
+      [req.params.nid, req.params.id]
+    );
+    if (!note) return res.status(404).json({ error: 'الملاحظة غير موجودة' });
+
+    await db.run(
+      'UPDATE applicant_notes SET content = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [content.trim(), req.params.nid]
+    );
+
+    const editApplicant = await db.get('SELECT full_name FROM applicants WHERE id = ?', [req.params.id]);
+    await Promise.all([
+      db.logActivity(req.params.id, 'تعديل ملاحظة', note.content.substring(0, 60), content.trim().substring(0, 60), req.session.adminName || null),
+      db.audit(req.session.adminId, req.session.adminUser, 'note_edit', 'applicant', req.params.id,
+        editApplicant?.full_name, `${note.content.substring(0, 60)} ← ${content.trim().substring(0, 60)}`, req.ip),
+    ]);
+
+    res.json({ ok: true, content: content.trim() });
+  } catch (err) {
+    console.error('[Notes PATCH]', err.message);
+    res.status(500).json({ error: 'خطأ في تعديل الملاحظة' });
+  }
+});
+
 // ─── Delete Applicant ─────────────────────────────────────────────────────────
 
 router.delete('/applicants/:id', requireManager, async (req, res) => {
@@ -517,18 +549,26 @@ router.post('/settings/password', requireManager, async (req, res) => {
 
 router.get('/audit', async (req, res) => {
   try {
-    const { user = '', action = '', date_from = '', date_to = '', page = '1' } = req.query;
+    const { user = '', action = '', date_from = '', date_to = '', applicant_id = '', page = '1' } = req.query;
     const PAGE_SIZE = 50;
     const pageNum   = Math.max(1, parseInt(page) || 1);
     const offset    = (pageNum - 1) * PAGE_SIZE;
 
     const conditions = [];
     const params     = [];
-    if (user)      { conditions.push('a.username = ?');              params.push(user); }
-    if (action)    { conditions.push('a.action = ?');                params.push(action); }
-    if (date_from) { conditions.push('DATE(a.created_at) >= ?');     params.push(date_from); }
-    if (date_to)   { conditions.push('DATE(a.created_at) <= ?');     params.push(date_to); }
+    if (user)          { conditions.push('a.username = ?');              params.push(user); }
+    if (action)        { conditions.push('a.action = ?');                params.push(action); }
+    if (date_from)     { conditions.push('DATE(a.created_at) >= ?');     params.push(date_from); }
+    if (date_to)       { conditions.push('DATE(a.created_at) <= ?');     params.push(date_to); }
+    if (applicant_id)  { conditions.push('a.target_id = ?');             params.push(applicant_id); }
     const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+
+    // جلب اسم المتقدم إذا كان الفلتر نشطاً
+    let applicantName = '';
+    if (applicant_id) {
+      const ap = await db.get('SELECT full_name FROM applicants WHERE id = ?', [applicant_id]);
+      applicantName = ap?.full_name || '';
+    }
 
     const [countRow, logs, users] = await Promise.all([
       db.get(`SELECT COUNT(*) as c FROM audit_log a ${where}`, params),
@@ -541,7 +581,8 @@ router.get('/audit', async (req, res) => {
 
     res.render('audit', {
       logs, users, total, totalPages, pageNum,
-      filters: { user, action, date_from, date_to },
+      filters: { user, action, date_from, date_to, applicant_id },
+      applicantName,
     });
   } catch (err) {
     console.error('[Audit GET]', err.message);
