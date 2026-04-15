@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>أرطال للحراسة الأمنية - تم استلام طلبك</title>
+  <title>أرتال للحراسة الأمنية - تم استلام طلبك</title>
   <link rel="icon" type="image/png" href="/images/icon.png">
   <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -33,7 +33,7 @@
 
   <header class="bg-[#001736] w-full py-4 flex justify-center items-center">
     <div class="bg-white rounded-xl px-5 py-2 shadow-lg">
-      <img src="/images/icon.png" alt="أرطال للحراسة الأمنية" class="h-12 w-auto object-contain">
+      <img src="/images/icon.png" alt="أرتال للحراسة الأمنية" class="h-12 w-auto object-contain">
     </div>
   </header>
 
@@ -128,7 +128,12 @@
 
             <!-- Maps -->
             <% if (settings.address) { %>
-            <a href="https://www.google.com/maps/search/?api=1&query=<%= encodeURIComponent(settings.address) %>"
+            <%
+              const mapsHref = (settings.maps_url || '').trim()
+                ? settings.maps_url.trim()
+                : 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(settings.address);
+            %>
+            <a href="<%= mapsHref %>"
                target="_blank" rel="noopener"
                class="flex items-center gap-4 p-4 rounded-xl bg-white hover:bg-red-50 border border-transparent hover:border-red-200 transition-all group cursor-pointer">
               <div class="w-12 h-12 rounded-xl bg-[#e53935] flex-shrink-0 flex items-center justify-center text-white shadow-sm transition-transform group-hover:scale-105">
@@ -159,7 +164,7 @@
   <footer class="bg-surface border-t border-slate-200 py-8">
     <div class="max-w-7xl mx-auto px-8 flex flex-col md:flex-row justify-between items-center gap-4">
       <div class="flex items-center gap-4">
-        <img src="/images/icon.png" alt="أرطال" class="h-9 w-auto object-contain opacity-75 hover:opacity-100 transition-opacity">
+        <img src="/images/icon.png" alt="أرتال" class="h-9 w-auto object-contain opacity-75 hover:opacity-100 transition-opacity">
         <span class="text-sm text-slate-400">© <%= new Date().getFullYear() %> All Rights Reserved.</span>
       </div>
       <div class="flex flex-wrap justify-center gap-6 text-sm text-slate-500">
@@ -170,7 +175,12 @@
         <a href="mailto:<%= settings.email %>" class="hover:text-slate-800 transition-colors"><%= settings.email %></a>
         <% } %>
         <% if (settings.address) { %>
-        <a href="https://www.google.com/maps/search/?api=1&query=<%= encodeURIComponent(settings.address) %>" target="_blank" rel="noopener" class="hover:text-slate-800 transition-colors"><%= settings.address %></a>
+        <%
+          const footerMapsHref = (settings.maps_url || '').trim()
+            ? settings.maps_url.trim()
+            : 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(settings.address);
+        %>
+        <a href="<%= footerMapsHref %>" target="_blank" rel="noopener" class="hover:text-slate-800 transition-colors"><%= settings.address %></a>
         <% } %>
       </div>
     </div>

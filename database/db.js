@@ -144,6 +144,7 @@ async function initialize() {
       ['whatsapp',               '+966 500 000 000'],
       ['email',                  'recruitment@artal.com'],
       ['address',                'الرياض، المملكة العربية السعودية'],
+      ['maps_url',               ''],
       ['company_name',           'Artal Security Guards'],
       ['accepting_applications', 'true'],
     ];

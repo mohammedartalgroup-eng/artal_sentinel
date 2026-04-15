@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>الإعدادات — أرطال Sentinel</title>
+  <title>الإعدادات — أرتال Sentinel</title>
   <link rel="icon" type="image/png" href="/images/icon.png">
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -90,12 +90,25 @@
           </label>
           <input type="email" name="email" value="<%= settings.email %>" placeholder="recruitment@example.com" dir="ltr">
         </div>
-        <div class="field">
-          <label class="block text-xs text-[#43474f] font-semibold uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-            <span class="material-symbols-outlined text-sm">location_on</span>
-            العنوان (يُستخدم لرابط الخريطة)
-          </label>
-          <input type="text" name="address" value="<%= settings.address %>" placeholder="الرياض، المملكة العربية السعودية">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div class="field">
+            <label class="block text-xs text-[#43474f] font-semibold uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+              <span class="material-symbols-outlined text-sm">location_on</span>
+              نص العنوان
+            </label>
+            <input type="text" name="address" value="<%= settings.address %>" placeholder="الرياض، المملكة العربية السعودية">
+          </div>
+          <div class="field">
+            <label class="block text-xs text-[#43474f] font-semibold uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+              <span class="material-symbols-outlined text-sm">map</span>
+              رابط الموقع على الخريطة
+            </label>
+            <input type="url" name="maps_url" value="<%= settings.maps_url || '' %>"
+                   placeholder="https://maps.app.goo.gl/..." dir="ltr">
+            <p class="text-[10px] text-[#7594ca] mt-1.5">
+              افتح Google Maps ← اضغط مشاركة ← انسخ الرابط
+            </p>
+          </div>
         </div>
 
         <!-- Accepting applications toggle -->
