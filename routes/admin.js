@@ -22,7 +22,7 @@ const NOTE_TYPES = {
   follow_up:  { label: 'متابعة',   icon: 'notifications_active' },
 };
 
-const CITIES = ['الرياض', 'جدة', 'الدمام', 'مكة المكرمة', 'المدينة المنورة', 'الطائف', 'القصيم', 'أبها', 'تبوك', 'حائل', 'أخرى'];
+// Cities loaded from DB (not hardcoded anymore)
 
 // ─── Login ────────────────────────────────────────────────────────────────────
 
@@ -145,7 +145,7 @@ router.get('/applicants', async (req, res) => {
     const safeSort  = ['created_at', 'full_name', 'status', 'age', 'city', 'rating'].includes(sort) ? sort : 'created_at';
     const safeOrder = order === 'asc' ? 'ASC' : 'DESC';
 
-    const [countRow, applicants] = await Promise.all([
+    const [countRow, applicants, citiesRows] = await Promise.all([
       db.get(`SELECT COUNT(*) as c FROM applicants ${where}`, params),
       db.all(`
         SELECT id, full_name, id_number, phone, age, city, has_car, has_license,
@@ -154,10 +154,12 @@ router.get('/applicants', async (req, res) => {
         ORDER BY ${safeSort} ${safeOrder}
         LIMIT ${PAGE_SIZE} OFFSET ${offset}
       `, params),
+      db.all('SELECT name FROM cities ORDER BY sort_order, id'),
     ]);
 
     const total = countRow?.c || 0;
     const totalPages = Math.ceil(total / PAGE_SIZE);
+    const CITIES = citiesRows.map(r => r.name);
 
     res.render('applicants', {
       applicants, total, totalPages, pageNum,
@@ -374,6 +376,106 @@ router.delete('/applicants/:id', async (req, res) => {
   } catch (err) {
     console.error('[Applicant DELETE]', err.message);
     res.status(500).json({ error: 'خطأ في حذف المتقدم' });
+  }
+});
+
+// ─── Cities ───────────────────────────────────────────────────────────────────
+
+router.get('/cities', async (req, res) => {
+  try {
+    const cities = await db.all(`
+      SELECT c.id, c.name, c.sort_order,
+             COUNT(a.id) AS applicant_count
+      FROM cities c
+      LEFT JOIN applicants a ON a.city = c.name
+      GROUP BY c.id
+      ORDER BY c.sort_order, c.id
+    `);
+    res.render('cities', {
+      cities,
+      success: req.query.success || null,
+      error:   req.query.error   || null,
+      adminUser: req.session.adminUser,
+    });
+  } catch (err) {
+    console.error('[Cities GET]', err.message);
+    res.status(500).send('خطأ في تحميل المدن');
+  }
+});
+
+router.post('/cities', async (req, res) => {
+  try {
+    const name = (req.body.name || '').trim();
+    if (!name || name.length > 60)
+      return res.redirect('/admin/cities?error=' + encodeURIComponent('اسم المدينة مطلوب (حتى 60 حرفاً)'));
+
+    // الترتيب = آخر رقم + 1
+    const last = await db.get('SELECT MAX(sort_order) as m FROM cities');
+    const order = (last?.m ?? -1) + 1;
+
+    await db.run('INSERT INTO cities (name, sort_order) VALUES (?, ?)', [name, order]);
+    res.redirect('/admin/cities?success=' + encodeURIComponent(`تمت إضافة «${name}»`));
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.redirect('/admin/cities?error=' + encodeURIComponent('هذه المدينة موجودة مسبقاً'));
+    }
+    console.error('[Cities POST]', err.message);
+    res.redirect('/admin/cities?error=' + encodeURIComponent('حدث خطأ أثناء الإضافة'));
+  }
+});
+
+router.post('/cities/:id/delete', async (req, res) => {
+  try {
+    await db.run('DELETE FROM cities WHERE id = ?', [req.params.id]);
+    res.redirect('/admin/cities?success=' + encodeURIComponent('تم حذف المدينة'));
+  } catch (err) {
+    console.error('[Cities DELETE]', err.message);
+    res.redirect('/admin/cities?error=' + encodeURIComponent('حدث خطأ أثناء الحذف'));
+  }
+});
+
+router.post('/cities/:id/up', async (req, res) => {
+  try {
+    // جلب المدينة الحالية والتي قبلها
+    const city = await db.get('SELECT id, sort_order FROM cities WHERE id = ?', [req.params.id]);
+    if (!city) return res.redirect('/admin/cities');
+
+    const prev = await db.get(
+      'SELECT id, sort_order FROM cities WHERE sort_order < ? ORDER BY sort_order DESC LIMIT 1',
+      [city.sort_order]
+    );
+    if (prev) {
+      await Promise.all([
+        db.run('UPDATE cities SET sort_order = ? WHERE id = ?', [prev.sort_order, city.id]),
+        db.run('UPDATE cities SET sort_order = ? WHERE id = ?', [city.sort_order, prev.id]),
+      ]);
+    }
+    res.redirect('/admin/cities');
+  } catch (err) {
+    console.error('[Cities UP]', err.message);
+    res.redirect('/admin/cities');
+  }
+});
+
+router.post('/cities/:id/down', async (req, res) => {
+  try {
+    const city = await db.get('SELECT id, sort_order FROM cities WHERE id = ?', [req.params.id]);
+    if (!city) return res.redirect('/admin/cities');
+
+    const next = await db.get(
+      'SELECT id, sort_order FROM cities WHERE sort_order > ? ORDER BY sort_order ASC LIMIT 1',
+      [city.sort_order]
+    );
+    if (next) {
+      await Promise.all([
+        db.run('UPDATE cities SET sort_order = ? WHERE id = ?', [next.sort_order, city.id]),
+        db.run('UPDATE cities SET sort_order = ? WHERE id = ?', [city.sort_order, next.id]),
+      ]);
+    }
+    res.redirect('/admin/cities');
+  } catch (err) {
+    console.error('[Cities DOWN]', err.message);
+    res.redirect('/admin/cities');
   }
 });
 

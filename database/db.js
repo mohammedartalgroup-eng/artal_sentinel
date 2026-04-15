@@ -119,6 +119,27 @@ async function initialize() {
       ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
     `);
 
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS cities (
+        id         INT AUTO_INCREMENT PRIMARY KEY,
+        name       VARCHAR(60)  NOT NULL UNIQUE,
+        sort_order INT          NOT NULL DEFAULT 0,
+        created_at DATETIME     DEFAULT CURRENT_TIMESTAMP
+      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+    `);
+
+    // ─── مدن افتراضية
+    const defaultCities = [
+      'الرياض','جدة','الدمام','مكة المكرمة','المدينة المنورة',
+      'الطائف','القصيم','أبها','تبوك','حائل','أخرى'
+    ];
+    for (const [i, city] of defaultCities.entries()) {
+      await conn.query(
+        'INSERT IGNORE INTO cities (name, sort_order) VALUES (?, ?)',
+        [city, i]
+      );
+    }
+
     // ─── الإعدادات الافتراضية
     const defaults = [
       ['phone',                  '+966 500 000 000'],

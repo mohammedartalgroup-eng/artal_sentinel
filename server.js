@@ -56,6 +56,18 @@ app.use(session({
   cookie: { maxAge: 24 * 60 * 60 * 1000, httpOnly: true },
 }));
 
+// Public API — cities list for apply form
+app.get('/api/cities', async (req, res) => {
+  try {
+    const db = require('./database/db');
+    const rows = await db.all('SELECT name FROM cities ORDER BY sort_order, id');
+    res.json(rows.map(r => r.name));
+  } catch (err) {
+    console.error('[API /cities]', err.message);
+    res.json([]);
+  }
+});
+
 // Routes — before static so /apply accepting_applications check fires first
 app.use('/apply', applyRouter);
 app.use('/admin', adminRouter);

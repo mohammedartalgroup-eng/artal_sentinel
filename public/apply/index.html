@@ -191,18 +191,7 @@
             <div class="input-wrap relative" id="wrap-city">
               <select id="f-city" name="city"
                       class="w-full bg-surface-container-low border-0 rounded-lg px-4 py-3.5 focus:ring-2 focus:ring-primary/20 appearance-none transition-all">
-                <option value="">اختر المنطقة</option>
-                <option>الرياض</option>
-                <option>جدة</option>
-                <option>الدمام</option>
-                <option>مكة المكرمة</option>
-                <option>المدينة المنورة</option>
-                <option>الطائف</option>
-                <option>القصيم</option>
-                <option>أبها</option>
-                <option>تبوك</option>
-                <option>حائل</option>
-                <option>أخرى</option>
+                <option value="">جاري التحميل…</option>
               </select>
               <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">location_on</span>
             </div>
@@ -300,6 +289,24 @@
 </footer>
 
 <script>
+// ─── تحميل المدن ديناميكياً من قاعدة البيانات ────────────────────────────────
+(async function loadCities() {
+  const select = document.getElementById('f-city');
+  try {
+    const res  = await fetch('/api/cities');
+    const list = await res.json();
+    select.innerHTML = '<option value="">اختر المنطقة</option>';
+    list.forEach(city => {
+      const opt = document.createElement('option');
+      opt.value = city;
+      opt.textContent = city;
+      select.appendChild(opt);
+    });
+  } catch (e) {
+    select.innerHTML = '<option value="">— تعذّر تحميل المدن —</option>';
+  }
+})();
+
 // ─── تحويل الأرقام العربية والفارسية إلى إنجليزية ───────────────────────────
 function toEnglish(str) {
   return str
