@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>تسجيل الدخول — Artal Sentinel</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    h1,h2 { font-family: 'Manrope', sans-serif; }
+    .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+  </style>
+</head>
+<body class="min-h-screen flex items-center justify-center bg-[#001736]">
+
+  <!-- Background pattern -->
+  <div class="absolute inset-0 opacity-5"
+       style="background-image: repeating-linear-gradient(45deg, #fff 0, #fff 1px, transparent 0, transparent 50%); background-size: 20px 20px;"></div>
+
+  <div class="relative w-full max-w-sm px-4">
+    <!-- Logo -->
+    <div class="text-center mb-10">
+      <div class="w-16 h-16 rounded-2xl bg-[#ffdf9e]/15 flex items-center justify-center mx-auto mb-4">
+        <span class="material-symbols-outlined text-[#ffdf9e] text-4xl" style="font-variation-settings:'FILL' 1">security</span>
+      </div>
+      <h1 class="text-white font-extrabold text-2xl tracking-wider uppercase">Artal Sentinel</h1>
+      <p class="text-[#7594ca] text-sm mt-1">لوحة إدارة التوظيف</p>
+    </div>
+
+    <!-- Card -->
+    <div class="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-8">
+      <h2 class="text-white text-lg font-bold mb-6">تسجيل الدخول</h2>
+
+      <% if (error) { %>
+      <div class="bg-red-900/30 border border-red-700/50 text-red-300 rounded-xl px-4 py-3 mb-5 text-sm flex items-center gap-2">
+        <span class="material-symbols-outlined text-base">error</span>
+        <%= error %>
+      </div>
+      <% } %>
+
+      <form method="POST" action="/admin/login" class="space-y-5">
+        <input type="hidden" name="next" value="<%= next %>">
+
+        <div>
+          <label class="block text-[#7594ca] text-xs font-semibold uppercase tracking-wider mb-2">اسم المستخدم</label>
+          <div class="relative">
+            <input type="text" name="username" required autocomplete="username"
+                   class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-slate-500
+                          focus:outline-none focus:border-[#7594ca]/60 focus:ring-1 focus:ring-[#7594ca]/30 transition-all"
+                   placeholder="admin">
+            <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-lg">person</span>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-[#7594ca] text-xs font-semibold uppercase tracking-wider mb-2">كلمة المرور</label>
+          <div class="relative">
+            <input type="password" name="password" required autocomplete="current-password"
+                   class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-slate-500
+                          focus:outline-none focus:border-[#7594ca]/60 focus:ring-1 focus:ring-[#7594ca]/30 transition-all"
+                   placeholder="••••••••">
+            <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-lg">lock</span>
+          </div>
+        </div>
+
+        <button type="submit"
+                class="w-full bg-gradient-to-r from-[#001736] to-[#002b5b] border border-[#7594ca]/30 text-white font-bold py-3.5
+                       rounded-xl flex items-center justify-center gap-2 hover:border-[#7594ca]/60 hover:from-[#002b5b] hover:to-[#003a7a]
+                       transition-all active:scale-[0.98] mt-2">
+          دخول
+          <span class="material-symbols-outlined text-lg">login</span>
+        </button>
+      </form>
+    </div>
+
+    <p class="text-center text-[#43474f] text-xs mt-6">
+      Artal Security Guards © <%= new Date().getFullYear() %>
+    </p>
+  </div>
+</body>
+</html>

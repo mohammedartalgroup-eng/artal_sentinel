@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Artal Security - تم استلام طلبك</title>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: { extend: {
+        colors: {
+          "primary": "#001736", "primary-container": "#002b5b",
+          "on-primary-container": "#7594ca", "secondary": "#506169",
+          "surface": "#f8f9fb", "surface-container-low": "#f2f4f6",
+          "surface-container-lowest": "#ffffff", "outline-variant": "#c4c6d0",
+          "on-surface": "#191c1e", "on-surface-variant": "#43474f",
+          "tertiary-fixed": "#ffdf9e", "tertiary-fixed-dim": "#e2c382",
+        },
+        fontFamily: { headline: ["Manrope","sans-serif"], body: ["Inter","sans-serif"] }
+      }}
+    }
+  </script>
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    h1,h2,h3 { font-family: 'Manrope', sans-serif; }
+    .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+  </style>
+</head>
+<body class="bg-surface text-on-surface min-h-screen flex flex-col">
+
+  <header class="bg-[#001736] w-full py-6 flex justify-center items-center">
+    <div class="text-xl font-bold text-white tracking-widest uppercase" style="font-family:Manrope">
+      <%= settings.company_name || 'Artal Security' %>
+    </div>
+  </header>
+
+  <main class="flex-grow flex items-center justify-center px-4 py-12 md:py-24">
+    <div class="max-w-4xl w-full grid grid-cols-1 lg:grid-cols-2 gap-8 items-stretch">
+
+      <!-- Success Card -->
+      <div class="bg-surface-container-lowest p-8 md:p-12 rounded-2xl flex flex-col items-center text-center justify-center shadow-sm">
+        <div class="mb-8 relative">
+          <div class="absolute inset-0 bg-tertiary-fixed opacity-20 rounded-full scale-150 blur-xl"></div>
+          <div class="relative bg-surface-container-lowest w-24 h-24 rounded-full flex items-center justify-center">
+            <span class="material-symbols-outlined text-6xl text-primary"
+                  style="font-variation-settings:'FILL' 1">check_circle</span>
+          </div>
+        </div>
+        <h1 class="text-3xl md:text-4xl font-extrabold text-primary mb-6 leading-tight">
+          شكراً لك! تم استلام طلبك بنجاح
+          <span class="block text-xl md:text-2xl mt-2 font-normal text-on-surface-variant opacity-80">
+            Thank you! Your application has been successfully submitted.
+          </span>
+        </h1>
+        <p class="text-lg text-secondary font-medium max-w-md">
+          سيقوم فريق التوظيف بمراجعة طلبك والتواصل معك قريباً.
+          <span class="block text-sm mt-1 font-normal opacity-70">
+            Our recruitment team will review your application and contact you soon.
+          </span>
+        </p>
+        <div class="mt-10 h-1 w-24 bg-tertiary-fixed-dim rounded-full"></div>
+      </div>
+
+      <!-- Contact Info -->
+      <div class="flex flex-col gap-4">
+        <div class="bg-surface-container-low p-8 rounded-2xl flex-grow border border-outline-variant/10">
+          <h2 class="text-xl font-bold text-primary mb-8 border-r-4 border-tertiary-fixed pr-4">
+            للمزيد من الاستفسارات
+            <span class="block text-sm font-normal text-secondary mt-1">For further inquiries</span>
+          </h2>
+          <div class="space-y-6">
+            <div class="flex items-center gap-4 group">
+              <div class="w-12 h-12 rounded-xl bg-primary-container flex items-center justify-center text-white transition-transform group-hover:scale-105 flex-shrink-0">
+                <span class="material-symbols-outlined">call</span>
+              </div>
+              <div>
+                <p class="text-xs text-secondary font-bold uppercase tracking-widest">Phone</p>
+                <p class="text-lg font-bold text-primary" dir="ltr"><%= settings.phone %></p>
+              </div>
+            </div>
+            <div class="flex items-center gap-4 group">
+              <div class="w-12 h-12 rounded-xl bg-primary-container flex items-center justify-center text-white transition-transform group-hover:scale-105 flex-shrink-0">
+                <span class="material-symbols-outlined">mail</span>
+              </div>
+              <div>
+                <p class="text-xs text-secondary font-bold uppercase tracking-widest">Email</p>
+                <p class="text-lg font-bold text-primary"><%= settings.email %></p>
+              </div>
+            </div>
+            <div class="flex items-center gap-4 group">
+              <div class="w-12 h-12 rounded-xl bg-primary-container flex items-center justify-center text-white transition-transform group-hover:scale-105 flex-shrink-0">
+                <span class="material-symbols-outlined">location_on</span>
+              </div>
+              <div>
+                <p class="text-xs text-secondary font-bold uppercase tracking-widest">Address</p>
+                <p class="text-lg font-bold text-primary"><%= settings.address %></p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Brand bar -->
+        <div class="relative h-24 rounded-2xl overflow-hidden bg-primary-container flex items-center justify-between px-6">
+          <div class="text-white/40 text-[10px] font-bold tracking-[0.3em] uppercase">Trusted Protection</div>
+          <div class="w-8 h-8 rounded-full border border-tertiary-fixed/30 flex items-center justify-center">
+            <div class="w-2 h-2 rounded-full bg-tertiary-fixed"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <footer class="bg-surface border-t border-slate-200 py-8">
+    <div class="max-w-7xl mx-auto px-8 flex flex-col md:flex-row justify-between items-center gap-4">
+      <div class="text-sm text-slate-500">© <%= new Date().getFullYear() %> <%= settings.company_name %>. All Rights Reserved.</div>
+      <div class="flex flex-wrap justify-center gap-6 text-sm text-slate-500">
+        <span><%= settings.phone %></span>
+        <span><%= settings.email %></span>
+        <span><%= settings.address %></span>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

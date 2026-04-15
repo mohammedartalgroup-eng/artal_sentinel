@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= applicant.full_name %> — Artal Sentinel</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; background: #f2f4f6; }
+    h1,h2,h3 { font-family: 'Manrope', sans-serif; }
+    .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+    .star-btn { cursor: pointer; font-size: 1.5rem; transition: color 0.15s; }
+    .star-btn.active { color: #e2c382; }
+    .star-btn:not(.active) { color: #c4c6d0; }
+    .star-btn:hover, .star-btn:hover ~ .star-btn { color: #e2c382; }
+  </style>
+</head>
+<body class="text-[#191c1e]">
+<%- include('partials/sidebar', { currentPage: 'applicants' }) %>
+
+<%
+const colorMap = {
+  blue:'bg-blue-100 text-blue-700', yellow:'bg-yellow-100 text-yellow-800',
+  purple:'bg-purple-100 text-purple-700', orange:'bg-orange-100 text-orange-700',
+  green:'bg-green-100 text-green-700', gray:'bg-gray-100 text-gray-600',
+  red:'bg-red-100 text-red-700'
+};
+const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'gray' };
+%>
+
+<div class="mr-64 min-h-screen">
+  <!-- Top bar -->
+  <header class="bg-white border-b border-[#eceef0] px-8 py-4 flex items-center gap-4 sticky top-0 z-30">
+    <a href="/admin/applicants" class="text-[#43474f] hover:text-[#001736] transition-colors">
+      <span class="material-symbols-outlined">arrow_forward</span>
+    </a>
+    <div class="flex-1">
+      <div class="flex items-center gap-3 flex-wrap">
+        <h1 class="text-lg font-bold text-[#001736]"><%= applicant.full_name %></h1>
+        <span class="px-2.5 py-1 rounded-full text-xs font-semibold <%= colorMap[sm.color] %>">
+          <%= sm.label %>
+        </span>
+        <!-- Star rating display -->
+        <div class="flex items-center gap-0.5" id="ratingDisplay">
+          <% for (let i = 1; i <= 5; i++) { %>
+          <button class="star-btn <%= i <= applicant.rating ? 'active' : '' %>"
+                  data-value="<%= i %>" onclick="setRating(<%= i %>)" title="<%= i %> نجوم">★</button>
+          <% } %>
+        </div>
+      </div>
+      <p class="text-xs text-[#43474f] mt-0.5">
+        تقديم رقم #<%= applicant.id %> —
+        <%= new Date(applicant.created_at).toLocaleDateString('ar-SA', { year:'numeric', month:'long', day:'numeric' }) %>
+      </p>
+    </div>
+    <!-- Delete button -->
+    <button onclick="deleteApplicant()"
+            class="flex items-center gap-1.5 px-4 py-2 rounded-xl text-red-600 bg-red-50 hover:bg-red-100 text-sm font-medium transition-colors">
+      <span class="material-symbols-outlined text-base">delete</span>
+      حذف
+    </button>
+  </header>
+
+  <!-- Status Pipeline -->
+  <div class="bg-white border-b border-[#eceef0] px-8 py-4">
+    <div class="flex items-center gap-2 flex-wrap">
+      <% const pipeline = ['pending','reviewed','shortlisted','interviewed','hired']; %>
+      <% const pipelinePos = pipeline.indexOf(applicant.status); %>
+      <% pipeline.forEach((step, i) => { %>
+      <%
+        let btnClass = 'border border-[#e0e3e5] text-[#43474f] bg-white hover:bg-[#f2f4f6]';
+        if (step === applicant.status) btnClass = 'bg-[#001736] text-white border-[#001736]';
+        else if (i < pipelinePos) btnClass = 'bg-[#f2f4f6] text-[#43474f] border-[#e0e3e5]';
+      %>
+      <button onclick="updateStatus('<%= step %>')"
+              class="px-4 py-2 rounded-xl text-xs font-semibold transition-all <%= btnClass %>">
+        <%= STATUS_META[step].label %>
+      </button>
+      <% if (i < pipeline.length - 1) { %>
+      <span class="text-[#c4c6d0] material-symbols-outlined text-sm">chevron_left</span>
+      <% } %>
+      <% }) %>
+      <span class="mx-2 text-[#c4c6d0]">|</span>
+      <button onclick="updateStatus('on_hold')"
+              class="px-4 py-2 rounded-xl text-xs font-semibold border transition-all
+                     <%= applicant.status === 'on_hold' ? 'bg-gray-500 text-white border-gray-500' : 'border-[#e0e3e5] text-[#43474f] hover:bg-[#f2f4f6]' %>">
+        معلق
+      </button>
+      <button onclick="updateStatus('rejected')"
+              class="px-4 py-2 rounded-xl text-xs font-semibold border transition-all
+                     <%= applicant.status === 'rejected' ? 'bg-red-600 text-white border-red-600' : 'border-[#e0e3e5] text-red-600 hover:bg-red-50' %>">
+        مرفوض
+      </button>
+    </div>
+  </div>
+
+  <main class="p-8">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+      <!-- LEFT: Info + Docs -->
+      <div class="lg:col-span-1 space-y-6">
+
+        <!-- Personal Info -->
+        <div class="bg-white rounded-2xl p-6">
+          <h2 class="font-bold text-[#001736] text-sm mb-5 flex items-center gap-2">
+            <span class="material-symbols-outlined text-base">assignment_ind</span>
+            البيانات الشخصية
+          </h2>
+          <div class="space-y-4">
+            <div class="flex items-start gap-3">
+              <span class="material-symbols-outlined text-[#43474f] text-lg mt-0.5">person</span>
+              <div>
+                <div class="text-xs text-[#43474f] font-semibold uppercase tracking-wider">الاسم الرباعي</div>
+                <div class="font-medium mt-0.5"><%= applicant.full_name %></div>
+              </div>
+            </div>
+            <div class="flex items-start gap-3">
+              <span class="material-symbols-outlined text-[#43474f] text-lg mt-0.5">badge</span>
+              <div>
+                <div class="text-xs text-[#43474f] font-semibold uppercase tracking-wider">رقم الهوية</div>
+                <div class="font-mono mt-0.5"><%= applicant.id_number %></div>
+              </div>
+            </div>
+            <div class="flex items-start gap-3">
+              <span class="material-symbols-outlined text-[#43474f] text-lg mt-0.5">smartphone</span>
+              <div>
+                <div class="text-xs text-[#43474f] font-semibold uppercase tracking-wider">رقم الجوال</div>
+                <div class="mt-0.5" dir="ltr"><%= applicant.phone %></div>
+              </div>
+            </div>
+            <div class="flex items-start gap-3">
+              <span class="material-symbols-outlined text-[#43474f] text-lg mt-0.5">cake</span>
+              <div>
+                <div class="text-xs text-[#43474f] font-semibold uppercase tracking-wider">العمر</div>
+                <div class="mt-0.5"><%= applicant.age ? applicant.age + ' سنة' : '—' %></div>
+              </div>
+            </div>
+            <div class="flex items-start gap-3">
+              <span class="material-symbols-outlined text-[#43474f] text-lg mt-0.5">location_on</span>
+              <div>
+                <div class="text-xs text-[#43474f] font-semibold uppercase tracking-wider">مقر السكن</div>
+                <div class="mt-0.5"><%= applicant.city || '—' %></div>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-3 pt-2">
+              <div class="bg-[#f8f9fb] rounded-xl p-3 text-center">
+                <span class="material-symbols-outlined text-2xl <%= applicant.has_car ? 'text-green-600' : 'text-[#c4c6d0]' %>">
+                  directions_car
+                </span>
+                <div class="text-xs text-[#43474f] mt-1">سيارة</div>
+                <div class="text-sm font-semibold <%= applicant.has_car ? 'text-green-700' : 'text-[#43474f]' %>">
+                  <%= applicant.has_car ? 'نعم' : 'لا' %>
+                </div>
+              </div>
+              <div class="bg-[#f8f9fb] rounded-xl p-3 text-center">
+                <span class="material-symbols-outlined text-2xl <%= applicant.has_license ? 'text-green-600' : 'text-[#c4c6d0]' %>">
+                  card_membership
+                </span>
+                <div class="text-xs text-[#43474f] mt-1">رخصة</div>
+                <div class="text-sm font-semibold <%= applicant.has_license ? 'text-green-700' : 'text-[#43474f]' %>">
+                  <%= applicant.has_license ? 'نعم' : 'لا' %>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Documents -->
+        <div class="bg-white rounded-2xl p-6">
+          <h2 class="font-bold text-[#001736] text-sm mb-4 flex items-center gap-2">
+            <span class="material-symbols-outlined text-base">folder_open</span>
+            المرفقات
+          </h2>
+          <div class="space-y-3">
+            <% if (applicant.cv_path) { %>
+            <a href="/uploads/cv/<%= applicant.cv_path %>" target="_blank"
+               class="flex items-center gap-3 p-3 bg-[#f8f9fb] rounded-xl hover:bg-[#f2f4f6] transition-colors group">
+              <div class="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center flex-shrink-0">
+                <span class="material-symbols-outlined text-red-600 text-lg">description</span>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="text-sm font-medium text-[#001736] truncate">السيرة الذاتية</div>
+                <div class="text-xs text-[#43474f]">CV</div>
+              </div>
+              <span class="material-symbols-outlined text-[#405f91] text-lg group-hover:scale-110 transition-transform">
+                open_in_new
+              </span>
+            </a>
+            <% } else { %>
+            <div class="flex items-center gap-3 p-3 bg-[#f8f9fb] rounded-xl opacity-50">
+              <div class="w-10 h-10 rounded-lg bg-[#eceef0] flex items-center justify-center flex-shrink-0">
+                <span class="material-symbols-outlined text-[#c4c6d0] text-lg">description</span>
+              </div>
+              <div class="text-sm text-[#43474f]">لم يرفع السيرة الذاتية</div>
+            </div>
+            <% } %>
+
+            <% if (applicant.id_image_path) { %>
+            <a href="/uploads/id_images/<%= applicant.id_image_path %>" target="_blank"
+               class="flex items-center gap-3 p-3 bg-[#f8f9fb] rounded-xl hover:bg-[#f2f4f6] transition-colors group">
+              <div class="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                <span class="material-symbols-outlined text-blue-600 text-lg">badge</span>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="text-sm font-medium text-[#001736]">صورة الهوية</div>
+                <div class="text-xs text-[#43474f]">ID Image</div>
+              </div>
+              <span class="material-symbols-outlined text-[#405f91] text-lg group-hover:scale-110 transition-transform">
+                open_in_new
+              </span>
+            </a>
+            <% } else { %>
+            <div class="flex items-center gap-3 p-3 bg-[#f8f9fb] rounded-xl opacity-50">
+              <div class="w-10 h-10 rounded-lg bg-[#eceef0] flex items-center justify-center flex-shrink-0">
+                <span class="material-symbols-outlined text-[#c4c6d0] text-lg">badge</span>
+              </div>
+              <div class="text-sm text-[#43474f]">لم يرفع صورة الهوية</div>
+            </div>
+            <% } %>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: CRM Timeline + Notes -->
+      <div class="lg:col-span-2 space-y-6">
+
+        <!-- Add Note -->
+        <div class="bg-white rounded-2xl p-6">
+          <h2 class="font-bold text-[#001736] text-sm mb-4 flex items-center gap-2">
+            <span class="material-symbols-outlined text-base">add_comment</span>
+            إضافة ملاحظة / نشاط
+          </h2>
+          <div id="noteForm" class="space-y-3">
+            <div class="flex gap-3 flex-wrap">
+              <% Object.entries(NOTE_TYPES).forEach(([k, v]) => { %>
+              <label class="flex items-center gap-2 cursor-pointer group">
+                <input type="radio" name="note_type_select" value="<%= k %>" class="hidden"
+                       onchange="selectNoteType('<%= k %>')" <%= k === 'note' ? 'checked' : '' %>>
+                <div class="note-type-btn px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5
+                            <%= k === 'note' ? 'bg-[#001736] text-white border-[#001736]' : 'border-[#e0e3e5] text-[#43474f] hover:bg-[#f2f4f6]' %>"
+                     data-type="<%= k %>">
+                  <span class="material-symbols-outlined text-sm"><%= v.icon %></span>
+                  <%= v.label %>
+                </div>
+              </label>
+              <% }) %>
+            </div>
+            <textarea id="noteContent" rows="3" placeholder="اكتب ملاحظتك هنا..."
+                      class="w-full border border-[#e0e3e5] rounded-xl p-3 text-sm focus:outline-none focus:border-[#7594ca] focus:ring-1 focus:ring-[#7594ca]/30 resize-none transition-all"
+                      onkeydown="if(event.ctrlKey && event.key==='Enter') addNote()"></textarea>
+            <div class="flex items-center justify-between">
+              <span class="text-xs text-[#43474f]">Ctrl+Enter للإضافة السريعة</span>
+              <button onclick="addNote()"
+                      class="bg-[#001736] text-white text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-[#002b5b] transition-colors flex items-center gap-2">
+                <span class="material-symbols-outlined text-base">send</span>
+                إضافة
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Timeline -->
+        <div class="bg-white rounded-2xl p-6">
+          <h2 class="font-bold text-[#001736] text-sm mb-5 flex items-center gap-2">
+            <span class="material-symbols-outlined text-base">timeline</span>
+            السجل والملاحظات
+          </h2>
+
+          <div id="timeline" class="space-y-0">
+            <%
+            const noteTypeColors = {
+              note: 'bg-blue-100 text-blue-700',
+              call: 'bg-green-100 text-green-700',
+              interview: 'bg-purple-100 text-purple-700',
+              follow_up: 'bg-orange-100 text-orange-700'
+            };
+            // Merge notes + activity into one timeline, sorted by date desc
+            const timelineItems = [
+              ...notes.map(n => ({ ...n, _type: 'note' })),
+              ...activity.map(a => ({ ...a, _type: 'activity' }))
+            ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+            %>
+
+            <% if (timelineItems.length === 0) { %>
+            <div class="text-center py-8 text-[#43474f] text-sm">
+              <span class="material-symbols-outlined text-3xl block mb-2 text-[#c4c6d0]">chat_bubble_outline</span>
+              لا توجد ملاحظات أو سجل نشاط بعد
+            </div>
+            <% } %>
+
+            <% timelineItems.forEach((item, idx) => { %>
+            <div class="flex gap-4 pb-5 <%= idx < timelineItems.length - 1 ? 'border-b border-[#f2f4f6]' : '' %>"
+                 id="<%= item._type === 'note' ? 'note-' + item.id : '' %>">
+              <!-- Icon -->
+              <div class="flex-shrink-0 mt-1">
+                <% if (item._type === 'note') { %>
+                <div class="w-9 h-9 rounded-xl <%= noteTypeColors[item.type] || 'bg-gray-100 text-gray-600' %> flex items-center justify-center">
+                  <span class="material-symbols-outlined text-base"><%= NOTE_TYPES[item.type]?.icon || 'edit_note' %></span>
+                </div>
+                <% } else { %>
+                <div class="w-9 h-9 rounded-xl bg-[#f2f4f6] flex items-center justify-center">
+                  <span class="material-symbols-outlined text-base text-[#43474f]">history</span>
+                </div>
+                <% } %>
+              </div>
+              <!-- Content -->
+              <div class="flex-1 min-w-0">
+                <div class="flex items-start justify-between gap-2">
+                  <div class="flex-1">
+                    <% if (item._type === 'note') { %>
+                    <span class="text-xs font-semibold <%= noteTypeColors[item.type] || 'bg-gray-100 text-gray-600' %> px-2 py-0.5 rounded-full">
+                      <%= NOTE_TYPES[item.type]?.label || item.type %>
+                    </span>
+                    <p class="text-sm text-[#191c1e] mt-2 leading-relaxed"><%= item.content %></p>
+                    <% } else { %>
+                    <div class="text-sm text-[#43474f]">
+                      <span class="font-medium text-[#191c1e]"><%= item.action %></span>
+                      <% if (item.old_value && item.new_value) { %>
+                      <span class="mx-1">:</span>
+                      <span class="line-through text-[#c4c6d0]"><%= item.old_value %></span>
+                      <span class="mx-1 material-symbols-outlined text-xs align-middle">arrow_back</span>
+                      <span class="font-medium text-[#001736]"><%= item.new_value %></span>
+                      <% } else if (item.new_value) { %>
+                      <span class="mx-1">—</span><span class="text-[#001736]"><%= item.new_value %></span>
+                      <% } %>
+                    </div>
+                    <% } %>
+                  </div>
+                  <div class="flex items-center gap-2 flex-shrink-0">
+                    <span class="text-xs text-[#43474f] whitespace-nowrap">
+                      <%= new Date(item.created_at).toLocaleDateString('ar-SA') %>
+                      <%= new Date(item.created_at).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }) %>
+                    </span>
+                    <% if (item._type === 'note') { %>
+                    <button onclick="deleteNote(<%= item.id %>)"
+                            class="text-[#c4c6d0] hover:text-red-500 transition-colors" title="حذف">
+                      <span class="material-symbols-outlined text-sm">close</span>
+                    </button>
+                    <% } %>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <% }) %>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Toast notification -->
+<div id="toast" class="fixed bottom-6 left-6 bg-[#001736] text-white text-sm px-5 py-3 rounded-xl shadow-2xl
+     transform translate-y-16 opacity-0 transition-all duration-300 z-50 flex items-center gap-2">
+  <span class="material-symbols-outlined text-[#ffdf9e] text-base" id="toastIcon">check</span>
+  <span id="toastMsg"></span>
+</div>
+
+<script>
+const APPLICANT_ID = <%= applicant.id %>;
+let selectedNoteType = 'note';
+
+function toast(msg, icon = 'check', isError = false) {
+  const el = document.getElementById('toast');
+  const ic = document.getElementById('toastIcon');
+  document.getElementById('toastMsg').textContent = msg;
+  ic.textContent = icon;
+  el.classList.toggle('bg-red-800', isError);
+  el.classList.toggle('bg-[#001736]', !isError);
+  el.classList.remove('translate-y-16', 'opacity-0');
+  setTimeout(() => el.classList.add('translate-y-16', 'opacity-0'), 2500);
+}
+
+function selectNoteType(type) {
+  selectedNoteType = type;
+  document.querySelectorAll('.note-type-btn').forEach(btn => {
+    const active = btn.dataset.type === type;
+    btn.className = btn.className.replace(/(bg-\[#001736\] text-white border-\[#001736\]|border-\[#e0e3e5\] text-\[#43474f\] hover:bg-\[#f2f4f6\])/g, '');
+    btn.classList.add(...(active
+      ? ['bg-[#001736]', 'text-white', 'border-[#001736]']
+      : ['border-[#e0e3e5]', 'text-[#43474f]', 'hover:bg-[#f2f4f6]']));
+  });
+}
+
+function setRating(val) {
+  fetch(`/admin/applicants/${APPLICANT_ID}/rating`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rating: val })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      document.querySelectorAll('.star-btn').forEach((btn, i) => {
+        btn.classList.toggle('active', i < data.rating);
+      });
+      toast('تم تحديث التقييم', 'star');
+    }
+  });
+}
+
+function updateStatus(status) {
+  fetch(`/admin/applicants/${APPLICANT_ID}/status`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      toast('تم تحديث الحالة إلى: ' + data.label, 'check_circle');
+      setTimeout(() => location.reload(), 800);
+    }
+  });
+}
+
+function addNote() {
+  const content = document.getElementById('noteContent').value.trim();
+  if (!content) { toast('يرجى كتابة ملاحظة', 'warning', true); return; }
+
+  fetch(`/admin/applicants/${APPLICANT_ID}/notes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content, type: selectedNoteType })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      document.getElementById('noteContent').value = '';
+      toast('تمت إضافة الملاحظة', 'check_circle');
+      setTimeout(() => location.reload(), 600);
+    }
+  });
+}
+
+function deleteNote(nid) {
+  if (!confirm('هل تريد حذف هذه الملاحظة؟')) return;
+  fetch(`/admin/applicants/${APPLICANT_ID}/notes/${nid}`, { method: 'DELETE' })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      const el = document.getElementById('note-' + nid);
+      if (el) el.remove();
+      toast('تم حذف الملاحظة', 'delete');
+    }
+  });
+}
+
+function deleteApplicant() {
+  if (!confirm('هل أنت متأكد من حذف هذا المتقدم؟ لا يمكن التراجع عن هذا الإجراء.')) return;
+  fetch(`/admin/applicants/${APPLICANT_ID}`, { method: 'DELETE' })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      toast('تم حذف المتقدم', 'delete');
+      setTimeout(() => location.href = '/admin/applicants', 800);
+    }
+  });
+}
+</script>
+</body>
+</html>

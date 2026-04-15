@@ -1,0 +1,57 @@
+<aside class="fixed right-0 top-0 h-full w-64 bg-[#001736] flex flex-col z-40 shadow-2xl">
+  <!-- Brand -->
+  <div class="px-6 py-7 border-b border-white/10">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-lg bg-[#ffdf9e]/20 flex items-center justify-center flex-shrink-0">
+        <span class="material-symbols-outlined text-[#ffdf9e] text-xl" style="font-variation-settings:'FILL' 1">security</span>
+      </div>
+      <div>
+        <div class="text-white font-bold text-sm tracking-wider uppercase">Artal Sentinel</div>
+        <div class="text-[#7594ca] text-[10px] tracking-widest">نظام التوظيف</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Nav -->
+  <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+    <a href="/admin/dashboard"
+       class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all
+              <%= currentPage === 'dashboard' ? 'bg-white/10 text-white' : 'text-[#7594ca] hover:bg-white/5 hover:text-white' %>">
+      <span class="material-symbols-outlined text-lg">dashboard</span>
+      <span>لوحة التحكم</span>
+    </a>
+    <a href="/admin/applicants"
+       class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all
+              <%= currentPage === 'applicants' ? 'bg-white/10 text-white' : 'text-[#7594ca] hover:bg-white/5 hover:text-white' %>">
+      <span class="material-symbols-outlined text-lg">group</span>
+      <span>المتقدمون</span>
+    </a>
+    <a href="/admin/settings"
+       class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all
+              <%= currentPage === 'settings' ? 'bg-white/10 text-white' : 'text-[#7594ca] hover:bg-white/5 hover:text-white' %>">
+      <span class="material-symbols-outlined text-lg">settings</span>
+      <span>الإعدادات</span>
+    </a>
+    <div class="border-t border-white/10 my-3"></div>
+    <a href="/apply" target="_blank"
+       class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-[#7594ca] hover:bg-white/5 hover:text-white transition-all">
+      <span class="material-symbols-outlined text-lg">open_in_new</span>
+      <span>صفحة التقديم</span>
+    </a>
+  </nav>
+
+  <!-- User -->
+  <div class="px-4 pb-6 border-t border-white/10 pt-4">
+    <div class="flex items-center gap-3 px-3 py-2 mb-2">
+      <div class="w-8 h-8 rounded-full bg-[#ffdf9e]/20 flex items-center justify-center flex-shrink-0">
+        <span class="material-symbols-outlined text-[#ffdf9e] text-base" style="font-variation-settings:'FILL' 1">manage_accounts</span>
+      </div>
+      <span class="text-white text-sm font-medium"><%= adminUser %></span>
+    </div>
+    <a href="/admin/logout"
+       class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm text-red-400 hover:bg-red-900/20 hover:text-red-300 transition-all">
+      <span class="material-symbols-outlined text-base">logout</span>
+      <span>تسجيل الخروج</span>
+    </a>
+  </div>
+</aside>

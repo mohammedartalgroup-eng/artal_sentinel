@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+  <title>التوظيف | Artal Security</title>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+  <script id="tailwind-config">
+    tailwind.config = {
+      theme: { extend: {
+        colors: {
+          "on-primary-fixed-variant":"#264778","on-error-container":"#93000a",
+          "on-secondary-container":"#55656d","outline":"#747780",
+          "on-primary-container":"#7594ca","on-secondary-fixed":"#0d1e25",
+          "primary":"#001736","surface-bright":"#f8f9fb","secondary":"#506169",
+          "surface-variant":"#e0e3e5","primary-container":"#002b5b",
+          "on-primary-fixed":"#001b3d","surface-container-high":"#e6e8ea",
+          "on-error":"#ffffff","surface-dim":"#d8dadc","background":"#f8f9fb",
+          "on-tertiary":"#ffffff","surface-container-lowest":"#ffffff",
+          "error":"#ba1a1a","inverse-surface":"#2d3133","primary-fixed":"#d6e3ff",
+          "on-surface-variant":"#43474f","surface-container-highest":"#e0e3e5",
+          "on-surface":"#191c1e","tertiary":"#201600","inverse-primary":"#a9c7ff",
+          "on-primary":"#ffffff","tertiary-fixed":"#ffdf9e","tertiary-fixed-dim":"#e2c382",
+          "secondary-container":"#d1e2ec","on-background":"#191c1e",
+          "on-secondary":"#ffffff","on-secondary-fixed-variant":"#394951",
+          "surface-container-low":"#f2f4f6","on-tertiary-fixed":"#261a00",
+          "secondary-fixed":"#d4e5ef","secondary-fixed-dim":"#b8c9d3",
+          "on-tertiary-fixed-variant":"#59440f","error-container":"#ffdad6",
+          "surface-tint":"#405f91","tertiary-container":"#3a2900",
+          "primary-fixed-dim":"#a9c7ff","outline-variant":"#c4c6d0",
+          "inverse-on-surface":"#eff1f3","surface-container":"#eceef0",
+          "surface":"#f8f9fb","on-tertiary-container":"#ac8f54"
+        },
+        borderRadius: { DEFAULT:"0.25rem","lg":"0.5rem","xl":"0.75rem","full":"9999px" },
+        fontFamily: { headline:["Manrope","sans-serif"], body:["Inter","sans-serif"], label:["Inter","sans-serif"] }
+      }}
+    }
+  </script>
+  <style>
+    .glass-panel { background:rgba(0,23,54,0.7); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); }
+    .material-symbols-outlined { font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24; }
+    body { background-color:#f8f9fb; font-family:'Inter',sans-serif; }
+    h1,h2,h3 { font-family:'Manrope',sans-serif; }
+  </style>
+</head>
+<body class="text-on-background">
+
+<header class="bg-[#001736] top-0 z-50">
+  <div class="flex justify-center items-center py-6 w-full max-w-7xl mx-auto px-6">
+    <div class="text-xl font-bold text-white tracking-widest font-manrope uppercase">Artal Security</div>
+  </div>
+</header>
+
+<main class="min-h-screen">
+  <!-- Hero Section -->
+  <section class="relative h-[400px] flex items-center justify-center overflow-hidden">
+    <div class="absolute inset-0 z-0">
+      <img class="w-full h-full object-cover"
+           src="https://lh3.googleusercontent.com/aida-public/AB6AXuAtzVauCXhqadAQOZ35FTSVSaSESW7rwlnFy_9aPJuYKdHQCtTOVmZEymMt2IiI3ZeVUKWBBKrkCD6yiK7QIYMm0lsWSWnQXVcZR26T5AOWAcRfAuVm9vavhWKeGSXcGJI9hYdphDKg3ZMwYLLnIPYRd05tO3-Ce1g-9I1M7WhvpPh9TlKSwXNSPlwJMgHgnZCMHOYRYN3rezbwmaUVNtwMpgchRotftKOemd--te6i0-uKED2vu4dy7t_MjiERbLDaJYq3gssUM93_"
+           alt="Artal Security Command Center">
+      <div class="absolute inset-0 bg-primary/80 backdrop-blur-sm"></div>
+    </div>
+    <div class="relative z-10 text-center px-4 max-w-4xl mx-auto">
+      <h1 class="text-4xl md:text-5xl font-extrabold text-white mb-6 leading-tight">
+        انضم إلى نخبة الحراسات الأمنية
+      </h1>
+      <p class="text-on-primary-container font-medium text-lg max-w-2xl mx-auto opacity-90">
+        نبحث عن الكفاءات الوطنية المتميزة للانضمام إلى فريقنا الاحترافي في تقديم الحلول الأمنية المتقدمة
+      </p>
+    </div>
+  </section>
+
+  <!-- Form Section -->
+  <section class="relative z-20 -mt-24 px-4 pb-20">
+    <div class="max-w-3xl mx-auto bg-surface-container-lowest rounded-xl shadow-2xl overflow-hidden border border-outline-variant/10">
+      <div class="bg-primary-container p-8 text-white">
+        <div class="flex items-center gap-3 mb-2">
+          <span class="material-symbols-outlined text-tertiary-fixed">assignment_ind</span>
+          <h2 class="text-2xl font-bold">طلب توظيف جديد</h2>
+        </div>
+        <p class="text-slate-300 text-sm">يرجى تعبئة كافة البيانات المطلوبة بدقة ليتم التواصل معكم</p>
+      </div>
+
+      <form class="p-8 md:p-12 space-y-8" method="POST" action="/apply"
+            enctype="multipart/form-data" id="applyForm" novalidate>
+
+        <!-- Personal Info Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+
+          <!-- Full Name -->
+          <div class="md:col-span-2">
+            <label class="block text-sm font-semibold text-on-surface-variant mb-2">
+              الاسم الرباعي <span class="text-error">*</span>
+            </label>
+            <div class="relative">
+              <input name="full_name" required minlength="5"
+                     class="w-full bg-surface-container-low border-0 rounded-lg px-4 py-3.5 focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-slate-400"
+                     placeholder="أدخل اسمك الكامل كما في الهوية" type="text"/>
+              <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">person</span>
+            </div>
+          </div>
+
+          <!-- ID Number -->
+          <div>
+            <label class="block text-sm font-semibold text-on-surface-variant mb-2">
+              رقم الهوية الوطنية <span class="text-error">*</span>
+            </label>
+            <input name="id_number" required pattern="\d{10}" maxlength="10"
+                   class="w-full bg-surface-container-low border-0 rounded-lg px-4 py-3.5 focus:ring-2 focus:ring-primary/20 transition-all"
+                   placeholder="1XXXXXXXXX" type="text" inputmode="numeric" dir="ltr"/>
+          </div>
+
+          <!-- Mobile Number -->
+          <div>
+            <label class="block text-sm font-semibold text-on-surface-variant mb-2">
+              رقم الجوال <span class="text-error">*</span>
+            </label>
+            <div class="relative">
+              <input name="phone" required pattern="05\d{8}" maxlength="10"
+                     class="w-full bg-surface-container-low border-0 rounded-lg px-4 py-3.5 focus:ring-2 focus:ring-primary/20 transition-all text-left"
+                     dir="ltr" placeholder="05XXXXXXXX" type="tel"/>
+              <span class="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">smartphone</span>
+            </div>
+          </div>
+
+          <!-- Age -->
+          <div>
+            <label class="block text-sm font-semibold text-on-surface-variant mb-2">العمر</label>
+            <input name="age" min="18" max="60"
+                   class="w-full bg-surface-container-low border-0 rounded-lg px-4 py-3.5 focus:ring-2 focus:ring-primary/20 transition-all"
+                   placeholder="السنة" type="number"/>
+          </div>
+
+          <!-- Residence -->
+          <div>
+            <label class="block text-sm font-semibold text-on-surface-variant mb-2">
+              مقر السكن الحالي <span class="text-error">*</span>
+            </label>
+            <div class="relative">
+              <select name="city" required
+                      class="w-full bg-surface-container-low border-0 rounded-lg px-4 py-3.5 focus:ring-2 focus:ring-primary/20 appearance-none transition-all">
+                <option value="">اختر المنطقة</option>
+                <option>الرياض</option>
+                <option>جدة</option>
+                <option>الدمام</option>
+                <option>مكة المكرمة</option>
+                <option>المدينة المنورة</option>
+                <option>الطائف</option>
+                <option>القصيم</option>
+                <option>أبها</option>
+                <option>تبوك</option>
+                <option>حائل</option>
+                <option>أخرى</option>
+              </select>
+              <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">location_on</span>
+            </div>
+          </div>
+
+          <!-- Car Ownership -->
+          <div class="md:col-span-1">
+            <label class="block text-sm font-semibold text-on-surface-variant mb-3">هل تمتلك سيارة؟</label>
+            <div class="flex gap-6">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input class="w-5 h-5 text-primary border-slate-300 focus:ring-primary"
+                       name="has_car" type="radio" value="yes"/>
+                <span class="text-on-surface">نعم</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input class="w-5 h-5 text-primary border-slate-300 focus:ring-primary"
+                       name="has_car" type="radio" value="no"/>
+                <span class="text-on-surface">لا</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- License -->
+          <div class="md:col-span-1">
+            <label class="block text-sm font-semibold text-on-surface-variant mb-3">هل لديك رخصة قيادة؟</label>
+            <div class="flex gap-6">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input class="w-5 h-5 text-primary border-slate-300 focus:ring-primary"
+                       name="has_license" type="radio" value="yes"/>
+                <span class="text-on-surface">نعم</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input class="w-5 h-5 text-primary border-slate-300 focus:ring-primary"
+                       name="has_license" type="radio" value="no"/>
+                <span class="text-on-surface">لا</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- File Uploads -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
+          <div class="space-y-2">
+            <label class="block text-sm font-semibold text-on-surface-variant">السيرة الذاتية (CV)</label>
+            <label class="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-outline-variant/30 rounded-xl bg-surface-container-low hover:bg-surface-container transition-colors cursor-pointer group"
+                   id="cvLabel">
+              <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                <span class="material-symbols-outlined text-primary mb-2 text-3xl group-hover:scale-110 transition-transform">upload_file</span>
+                <p class="text-xs text-slate-500" id="cvName">PDF, DOC (الحد الأقصى 5MB)</p>
+              </div>
+              <input class="hidden" name="cv" type="file" accept=".pdf,.doc,.docx"
+                     onchange="updateFileName(this,'cvName')"/>
+            </label>
+          </div>
+          <div class="space-y-2">
+            <label class="block text-sm font-semibold text-on-surface-variant">صورة الهوية الوطنية</label>
+            <label class="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-outline-variant/30 rounded-xl bg-surface-container-low hover:bg-surface-container transition-colors cursor-pointer group"
+                   id="idLabel">
+              <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                <span class="material-symbols-outlined text-primary mb-2 text-3xl group-hover:scale-110 transition-transform">badge</span>
+                <p class="text-xs text-slate-500" id="idName">JPG, PNG (صورة واضحة)</p>
+              </div>
+              <input class="hidden" name="id_image" type="file" accept=".jpg,.jpeg,.png,.webp"
+                     onchange="updateFileName(this,'idName')"/>
+            </label>
+          </div>
+        </div>
+
+        <!-- Submit Button -->
+        <div class="pt-6">
+          <button class="w-full bg-gradient-to-r from-primary to-primary-container text-white font-bold py-4 rounded-lg flex items-center justify-center gap-3 hover:opacity-90 transition-all shadow-lg active:scale-[0.98]"
+                  type="submit" id="submitBtn">
+            إرسال الطلب
+            <span class="material-symbols-outlined">send</span>
+          </button>
+          <p class="text-xs text-center text-slate-400 mt-3">
+            <span class="text-error">*</span> الحقول المُشار إليها إلزامية
+          </p>
+        </div>
+      </form>
+    </div>
+  </section>
+</main>
+
+<footer class="bg-[#f8f9fb] py-12 border-t border-slate-200">
+  <div class="flex flex-col md:flex-row justify-between items-center px-8 w-full max-w-7xl mx-auto gap-8">
+    <div class="text-[#001736] font-inter text-sm leading-relaxed text-center md:text-right">
+      <p class="mb-2">© <%= new Date().getFullYear() %> Artal Security Guards. All Rights Reserved.</p>
+    </div>
+    <div class="flex items-center gap-4">
+      <div class="w-10 h-10 bg-primary-container rounded-full flex items-center justify-center text-white">
+        <span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL' 1">security</span>
+      </div>
+      <div class="text-primary font-headline font-bold uppercase tracking-widest text-sm">Artal Sentinel</div>
+    </div>
+  </div>
+</footer>
+
+<script>
+function updateFileName(input, labelId) {
+  const label = document.getElementById(labelId);
+  if (input.files && input.files[0]) {
+    label.textContent = input.files[0].name;
+    label.classList.add('text-green-700', 'font-semibold');
+  }
+}
+
+document.getElementById('applyForm').addEventListener('submit', function(e) {
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="material-symbols-outlined animate-spin">refresh</span> جارٍ الإرسال...';
+});
+</script>
+</body>
+</html>

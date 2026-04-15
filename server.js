@@ -1,0 +1,82 @@
+const express = require('express');
+const session = require('express-session');
+const SQLiteStore = require('connect-sqlite3')(session);
+const path = require('path');
+const fs = require('fs');
+
+// Initialize DB — runs migrations on first boot
+require('./database/db');
+
+const applyRouter = require('./routes/apply');
+const adminRouter = require('./routes/admin');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Ensure required directories exist
+['uploads/cv', 'uploads/id_images', 'data'].forEach(dir => {
+  const full = path.join(__dirname, dir);
+  if (!fs.existsSync(full)) fs.mkdirSync(full, { recursive: true });
+});
+
+// View engine
+app.set('view engine', 'ejs');
+app.set('views', path.join(__dirname, 'views'));
+
+// Body parsers
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Static files (uploads + admin assets)
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Session
+app.use(session({
+  store: new SQLiteStore({ db: 'sessions.db', dir: path.join(__dirname, 'data') }),
+  secret: process.env.SESSION_SECRET || 'artal-sentinel-secret-key-change-in-prod',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { maxAge: 24 * 60 * 60 * 1000, httpOnly: true }
+}));
+
+// Routes — before static so /apply accepting_applications check fires first
+app.use('/apply', applyRouter);
+app.use('/admin', adminRouter);
+
+// Static fallback (for any other assets in public/)
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Success page — served by express (dynamic contact info)
+app.get('/success', (req, res) => {
+  const db = require('./database/db');
+  const settings = {};
+  db.prepare('SELECT key, value FROM settings').all().forEach(r => {
+    settings[r.key] = r.value;
+  });
+  res.render('success', { settings });
+});
+
+// Root redirect
+app.get('/', (req, res) => res.redirect('/apply'));
+
+// 404
+app.use((req, res) => {
+  res.status(404).send(`
+    <html dir="rtl"><body style="font-family:sans-serif;text-align:center;padding:4rem;background:#f8f9fb">
+      <h2 style="color:#001736">404 — الصفحة غير موجودة</h2>
+      <a href="/" style="color:#405f91">العودة للرئيسية</a>
+    </body></html>
+  `);
+});
+
+app.listen(PORT, () => {
+  console.log('');
+  console.log('  ╔══════════════════════════════════════╗');
+  console.log('  ║       Artal Sentinel — Running       ║');
+  console.log('  ╠══════════════════════════════════════╣');
+  console.log(`  ║  App:    http://localhost:${PORT}/apply  ║`);
+  console.log(`  ║  Admin:  http://localhost:${PORT}/admin  ║`);
+  console.log('  ║  Login:  admin / admin123            ║');
+  console.log('  ╚══════════════════════════════════════╝');
+  console.log('');
+});

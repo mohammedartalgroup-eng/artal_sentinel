@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>المتقدمون — Artal Sentinel</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; background: #f2f4f6; }
+    h1,h2,h3 { font-family: 'Manrope', sans-serif; }
+    .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+    select, input[type="text"], input[type="number"], input[type="date"] {
+      background: white; border: 1px solid #e0e3e5; border-radius: 0.75rem;
+      padding: 0.5rem 0.75rem; font-size: 0.875rem; width: 100%;
+      outline: none; transition: border-color 0.15s;
+    }
+    select:focus, input:focus { border-color: #7594ca; }
+  </style>
+</head>
+<body class="text-[#191c1e]">
+<%- include('partials/sidebar', { currentPage: 'applicants' }) %>
+
+<div class="mr-64 min-h-screen">
+  <!-- Top bar -->
+  <header class="bg-white border-b border-[#eceef0] px-8 py-5 flex items-center justify-between sticky top-0 z-30">
+    <div>
+      <h1 class="text-xl font-bold text-[#001736]">المتقدمون</h1>
+      <p class="text-xs text-[#43474f] mt-0.5">
+        إجمالي النتائج: <strong><%= total %></strong> متقدم
+      </p>
+    </div>
+    <a href="/admin/applicants/export?<%= new URLSearchParams(filters).toString() %>"
+       class="bg-green-700 text-white text-sm font-medium px-5 py-2.5 rounded-xl flex items-center gap-2 hover:bg-green-800 transition-colors">
+      <span class="material-symbols-outlined text-base">download</span>
+      تصدير Excel
+    </a>
+  </header>
+
+  <main class="p-8 space-y-6">
+
+    <!-- Filter Panel -->
+    <form method="GET" action="/admin/applicants" id="filterForm">
+      <div class="bg-white rounded-2xl p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="font-bold text-[#001736] text-sm flex items-center gap-2">
+            <span class="material-symbols-outlined text-base">filter_list</span>
+            الفلترة والبحث
+          </h2>
+          <a href="/admin/applicants" class="text-xs text-[#405f91] hover:underline flex items-center gap-1">
+            <span class="material-symbols-outlined text-sm">refresh</span>
+            إعادة تعيين
+          </a>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+
+          <!-- Search -->
+          <div class="col-span-2">
+            <label class="block text-xs text-[#43474f] font-semibold mb-1">بحث بالاسم / الهوية</label>
+            <div class="relative">
+              <input type="text" name="q" value="<%= filters.q %>" placeholder="اكتب للبحث...">
+              <span class="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-[#43474f] text-base">search</span>
+            </div>
+          </div>
+
+          <!-- Status -->
+          <div>
+            <label class="block text-xs text-[#43474f] font-semibold mb-1">الحالة</label>
+            <select name="status">
+              <option value="">الكل</option>
+              <% Object.entries(STATUS_META).forEach(([k,v]) => { %>
+              <option value="<%= k %>" <%= filters.status === k ? 'selected' : '' %>><%= v.label %></option>
+              <% }) %>
+            </select>
+          </div>
+
+          <!-- City -->
+          <div>
+            <label class="block text-xs text-[#43474f] font-semibold mb-1">المدينة</label>
+            <select name="city">
+              <option value="">الكل</option>
+              <% CITIES.forEach(c => { %>
+              <option value="<%= c %>" <%= filters.city === c ? 'selected' : '' %>><%= c %></option>
+              <% }) %>
+            </select>
+          </div>
+
+          <!-- Has Car -->
+          <div>
+            <label class="block text-xs text-[#43474f] font-semibold mb-1">سيارة</label>
+            <select name="has_car">
+              <option value="">الكل</option>
+              <option value="1" <%= filters.has_car === '1' ? 'selected' : '' %>>نعم</option>
+              <option value="0" <%= filters.has_car === '0' ? 'selected' : '' %>>لا</option>
+            </select>
+          </div>
+
+          <!-- Has License -->
+          <div>
+            <label class="block text-xs text-[#43474f] font-semibold mb-1">رخصة</label>
+            <select name="has_license">
+              <option value="">الكل</option>
+              <option value="1" <%= filters.has_license === '1' ? 'selected' : '' %>>نعم</option>
+              <option value="0" <%= filters.has_license === '0' ? 'selected' : '' %>>لا</option>
+            </select>
+          </div>
+
+          <!-- Age range -->
+          <div>
+            <label class="block text-xs text-[#43474f] font-semibold mb-1">العمر من</label>
+            <input type="number" name="age_min" value="<%= filters.age_min %>" placeholder="18" min="1" max="99">
+          </div>
+          <div>
+            <label class="block text-xs text-[#43474f] font-semibold mb-1">إلى</label>
+            <input type="number" name="age_max" value="<%= filters.age_max %>" placeholder="60" min="1" max="99">
+          </div>
+
+          <!-- Date range -->
+          <div>
+            <label class="block text-xs text-[#43474f] font-semibold mb-1">من تاريخ</label>
+            <input type="date" name="date_from" value="<%= filters.date_from %>">
+          </div>
+          <div>
+            <label class="block text-xs text-[#43474f] font-semibold mb-1">إلى تاريخ</label>
+            <input type="date" name="date_to" value="<%= filters.date_to %>">
+          </div>
+
+          <!-- Sort -->
+          <div>
+            <label class="block text-xs text-[#43474f] font-semibold mb-1">ترتيب بـ</label>
+            <select name="sort">
+              <option value="created_at" <%= filters.sort==='created_at' ? 'selected':'' %>>تاريخ التقديم</option>
+              <option value="full_name"  <%= filters.sort==='full_name'  ? 'selected':'' %>>الاسم</option>
+              <option value="age"        <%= filters.sort==='age'        ? 'selected':'' %>>العمر</option>
+              <option value="rating"     <%= filters.sort==='rating'     ? 'selected':'' %>>التقييم</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs text-[#43474f] font-semibold mb-1">الاتجاه</label>
+            <select name="order">
+              <option value="desc" <%= filters.order==='desc' ? 'selected':'' %>>الأحدث أولاً</option>
+              <option value="asc"  <%= filters.order==='asc'  ? 'selected':'' %>>الأقدم أولاً</option>
+            </select>
+          </div>
+
+          <!-- Submit -->
+          <div class="flex items-end">
+            <button type="submit"
+                    class="w-full bg-[#001736] text-white text-sm font-semibold py-2.5 rounded-xl hover:bg-[#002b5b] transition-colors flex items-center justify-center gap-1.5">
+              <span class="material-symbols-outlined text-base">search</span>
+              بحث
+            </button>
+          </div>
+        </div>
+      </div>
+    </form>
+
+    <!-- Table -->
+    <div class="bg-white rounded-2xl overflow-hidden">
+      <% if (applicants.length === 0) { %>
+      <div class="text-center py-16 text-[#43474f]">
+        <span class="material-symbols-outlined text-5xl block mb-3 text-[#c4c6d0]">search_off</span>
+        لا توجد نتائج تطابق الفلتر المحدد
+      </div>
+      <% } else { %>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-[#f8f9fb] border-b border-[#eceef0]">
+            <tr class="text-[#43474f] text-xs">
+              <th class="text-right px-5 py-4 font-semibold">الاسم</th>
+              <th class="text-right px-4 py-4 font-semibold">الهوية</th>
+              <th class="text-right px-4 py-4 font-semibold">الجوال</th>
+              <th class="text-right px-4 py-4 font-semibold">العمر</th>
+              <th class="text-right px-4 py-4 font-semibold">المدينة</th>
+              <th class="text-center px-4 py-4 font-semibold">سيارة</th>
+              <th class="text-center px-4 py-4 font-semibold">رخصة</th>
+              <th class="text-right px-4 py-4 font-semibold">الحالة</th>
+              <th class="text-right px-4 py-4 font-semibold">التقييم</th>
+              <th class="text-right px-4 py-4 font-semibold">التاريخ</th>
+              <th class="px-4 py-4"></th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-[#f2f4f6]">
+            <% const colorMap = {
+              blue:'bg-blue-100 text-blue-700', yellow:'bg-yellow-100 text-yellow-800',
+              purple:'bg-purple-100 text-purple-700', orange:'bg-orange-100 text-orange-700',
+              green:'bg-green-100 text-green-700', gray:'bg-gray-100 text-gray-600',
+              red:'bg-red-100 text-red-700'
+            }; %>
+            <% applicants.forEach(a => { %>
+            <% const sm = STATUS_META[a.status] || { label: a.status, color: 'gray' }; %>
+            <tr class="hover:bg-[#f8f9fb] transition-colors cursor-pointer"
+                onclick="location.href='/admin/applicants/<%= a.id %>'">
+              <td class="px-5 py-3.5 font-medium text-[#001736]"><%= a.full_name %></td>
+              <td class="px-4 py-3.5 text-[#43474f] font-mono text-xs"><%= a.id_number %></td>
+              <td class="px-4 py-3.5 text-[#43474f]" dir="ltr"><%= a.phone %></td>
+              <td class="px-4 py-3.5 text-[#43474f]"><%= a.age || '—' %></td>
+              <td class="px-4 py-3.5 text-[#43474f]"><%= a.city || '—' %></td>
+              <td class="px-4 py-3.5 text-center">
+                <span class="material-symbols-outlined text-base <%= a.has_car ? 'text-green-600' : 'text-[#c4c6d0]' %>">
+                  <%= a.has_car ? 'directions_car' : 'block' %>
+                </span>
+              </td>
+              <td class="px-4 py-3.5 text-center">
+                <span class="material-symbols-outlined text-base <%= a.has_license ? 'text-green-600' : 'text-[#c4c6d0]' %>">
+                  <%= a.has_license ? 'badge' : 'block' %>
+                </span>
+              </td>
+              <td class="px-4 py-3.5">
+                <span class="px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap <%= colorMap[sm.color] %>">
+                  <%= sm.label %>
+                </span>
+              </td>
+              <td class="px-4 py-3.5">
+                <span class="text-[#ffdf9e] text-base" style="font-family:monospace">
+                  <%= '★'.repeat(a.rating) %><%= '☆'.repeat(5 - a.rating) %>
+                </span>
+              </td>
+              <td class="px-4 py-3.5 text-[#43474f] text-xs whitespace-nowrap">
+                <%= new Date(a.created_at).toLocaleDateString('ar-SA') %>
+              </td>
+              <td class="px-4 py-3.5">
+                <a href="/admin/applicants/<%= a.id %>"
+                   onclick="event.stopPropagation()"
+                   class="text-[#405f91] hover:underline text-xs flex items-center gap-1 whitespace-nowrap">
+                  <span class="material-symbols-outlined text-sm">open_in_new</span>
+                  عرض
+                </a>
+              </td>
+            </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination -->
+      <% if (totalPages > 1) { %>
+      <div class="flex items-center justify-between px-6 py-4 border-t border-[#f2f4f6]">
+        <span class="text-xs text-[#43474f]">
+          صفحة <%= pageNum %> من <%= totalPages %>
+        </span>
+        <div class="flex items-center gap-2">
+          <% if (pageNum > 1) { %>
+          <a href="?<%= new URLSearchParams({...filters, page: pageNum - 1}).toString() %>"
+             class="px-3 py-1.5 rounded-lg bg-[#f2f4f6] text-sm hover:bg-[#eceef0] transition-colors">
+            السابق
+          </a>
+          <% } %>
+          <% for (let p = Math.max(1, pageNum-2); p <= Math.min(totalPages, pageNum+2); p++) { %>
+          <a href="?<%= new URLSearchParams({...filters, page: p}).toString() %>"
+             class="w-9 h-9 rounded-lg text-sm font-medium flex items-center justify-center transition-colors
+                    <%= p === pageNum ? 'bg-[#001736] text-white' : 'bg-[#f2f4f6] hover:bg-[#eceef0]' %>">
+            <%= p %>
+          </a>
+          <% } %>
+          <% if (pageNum < totalPages) { %>
+          <a href="?<%= new URLSearchParams({...filters, page: pageNum + 1}).toString() %>"
+             class="px-3 py-1.5 rounded-lg bg-[#f2f4f6] text-sm hover:bg-[#eceef0] transition-colors">
+            التالي
+          </a>
+          <% } %>
+        </div>
+      </div>
+      <% } %>
+      <% } %>
+    </div>
+
+  </main>
+</div>
+</body>
+</html>
