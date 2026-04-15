@@ -44,13 +44,14 @@ router.post('/login', async (req, res) => {
     const { username, password, next } = req.body;
     const user = await db.get('SELECT * FROM admin_users WHERE username = ?', [username]);
     if (!user || !await bcrypt.compare(password, user.password_hash)) {
-      return res.render('login', { error: 'اسم المستخدم أو كلمة المرور غير صحيحة', next: next || '/admin/dashboard' });
+      return res.render('login', { error: 'البريد الإلكتروني أو كلمة المرور غير صحيحة', next: next || '/admin/dashboard' });
     }
     if (!user.is_active) {
       return res.render('login', { error: 'هذا الحساب موقوف — تواصل مع المدير', next: next || '/admin/dashboard' });
     }
     req.session.adminId   = user.id;
-    req.session.adminUser = user.username;
+    req.session.adminUser = user.username;          // البريد الإلكتروني
+    req.session.adminName = user.full_name || user.username;
     req.session.adminRole = user.role || 'employee';
 
     await Promise.all([
@@ -77,7 +78,8 @@ router.use(requireAuth);
 
 // متغيرات مشتركة لجميع views
 router.use((req, res, next) => {
-  res.locals.adminUser = req.session.adminUser;
+  res.locals.adminUser = req.session.adminUser;           // البريد الإلكتروني
+  res.locals.adminName = req.session.adminName || req.session.adminUser;
   res.locals.adminRole = req.session.adminRole || 'employee';
   next();
 });

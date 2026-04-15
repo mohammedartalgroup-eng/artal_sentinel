@@ -68,10 +68,14 @@
         <span class="material-symbols-outlined text-lg">person_add</span>
         إنشاء مستخدم جديد
       </h2>
-      <form method="POST" action="/admin/users" class="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <form method="POST" action="/admin/users" class="grid grid-cols-1 md:grid-cols-5 gap-4">
         <div>
-          <label class="block text-xs text-[#43474f] font-semibold mb-1">اسم المستخدم</label>
-          <input type="text" name="username" placeholder="مثال: ahmed" required minlength="3">
+          <label class="block text-xs text-[#43474f] font-semibold mb-1">الاسم الكامل</label>
+          <input type="text" name="full_name" placeholder="مثال: أحمد العمري" required minlength="2">
+        </div>
+        <div>
+          <label class="block text-xs text-[#43474f] font-semibold mb-1">البريد الإلكتروني</label>
+          <input type="email" name="email" placeholder="example@artal.com" required>
         </div>
         <div>
           <label class="block text-xs text-[#43474f] font-semibold mb-1">كلمة المرور</label>
@@ -125,12 +129,12 @@
                   </div>
                   <div>
                     <div class="font-semibold text-[#001736]">
-                      <%= u.username %>
+                      <%= u.full_name || '—' %>
                       <% if (u.id === currentUser) { %>
                       <span class="text-[10px] bg-[#ffdf9e]/40 text-[#7a5c00] px-2 py-0.5 rounded-full mr-1 font-normal">أنت</span>
                       <% } %>
                     </div>
-                    <div class="text-xs text-[#7594ca]">ID #<%= u.id %></div>
+                    <div class="text-xs text-[#7594ca]"><%= u.username %></div>
                   </div>
                 </div>
               </td>
@@ -172,17 +176,17 @@
                 <% if (u.id !== currentUser) { %>
                 <div class="flex items-center gap-1 justify-end">
                   <!-- Edit Button -->
-                  <button onclick="openEdit(<%= u.id %>, '<%= u.username %>', '<%= u.role %>', <%= u.is_active %>)"
+                  <button onclick="openEdit(<%= u.id %>, `<%= (u.full_name||'').replace(/`/g,'') %>`, '<%= u.username %>', '<%= u.role %>', <%= u.is_active %>)"
                           class="p-2 rounded-lg text-[#43474f] hover:bg-[#f2f4f6] transition-colors" title="تعديل">
                     <span class="material-symbols-outlined text-base">edit</span>
                   </button>
                   <!-- Reset Password Button -->
-                  <button onclick="openReset(<%= u.id %>, '<%= u.username %>')"
+                  <button onclick="openReset(<%= u.id %>, `<%= (u.full_name||u.username).replace(/`/g,'') %>`)"
                           class="p-2 rounded-lg text-[#43474f] hover:bg-[#f2f4f6] transition-colors" title="إعادة تعيين كلمة المرور">
                     <span class="material-symbols-outlined text-base">lock_reset</span>
                   </button>
                   <!-- Delete Button -->
-                  <button onclick="confirmDelete(<%= u.id %>, '<%= u.username %>')"
+                  <button onclick="confirmDelete(<%= u.id %>, `<%= (u.full_name||u.username).replace(/`/g,'') %>`)"
                           class="p-2 rounded-lg text-red-400 hover:bg-red-50 transition-colors" title="حذف">
                     <span class="material-symbols-outlined text-base">delete</span>
                   </button>
@@ -206,9 +210,13 @@
   <div class="bg-white rounded-2xl p-8 w-full max-w-sm mx-4 shadow-2xl">
     <h3 class="font-bold text-[#001736] text-base mb-5 flex items-center gap-2">
       <span class="material-symbols-outlined text-lg">edit</span>
-      تعديل المستخدم: <span id="edit-username" class="text-[#405f91]"></span>
+      تعديل: <span id="edit-username" class="text-[#405f91]"></span>
     </h3>
     <form id="edit-form" method="POST" class="space-y-4">
+      <div>
+        <label class="block text-xs text-[#43474f] font-semibold mb-1">الاسم الكامل</label>
+        <input type="text" name="full_name" id="edit-fullname" placeholder="الاسم الكامل" minlength="2">
+      </div>
       <div>
         <label class="block text-xs text-[#43474f] font-semibold mb-1">الدور</label>
         <select name="role" id="edit-role">
@@ -284,20 +292,21 @@ function openModal(id) {
   document.getElementById(id).classList.remove('hidden');
   document.getElementById(id).classList.add('flex');
 }
-function openEdit(id, username, role, isActive) {
-  document.getElementById('edit-username').textContent = username;
-  document.getElementById('edit-form').action = `/admin/users/${id}/update`;
-  document.getElementById('edit-role').value   = role;
-  document.getElementById('edit-active').value = isActive ? '1' : '0';
+function openEdit(id, fullName, email, role, isActive) {
+  document.getElementById('edit-username').textContent  = fullName || email;
+  document.getElementById('edit-fullname').value        = fullName;
+  document.getElementById('edit-form').action           = `/admin/users/${id}/update`;
+  document.getElementById('edit-role').value            = role;
+  document.getElementById('edit-active').value          = isActive ? '1' : '0';
   openModal('edit-modal');
 }
-function openReset(id, username) {
-  document.getElementById('reset-username').textContent = username;
+function openReset(id, name) {
+  document.getElementById('reset-username').textContent = name;
   document.getElementById('reset-form').action = `/admin/users/${id}/password`;
   openModal('reset-modal');
 }
-function confirmDelete(id, username) {
-  if (!confirm(`هل أنت متأكد من حذف المستخدم "${username}"؟`)) return;
+function confirmDelete(id, name) {
+  if (!confirm(`هل أنت متأكد من حذف المستخدم "${name}"؟`)) return;
   const form = document.getElementById('delete-form');
   form.action = `/admin/users/${id}/delete`;
   form.submit();

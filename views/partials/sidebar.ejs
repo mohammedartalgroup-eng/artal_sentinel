@@ -66,7 +66,8 @@
         <span class="material-symbols-outlined text-[#ffdf9e] text-base" style="font-variation-settings:'FILL' 1">manage_accounts</span>
       </div>
       <div>
-        <span class="text-white text-sm font-medium block"><%= adminUser %></span>
+        <span class="text-white text-sm font-medium block"><%= locals.adminName || adminUser %></span>
+        <span class="text-[10px] text-[#7594ca] block truncate max-w-[130px]"><%= adminUser %></span>
         <span class="text-[10px] <%= locals.adminRole === 'manager' ? 'text-[#ffdf9e]' : 'text-[#7594ca]' %>">
           <%= locals.adminRole === 'manager' ? 'مدير' : 'موظف' %>
         </span>
