@@ -79,11 +79,52 @@
           <!-- Region -->
           <div>
             <label class="block text-xs text-[#43474f] font-semibold mb-1">المنطقة</label>
-            <select name="region">
+            <select name="region" id="region-filter" onchange="populateCities()">
               <option value="">الكل</option>
               <% REGIONS.forEach(r => { %>
               <option value="<%= r %>" <%= filters.region === r ? 'selected' : '' %>><%= r %></option>
               <% }) %>
+            </select>
+          </div>
+
+          <!-- City (dynamic) -->
+          <div>
+            <label class="block text-xs text-[#43474f] font-semibold mb-1">المدينة</label>
+            <select name="city" id="city-filter">
+              <option value="">الكل</option>
+            </select>
+          </div>
+
+          <!-- Gender -->
+          <div>
+            <label class="block text-xs text-[#43474f] font-semibold mb-1">الجنس</label>
+            <select name="gender">
+              <option value="">الكل</option>
+              <option value="male"   <%= filters.gender === 'male'   ? 'selected' : '' %>>ذكر</option>
+              <option value="female" <%= filters.gender === 'female' ? 'selected' : '' %>>أنثى</option>
+            </select>
+          </div>
+
+          <!-- English -->
+          <div>
+            <label class="block text-xs text-[#43474f] font-semibold mb-1">الإنجليزية</label>
+            <select name="english">
+              <option value="">الكل</option>
+              <option value="1" <%= filters.english === '1' ? 'selected' : '' %>>يجيد</option>
+              <option value="0" <%= filters.english === '0' ? 'selected' : '' %>>لا يجيد</option>
+            </select>
+          </div>
+
+          <!-- Qualification -->
+          <div>
+            <label class="block text-xs text-[#43474f] font-semibold mb-1">المؤهل</label>
+            <select name="qualification">
+              <option value="">الكل</option>
+              <option value="none"        <%= filters.qualification === 'none'        ? 'selected' : '' %>>بدون مؤهل</option>
+              <option value="primary"     <%= filters.qualification === 'primary'     ? 'selected' : '' %>>ابتدائي</option>
+              <option value="middle"      <%= filters.qualification === 'middle'      ? 'selected' : '' %>>متوسط</option>
+              <option value="high_school" <%= filters.qualification === 'high_school' ? 'selected' : '' %>>ثانوي</option>
+              <option value="university"  <%= filters.qualification === 'university'  ? 'selected' : '' %>>جامعي</option>
             </select>
           </div>
 
@@ -209,9 +250,12 @@
               </td>
               <td class="px-4 py-3.5 text-[#43474f]">
                 <% if (a.region) { %>
-                <div class="text-xs text-[#7594ca] font-medium"><%= a.region.replace('منطقة ','').replace('المنطقة ','') %></div>
+                <div class="text-xs text-[#7594ca] font-medium"><%= a.region %></div>
                 <% } %>
                 <div><%= a.city || '—' %></div>
+                <% if (a.neighborhood) { %>
+                <div class="text-xs text-[#9ca3af]"><%= a.neighborhood %></div>
+                <% } %>
               </td>
               <td class="px-4 py-3.5 text-center">
                 <span class="material-symbols-outlined text-base <%= a.has_car ? 'text-green-600' : 'text-[#c4c6d0]' %>">
@@ -284,5 +328,42 @@
 
   </main>
 </div>
+
+<script>
+const SA_REGIONS_DATA = <%- JSON.stringify(SA_REGIONS) %>;
+
+function populateCities() {
+  const regionEl = document.getElementById('region-filter');
+  const cityEl   = document.getElementById('city-filter');
+  const selectedRegion = regionEl.value;
+
+  // Clear existing options
+  cityEl.innerHTML = '<option value="">الكل</option>';
+
+  if (!selectedRegion) return;
+
+  const found = SA_REGIONS_DATA.find(r => r.name === selectedRegion);
+  if (!found) return;
+
+  found.cities.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c;
+    opt.textContent = c;
+    cityEl.appendChild(opt);
+  });
+}
+
+// On page load: if a region is already selected, populate cities and re-select the city
+(function () {
+  const preCity = '<%= filters.city || "" %>';
+  populateCities();
+  if (preCity) {
+    const cityEl = document.getElementById('city-filter');
+    for (const opt of cityEl.options) {
+      if (opt.value === preCity) { opt.selected = true; break; }
+    }
+  }
+})();
+</script>
 </body>
 </html>

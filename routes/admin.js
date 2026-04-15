@@ -5,6 +5,7 @@ const db = require('../database/db');
 const requireAuth    = require('../middleware/auth');
 const requireManager = require('../middleware/requireManager');
 const usersRouter    = require('./users');
+const SA_REGIONS     = require('./regions').SA_REGIONS;
 
 // ─── Status meta ──────────────────────────────────────────────────────────────
 const STATUS_META = {
@@ -149,7 +150,8 @@ router.get('/dashboard', async (req, res) => {
 router.get('/applicants', async (req, res) => {
   try {
     const {
-      q = '', status = '', region = '', has_car = '', has_license = '',
+      q = '', status = '', region = '', city = '', gender = '', english = '', qualification = '',
+      has_car = '', has_license = '',
       age_min = '', age_max = '', date_from = '', date_to = '',
       sort = 'created_at', order = 'desc', page = '1'
     } = req.query;
@@ -165,8 +167,12 @@ router.get('/applicants', async (req, res) => {
       conditions.push('(full_name LIKE ? OR id_number LIKE ?)');
       params.push(`%${q}%`, `%${q}%`);
     }
-    if (status) { conditions.push('status = ?');  params.push(status); }
-    if (region) { conditions.push('region = ?');  params.push(region); }
+    if (status)        { conditions.push('status = ?');        params.push(status); }
+    if (region)        { conditions.push('region = ?');        params.push(region); }
+    if (city)          { conditions.push('city = ?');          params.push(city); }
+    if (gender)        { conditions.push('gender = ?');        params.push(gender); }
+    if (english !== '') { conditions.push('english = ?');      params.push(parseInt(english)); }
+    if (qualification) { conditions.push('qualification = ?'); params.push(qualification); }
     if (has_car !== '')     { conditions.push('has_car = ?');     params.push(parseInt(has_car)); }
     if (has_license !== '') { conditions.push('has_license = ?'); params.push(parseInt(has_license)); }
     if (age_min) { conditions.push('age >= ?'); params.push(parseInt(age_min)); }
@@ -181,7 +187,7 @@ router.get('/applicants', async (req, res) => {
     const [countRow, applicants] = await Promise.all([
       db.get(`SELECT COUNT(*) as c FROM applicants ${where}`, params),
       db.all(`
-        SELECT id, full_name, id_number, phone, age, gender, region, city, has_car, has_license,
+        SELECT id, full_name, id_number, phone, age, gender, region, city, neighborhood, has_car, has_license,
                english, qualification, specialization, status, rating, created_at
         FROM applicants ${where}
         ORDER BY ${safeSort} ${safeOrder}
@@ -189,13 +195,13 @@ router.get('/applicants', async (req, res) => {
       `, params),
     ]);
 
-    const total = countRow?.c || 0;
+    const total = Number(countRow?.c) || 0;
     const totalPages = Math.ceil(total / PAGE_SIZE);
 
     res.render('applicants', {
       applicants, total, totalPages, pageNum,
-      filters: { q, status, region, has_car, has_license, age_min, age_max, date_from, date_to, sort, order },
-      STATUS_META, REGIONS, adminUser: req.session.adminUser
+      filters: { q, status, region, city, gender, english, qualification, has_car, has_license, age_min, age_max, date_from, date_to, sort, order },
+      STATUS_META, REGIONS, SA_REGIONS, adminUser: req.session.adminUser
     });
   } catch (err) {
     console.error('[Applicants GET]', err.message);
@@ -210,15 +216,19 @@ router.get('/applicants/export', async (req, res) => {
     const ExcelJS = require('exceljs');
 
     const {
-      q = '', status = '', region = '', has_car = '', has_license = '',
+      q = '', status = '', region = '', gender = '', english = '', qualification = '',
+      has_car = '', has_license = '',
       age_min = '', age_max = '', date_from = '', date_to = ''
     } = req.query;
 
     const conditions = [];
     const params = [];
     if (q) { conditions.push('(full_name LIKE ? OR id_number LIKE ?)'); params.push(`%${q}%`, `%${q}%`); }
-    if (status) { conditions.push('status = ?');  params.push(status); }
-    if (region) { conditions.push('region = ?');  params.push(region); }
+    if (status)        { conditions.push('status = ?');        params.push(status); }
+    if (region)        { conditions.push('region = ?');        params.push(region); }
+    if (gender)        { conditions.push('gender = ?');        params.push(gender); }
+    if (english !== '') { conditions.push('english = ?');      params.push(parseInt(english)); }
+    if (qualification) { conditions.push('qualification = ?'); params.push(qualification); }
     if (has_car !== '')     { conditions.push('has_car = ?');     params.push(parseInt(has_car)); }
     if (has_license !== '') { conditions.push('has_license = ?'); params.push(parseInt(has_license)); }
     if (age_min) { conditions.push('age >= ?'); params.push(parseInt(age_min)); }

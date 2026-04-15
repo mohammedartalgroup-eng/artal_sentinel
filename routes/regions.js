@@ -24,4 +24,5 @@ router.get('/sa-regions.json', (req, res) => {
   res.json(SA_REGIONS);
 });
 
+router.SA_REGIONS = SA_REGIONS;
 module.exports = router;
