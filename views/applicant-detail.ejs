@@ -77,12 +77,14 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
         <span class="material-symbols-outlined text-base">print</span>
         طباعة
       </button>
-      <!-- Delete button -->
+      <!-- Delete button — للمديرين فقط -->
+      <% if (locals.adminRole === 'manager') { %>
       <button onclick="deleteApplicant()"
               class="flex items-center gap-1.5 px-4 py-2 rounded-xl text-red-600 bg-red-50 hover:bg-red-100 text-sm font-medium transition-colors">
         <span class="material-symbols-outlined text-base">delete</span>
         حذف
       </button>
+      <% } %>
     </div>
   </header>
 
@@ -398,7 +400,7 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
                       <%= new Date(item.created_at).toLocaleDateString('ar-SA') %>
                       <%= new Date(item.created_at).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }) %>
                     </span>
-                    <% if (item._type === 'note') { %>
+                    <% if (item._type === 'note' && locals.adminRole === 'manager') { %>
                     <button onclick="deleteNote(<%= item.id %>)"
                             class="text-[#c4c6d0] hover:text-red-500 transition-colors" title="حذف">
                       <span class="material-symbols-outlined text-sm">close</span>
