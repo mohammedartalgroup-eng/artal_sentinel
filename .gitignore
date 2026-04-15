@@ -134,3 +134,14 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+# ─── Artal Sentinel — لا ترفع هذه الملفات أبداً ───
+# قواعد البيانات (كل سيرفر له نسخته المستقلة)
+data/
+# الملفات المرفوعة من المتقدمين
+uploads/cv/*
+!uploads/cv/.gitkeep
+uploads/id_images/*
+!uploads/id_images/.gitkeep
+# ملف البيئة إن أُنشئ
+.env
