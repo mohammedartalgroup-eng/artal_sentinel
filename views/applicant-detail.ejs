@@ -396,10 +396,18 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
                     <% } %>
                   </div>
                   <div class="flex items-center gap-2 flex-shrink-0">
-                    <span class="text-xs text-[#43474f] whitespace-nowrap">
-                      <%= new Date(item.created_at).toLocaleDateString('ar-SA') %>
-                      <%= new Date(item.created_at).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }) %>
-                    </span>
+                    <div class="text-left">
+                      <% if (item.user_name) { %>
+                      <span class="block text-[10px] text-[#7594ca] font-medium whitespace-nowrap">
+                        <span class="material-symbols-outlined text-[10px] align-middle" style="font-variation-settings:'FILL' 1">person</span>
+                        <%= item.user_name %>
+                      </span>
+                      <% } %>
+                      <span class="text-xs text-[#43474f] whitespace-nowrap">
+                        <%= new Date(item.created_at).toLocaleDateString('ar-SA') %>
+                        <%= new Date(item.created_at).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }) %>
+                      </span>
+                    </div>
                     <% if (item._type === 'note' && locals.adminRole === 'manager') { %>
                     <button onclick="deleteNote(<%= item.id %>)"
                             class="text-[#c4c6d0] hover:text-red-500 transition-colors" title="حذف">
@@ -565,6 +573,7 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
         <tr style="background:#f2f4f6">
           <th style="padding:8px 10px;text-align:right;font-weight:700;color:#43474f;border:1px solid #e0e3e5;width:13%">التاريخ والوقت</th>
           <th style="padding:8px 10px;text-align:right;font-weight:700;color:#43474f;border:1px solid #e0e3e5;width:12%">النوع</th>
+          <th style="padding:8px 10px;text-align:right;font-weight:700;color:#43474f;border:1px solid #e0e3e5;width:14%">بواسطة</th>
           <th style="padding:8px 10px;text-align:right;font-weight:700;color:#43474f;border:1px solid #e0e3e5">التفاصيل</th>
         </tr>
       </thead>
@@ -588,6 +597,9 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
             </span>
             <% } %>
           </td>
+          <td style="padding:8px 10px;border:1px solid #e0e3e5;color:#506169;font-size:11px">
+            <%= item.user_name || '—' %>
+          </td>
           <td style="padding:8px 10px;border:1px solid #e0e3e5;line-height:1.6">
             <% if (item._type === 'note') { %>
               <%= item.content %>
@@ -609,13 +621,10 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
   </div>
 
   <!-- ── تذييل الصفحة ──────────────────────────────────────── -->
-  <div style="border-top:2px solid #e0e3e5;margin-top:24px;padding-top:12px;display:flex;justify-content:space-between;align-items:center;font-size:10px;color:#9ca3af">
-    <div>
-      هذا المستند أُنشئ تلقائياً من نظام أرتال Sentinel
-      &nbsp;·&nbsp; جميع البيانات سرية وللاستخدام الداخلي فقط
-    </div>
+  <div style="border-top:2px solid #e0e3e5;margin-top:24px;padding-top:12px;display:flex;justify-content:flex-end;align-items:center;font-size:10px;color:#9ca3af">
     <div style="text-align:left">
-      طُبع بتاريخ <%= printDate %> &nbsp;·&nbsp; ملف رقم #<%= applicant.id %>
+      طُبع بواسطة: <strong><%= locals.adminName || adminUser %></strong>
+      &nbsp;·&nbsp; بتاريخ <%= printDate %> &nbsp;·&nbsp; ملف رقم #<%= applicant.id %>
     </div>
   </div>
 

@@ -37,10 +37,10 @@ pool.run = async function (sql, params = []) {
 };
 
 // تسجيل نشاط المتقدم
-pool.logActivity = async function (applicantId, action, oldVal = null, newVal = null) {
+pool.logActivity = async function (applicantId, action, oldVal = null, newVal = null, userName = null) {
   await this.run(
-    'INSERT INTO applicant_activity (applicant_id, action, old_value, new_value) VALUES (?, ?, ?, ?)',
-    [applicantId, action, oldVal, newVal]
+    'INSERT INTO applicant_activity (applicant_id, action, old_value, new_value, user_name) VALUES (?, ?, ?, ?, ?)',
+    [applicantId, action, oldVal, newVal, userName]
   );
 };
 
@@ -203,6 +203,18 @@ async function initialize() {
     if (loginCols.length === 0) {
       await conn.query("ALTER TABLE admin_users ADD COLUMN last_login DATETIME DEFAULT NULL AFTER is_active");
       console.log('[DB] Migration: added column last_login');
+    }
+
+    // ─── ترحيل: إضافة user_name إلى applicant_notes و applicant_activity
+    const [anCols] = await conn.query("SHOW COLUMNS FROM applicant_notes LIKE 'user_name'");
+    if (anCols.length === 0) {
+      await conn.query("ALTER TABLE applicant_notes ADD COLUMN user_name VARCHAR(100) DEFAULT NULL AFTER type");
+      console.log('[DB] Migration: added column user_name to applicant_notes');
+    }
+    const [aaCols] = await conn.query("SHOW COLUMNS FROM applicant_activity LIKE 'user_name'");
+    if (aaCols.length === 0) {
+      await conn.query("ALTER TABLE applicant_activity ADD COLUMN user_name VARCHAR(100) DEFAULT NULL AFTER new_value");
+      console.log('[DB] Migration: added column user_name to applicant_activity');
     }
 
     // ─── ترحيل: إضافة full_name إلى admin_users

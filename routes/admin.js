@@ -330,7 +330,7 @@ router.post('/applicants/:id/status', async (req, res) => {
 
     const fullApplicant = await db.get('SELECT full_name FROM applicants WHERE id = ?', [req.params.id]);
     await Promise.all([
-      db.logActivity(req.params.id, 'تغيير الحالة', STATUS_META[applicant.status]?.label, STATUS_META[status]?.label),
+      db.logActivity(req.params.id, 'تغيير الحالة', STATUS_META[applicant.status]?.label, STATUS_META[status]?.label, req.session.adminName || null),
       db.audit(req.session.adminId, req.session.adminUser, 'status_change', 'applicant', req.params.id,
         fullApplicant?.full_name, `${STATUS_META[applicant.status]?.label} ← ${STATUS_META[status]?.label}`, req.ip),
     ]);
@@ -360,7 +360,7 @@ router.post('/applicants/:id/rating', async (req, res) => {
 
     const ratedApplicant = await db.get('SELECT full_name FROM applicants WHERE id = ?', [req.params.id]);
     await Promise.all([
-      db.logActivity(req.params.id, 'تحديث التقييم', `${applicant.rating} نجوم`, `${rating} نجوم`),
+      db.logActivity(req.params.id, 'تحديث التقييم', `${applicant.rating} نجوم`, `${rating} نجوم`, req.session.adminName || null),
       db.audit(req.session.adminId, req.session.adminUser, 'rating_change', 'applicant', req.params.id,
         ratedApplicant?.full_name, `${applicant.rating}★ ← ${rating}★`, req.ip),
     ]);
@@ -380,13 +380,13 @@ router.post('/applicants/:id/notes', async (req, res) => {
     const noteType = NOTE_TYPES[type] ? type : 'note';
 
     const result = await db.run(
-      'INSERT INTO applicant_notes (applicant_id, content, type) VALUES (?, ?, ?)',
-      [req.params.id, content.trim(), noteType]
+      'INSERT INTO applicant_notes (applicant_id, content, type, user_name) VALUES (?, ?, ?, ?)',
+      [req.params.id, content.trim(), noteType, req.session.adminName || null]
     );
 
     const noteApplicant = await db.get('SELECT full_name FROM applicants WHERE id = ?', [req.params.id]);
     await Promise.all([
-      db.logActivity(req.params.id, `إضافة ${NOTE_TYPES[noteType].label}`, null, content.trim().substring(0, 60)),
+      db.logActivity(req.params.id, `إضافة ${NOTE_TYPES[noteType].label}`, null, content.trim().substring(0, 60), req.session.adminName || null),
       db.run('UPDATE applicants SET updated_at = CURRENT_TIMESTAMP WHERE id = ?', [req.params.id]),
       db.audit(req.session.adminId, req.session.adminUser, 'note_add', 'applicant', req.params.id,
         noteApplicant?.full_name, `${NOTE_TYPES[noteType].label}: ${content.trim().substring(0, 80)}`, req.ip),
