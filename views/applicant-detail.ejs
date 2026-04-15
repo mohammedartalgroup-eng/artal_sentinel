@@ -16,6 +16,20 @@
     .star-btn.active { color: #e2c382; }
     .star-btn:not(.active) { color: #c4c6d0; }
     .star-btn:hover, .star-btn:hover ~ .star-btn { color: #e2c382; }
+
+    /* ─── Print ──────────────────────────────────────── */
+    #print-doc { display: none; }
+    @media print {
+      body > *                { display: none !important; }
+      #print-doc              { display: block !important; }
+      @page                   { size: A4; margin: 15mm 18mm; }
+
+      /* reset */
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+      .pd-page-break          { page-break-before: always; }
+      .pd-avoid-break         { page-break-inside: avoid; }
+    }
   </style>
 </head>
 <body class="text-[#191c1e]">
@@ -56,12 +70,20 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
         <%= new Date(applicant.created_at).toLocaleDateString('ar-SA', { year:'numeric', month:'long', day:'numeric' }) %>
       </p>
     </div>
-    <!-- Delete button -->
-    <button onclick="deleteApplicant()"
-            class="flex items-center gap-1.5 px-4 py-2 rounded-xl text-red-600 bg-red-50 hover:bg-red-100 text-sm font-medium transition-colors">
-      <span class="material-symbols-outlined text-base">delete</span>
-      حذف
-    </button>
+    <div class="flex items-center gap-2">
+      <!-- Print button -->
+      <button onclick="window.print()"
+              class="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[#405f91] bg-[#f2f4f6] hover:bg-[#e8ecf4] text-sm font-medium transition-colors">
+        <span class="material-symbols-outlined text-base">print</span>
+        طباعة
+      </button>
+      <!-- Delete button -->
+      <button onclick="deleteApplicant()"
+              class="flex items-center gap-1.5 px-4 py-2 rounded-xl text-red-600 bg-red-50 hover:bg-red-100 text-sm font-medium transition-colors">
+        <span class="material-symbols-outlined text-base">delete</span>
+        حذف
+      </button>
+    </div>
   </header>
 
   <!-- Status Pipeline -->
@@ -367,6 +389,191 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
     </div>
   </main>
 </div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     صفحة الطباعة — تظهر فقط عند print
+     ═══════════════════════════════════════════════════════════ -->
+<div id="print-doc" dir="rtl" lang="ar"
+     style="font-family:'Segoe UI',Tahoma,Arial,sans-serif;color:#111;background:#fff;max-width:100%">
+
+  <%
+    const printDate = new Date().toLocaleDateString('ar-SA', { year:'numeric', month:'long', day:'numeric' });
+    const printTime = new Date().toLocaleTimeString('ar-SA', { hour:'2-digit', minute:'2-digit' });
+    const appliedDate = new Date(applicant.created_at).toLocaleDateString('ar-SA', { year:'numeric', month:'long', day:'numeric' });
+    const genderLabel = applicant.gender === 'male' ? 'ذكر' : applicant.gender === 'female' ? 'أنثى' : '—';
+    const statusLabel = STATUS_META[applicant.status]?.label || applicant.status;
+    const ratingStars = '★'.repeat(applicant.rating) + '☆'.repeat(5 - applicant.rating);
+    // Timeline مرتّب من الأقدم للأحدث للطباعة
+    const printTimeline = [
+      ...notes.map(n => ({ ...n, _type: 'note' })),
+      ...activity.map(a => ({ ...a, _type: 'activity' }))
+    ].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  %>
+
+  <!-- ── رأس الصفحة ─────────────────────────────────────────── -->
+  <div style="border-bottom:3px solid #001736;padding-bottom:14px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between">
+    <div style="display:flex;align-items:center;gap:14px">
+      <img src="/images/icon.png" alt="أرتال" style="height:52px;width:auto;object-fit:contain">
+      <div>
+        <div style="font-size:18px;font-weight:800;color:#001736">شركة أرتال للحراسات الأمنية المدنية الخاصة</div>
+        <div style="font-size:11px;color:#506169;margin-top:2px;letter-spacing:0.04em">نموذج طلب توظيف — ملف متقدم</div>
+      </div>
+    </div>
+    <div style="text-align:left;font-size:11px;color:#506169;line-height:1.7">
+      <div><strong style="color:#001736">رقم الملف:</strong> #<%= applicant.id %></div>
+      <div><strong style="color:#001736">طُبع بتاريخ:</strong> <%= printDate %> الساعة <%= printTime %></div>
+    </div>
+  </div>
+
+  <!-- ── البيانات الشخصية ───────────────────────────────────── -->
+  <div class="pd-avoid-break" style="margin-bottom:20px">
+    <div style="background:#001736;color:#fff;padding:7px 12px;border-radius:6px;font-size:12px;font-weight:700;margin-bottom:10px">
+      البيانات الشخصية
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <tbody>
+        <tr style="background:#f8f9fb">
+          <td style="padding:8px 12px;font-weight:700;color:#43474f;width:28%;border:1px solid #e0e3e5">الاسم الرباعي</td>
+          <td style="padding:8px 12px;border:1px solid #e0e3e5;font-weight:600;font-size:14px"><%= applicant.full_name %></td>
+          <td style="padding:8px 12px;font-weight:700;color:#43474f;width:28%;border:1px solid #e0e3e5">رقم الهوية الوطنية</td>
+          <td style="padding:8px 12px;border:1px solid #e0e3e5;font-family:monospace;direction:ltr;text-align:right"><%= applicant.id_number %></td>
+        </tr>
+        <tr>
+          <td style="padding:8px 12px;font-weight:700;color:#43474f;border:1px solid #e0e3e5">رقم الجوال</td>
+          <td style="padding:8px 12px;border:1px solid #e0e3e5;direction:ltr;text-align:right"><%= applicant.phone %></td>
+          <td style="padding:8px 12px;font-weight:700;color:#43474f;border:1px solid #e0e3e5">العمر</td>
+          <td style="padding:8px 12px;border:1px solid #e0e3e5"><%= applicant.age ? applicant.age + ' سنة' : '—' %></td>
+        </tr>
+        <tr style="background:#f8f9fb">
+          <td style="padding:8px 12px;font-weight:700;color:#43474f;border:1px solid #e0e3e5">الجنس</td>
+          <td style="padding:8px 12px;border:1px solid #e0e3e5"><%= genderLabel %></td>
+          <td style="padding:8px 12px;font-weight:700;color:#43474f;border:1px solid #e0e3e5">المنطقة الإدارية</td>
+          <td style="padding:8px 12px;border:1px solid #e0e3e5"><%= applicant.region || '—' %></td>
+        </tr>
+        <tr>
+          <td style="padding:8px 12px;font-weight:700;color:#43474f;border:1px solid #e0e3e5">المدينة / المحافظة</td>
+          <td style="padding:8px 12px;border:1px solid #e0e3e5"><%= applicant.city || '—' %></td>
+          <td style="padding:8px 12px;font-weight:700;color:#43474f;border:1px solid #e0e3e5">الحي</td>
+          <td style="padding:8px 12px;border:1px solid #e0e3e5"><%= applicant.neighborhood || '—' %></td>
+        </tr>
+        <tr style="background:#f8f9fb">
+          <td style="padding:8px 12px;font-weight:700;color:#43474f;border:1px solid #e0e3e5">يمتلك سيارة</td>
+          <td style="padding:8px 12px;border:1px solid #e0e3e5">
+            <span style="color:<%= applicant.has_car ? '#15803d' : '#6b7280' %>;font-weight:600">
+              <%= applicant.has_car ? '✓ نعم' : '✗ لا' %>
+            </span>
+          </td>
+          <td style="padding:8px 12px;font-weight:700;color:#43474f;border:1px solid #e0e3e5">رخصة قيادة</td>
+          <td style="padding:8px 12px;border:1px solid #e0e3e5">
+            <span style="color:<%= applicant.has_license ? '#15803d' : '#6b7280' %>;font-weight:600">
+              <%= applicant.has_license ? '✓ نعم' : '✗ لا' %>
+            </span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── حالة الطلب ─────────────────────────────────────────── -->
+  <div class="pd-avoid-break" style="margin-bottom:20px">
+    <div style="background:#001736;color:#fff;padding:7px 12px;border-radius:6px;font-size:12px;font-weight:700;margin-bottom:10px">
+      حالة الطلب
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <tbody>
+        <tr style="background:#f8f9fb">
+          <td style="padding:8px 12px;font-weight:700;color:#43474f;width:28%;border:1px solid #e0e3e5">تاريخ التقديم</td>
+          <td style="padding:8px 12px;border:1px solid #e0e3e5"><%= appliedDate %></td>
+          <td style="padding:8px 12px;font-weight:700;color:#43474f;width:28%;border:1px solid #e0e3e5">الحالة الحالية</td>
+          <td style="padding:8px 12px;border:1px solid #e0e3e5;font-weight:700"><%= statusLabel %></td>
+        </tr>
+        <tr>
+          <td style="padding:8px 12px;font-weight:700;color:#43474f;border:1px solid #e0e3e5">التقييم</td>
+          <td style="padding:8px 12px;border:1px solid #e0e3e5;font-size:16px;letter-spacing:2px"><%= ratingStars %> (<%= applicant.rating %>/5)</td>
+          <td style="padding:8px 12px;font-weight:700;color:#43474f;border:1px solid #e0e3e5">المرفقات</td>
+          <td style="padding:8px 12px;border:1px solid #e0e3e5">
+            <span style="color:<%= applicant.cv_path ? '#15803d' : '#6b7280' %>"><%= applicant.cv_path ? '✓' : '✗' %> السيرة الذاتية</span>
+            &nbsp;&nbsp;
+            <span style="color:<%= applicant.id_image_path ? '#15803d' : '#6b7280' %>"><%= applicant.id_image_path ? '✓' : '✗' %> صورة الهوية</span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── السجل والملاحظات ───────────────────────────────────── -->
+  <div style="margin-bottom:20px">
+    <div style="background:#001736;color:#fff;padding:7px 12px;border-radius:6px;font-size:12px;font-weight:700;margin-bottom:10px">
+      السجل الكامل والملاحظات
+      <span style="font-weight:400;font-size:11px;opacity:0.7;margin-right:8px">(<%= printTimeline.length %> إدخال، مرتّب من الأقدم للأحدث)</span>
+    </div>
+
+    <% if (printTimeline.length === 0) { %>
+    <div style="text-align:center;padding:20px;color:#6b7280;font-size:13px;border:1px dashed #e0e3e5;border-radius:6px">
+      لا يوجد سجل أو ملاحظات بعد
+    </div>
+    <% } else { %>
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead>
+        <tr style="background:#f2f4f6">
+          <th style="padding:8px 10px;text-align:right;font-weight:700;color:#43474f;border:1px solid #e0e3e5;width:13%">التاريخ والوقت</th>
+          <th style="padding:8px 10px;text-align:right;font-weight:700;color:#43474f;border:1px solid #e0e3e5;width:12%">النوع</th>
+          <th style="padding:8px 10px;text-align:right;font-weight:700;color:#43474f;border:1px solid #e0e3e5">التفاصيل</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% printTimeline.forEach((item, idx) => { %>
+        <tr class="pd-avoid-break" style="background:<%= idx % 2 === 0 ? '#fff' : '#fafbfc' %>">
+          <td style="padding:8px 10px;border:1px solid #e0e3e5;color:#506169;white-space:nowrap;font-size:11px">
+            <%= new Date(item.created_at).toLocaleDateString('ar-SA') %><br>
+            <span style="color:#7594ca"><%= new Date(item.created_at).toLocaleTimeString('ar-SA', { hour:'2-digit', minute:'2-digit' }) %></span>
+          </td>
+          <td style="padding:8px 10px;border:1px solid #e0e3e5;text-align:center">
+            <% if (item._type === 'note') { %>
+            <span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;
+              background:<%= item.type==='call'?'#dcfce7':item.type==='interview'?'#ede9fe':item.type==='follow_up'?'#ffedd5':'#dbeafe' %>;
+              color:<%= item.type==='call'?'#15803d':item.type==='interview'?'#7c3aed':item.type==='follow_up'?'#c2410c':'#1d4ed8' %>">
+              <%= NOTE_TYPES[item.type]?.label || item.type %>
+            </span>
+            <% } else { %>
+            <span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;background:#f2f4f6;color:#43474f">
+              سجل النظام
+            </span>
+            <% } %>
+          </td>
+          <td style="padding:8px 10px;border:1px solid #e0e3e5;line-height:1.6">
+            <% if (item._type === 'note') { %>
+              <%= item.content %>
+            <% } else { %>
+              <strong><%= item.action %></strong>
+              <% if (item.old_value && item.new_value) { %>
+                &nbsp;— من <span style="text-decoration:line-through;color:#9ca3af"><%= item.old_value %></span>
+                إلى <strong style="color:#001736"><%= item.new_value %></strong>
+              <% } else if (item.new_value) { %>
+                &nbsp;— <span style="color:#001736"><%= item.new_value %></span>
+              <% } %>
+            <% } %>
+          </td>
+        </tr>
+        <% }) %>
+      </tbody>
+    </table>
+    <% } %>
+  </div>
+
+  <!-- ── تذييل الصفحة ──────────────────────────────────────── -->
+  <div style="border-top:2px solid #e0e3e5;margin-top:24px;padding-top:12px;display:flex;justify-content:space-between;align-items:center;font-size:10px;color:#9ca3af">
+    <div>
+      هذا المستند أُنشئ تلقائياً من نظام أرتال Sentinel
+      &nbsp;·&nbsp; جميع البيانات سرية وللاستخدام الداخلي فقط
+    </div>
+    <div style="text-align:left">
+      طُبع بتاريخ <%= printDate %> &nbsp;·&nbsp; ملف رقم #<%= applicant.id %>
+    </div>
+  </div>
+
+</div>
+<!-- ═══════════════════════════════════════════════════════════ -->
 
 <!-- Toast notification -->
 <div id="toast" class="fixed bottom-6 left-6 bg-[#001736] text-white text-sm px-5 py-3 rounded-xl shadow-2xl
