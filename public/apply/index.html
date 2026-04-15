@@ -43,6 +43,35 @@
     .material-symbols-outlined { font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24; }
     body { background-color:#f8f9fb; font-family:'Inter',sans-serif; }
     h1,h2,h3 { font-family:'Manrope',sans-serif; }
+
+    /* حقل بحالة خطأ */
+    .input-wrap.has-error input,
+    .input-wrap.has-error select {
+      background-color: #fff5f5 !important;
+      box-shadow: 0 0 0 2px #fca5a5 !important;
+    }
+    /* رسالة الخطأ */
+    .err-msg {
+      display: none;
+      align-items: center;
+      gap: 4px;
+      color: #dc2626;
+      font-size: 0.72rem;
+      margin-top: 6px;
+      font-weight: 500;
+    }
+    .err-msg.show { display: flex; }
+    .err-msg::before {
+      content: '●';
+      font-size: 0.5rem;
+      flex-shrink: 0;
+    }
+    /* تحريك الخطأ عند ظهوره */
+    @keyframes errIn {
+      from { opacity:0; transform: translateY(-4px); }
+      to   { opacity:1; transform: translateY(0); }
+    }
+    .err-msg.show { animation: errIn 0.15s ease; }
   </style>
 </head>
 <body class="text-on-background">
@@ -94,12 +123,13 @@
             <label class="block text-sm font-semibold text-on-surface-variant mb-2">
               الاسم الرباعي <span class="text-error">*</span>
             </label>
-            <div class="relative">
-              <input name="full_name" required minlength="5"
+            <div class="input-wrap relative" id="wrap-full_name">
+              <input id="f-full_name" name="full_name"
                      class="w-full bg-surface-container-low border-0 rounded-lg px-4 py-3.5 focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-slate-400"
-                     placeholder="أدخل اسمك الكامل كما في الهوية" type="text"/>
+                     placeholder="أدخل اسمك الكامل كما في الهوية" type="text" autocomplete="name"/>
               <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">person</span>
             </div>
+            <p class="err-msg" id="err-full_name">الاسم الرباعي مطلوب (5 أحرف على الأقل)</p>
           </div>
 
           <!-- ID Number -->
@@ -107,9 +137,17 @@
             <label class="block text-sm font-semibold text-on-surface-variant mb-2">
               رقم الهوية الوطنية <span class="text-error">*</span>
             </label>
-            <input name="id_number" required pattern="\d{10}" maxlength="10"
-                   class="w-full bg-surface-container-low border-0 rounded-lg px-4 py-3.5 focus:ring-2 focus:ring-primary/20 transition-all"
-                   placeholder="1XXXXXXXXX" type="text" inputmode="numeric" dir="ltr"/>
+            <div class="input-wrap" id="wrap-id_number">
+              <input id="f-id_number" name="id_number"
+                     class="w-full bg-surface-container-low border-0 rounded-lg px-4 py-3.5 focus:ring-2 focus:ring-primary/20 transition-all font-mono"
+                     placeholder="1XXXXXXXXX"
+                     type="text"
+                     inputmode="numeric"
+                     maxlength="10"
+                     dir="ltr"
+                     autocomplete="off"/>
+            </div>
+            <p class="err-msg" id="err-id_number">رقم الهوية يجب أن يكون 10 أرقام إنجليزية</p>
           </div>
 
           <!-- Mobile Number -->
@@ -117,20 +155,29 @@
             <label class="block text-sm font-semibold text-on-surface-variant mb-2">
               رقم الجوال <span class="text-error">*</span>
             </label>
-            <div class="relative">
-              <input name="phone" required pattern="05\d{8}" maxlength="10"
-                     class="w-full bg-surface-container-low border-0 rounded-lg px-4 py-3.5 focus:ring-2 focus:ring-primary/20 transition-all text-left"
-                     dir="ltr" placeholder="05XXXXXXXX" type="tel"/>
+            <div class="input-wrap relative" id="wrap-phone">
+              <input id="f-phone" name="phone"
+                     class="w-full bg-surface-container-low border-0 rounded-lg px-4 py-3.5 focus:ring-2 focus:ring-primary/20 transition-all font-mono"
+                     placeholder="05XXXXXXXX"
+                     type="tel"
+                     inputmode="numeric"
+                     maxlength="10"
+                     dir="ltr"
+                     autocomplete="tel"/>
               <span class="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">smartphone</span>
             </div>
+            <p class="err-msg" id="err-phone">رقم الجوال يجب أن يبدأ بـ 05 ويتكون من 10 أرقام</p>
           </div>
 
           <!-- Age -->
           <div>
             <label class="block text-sm font-semibold text-on-surface-variant mb-2">العمر</label>
-            <input name="age" min="18" max="60"
-                   class="w-full bg-surface-container-low border-0 rounded-lg px-4 py-3.5 focus:ring-2 focus:ring-primary/20 transition-all"
-                   placeholder="السنة" type="number"/>
+            <div class="input-wrap" id="wrap-age">
+              <input id="f-age" name="age" min="18" max="60"
+                     class="w-full bg-surface-container-low border-0 rounded-lg px-4 py-3.5 focus:ring-2 focus:ring-primary/20 transition-all"
+                     placeholder="السنة" type="number" inputmode="numeric"/>
+            </div>
+            <p class="err-msg" id="err-age">العمر يجب أن يكون بين 18 و 60 سنة</p>
           </div>
 
           <!-- Residence -->
@@ -138,8 +185,8 @@
             <label class="block text-sm font-semibold text-on-surface-variant mb-2">
               مقر السكن الحالي <span class="text-error">*</span>
             </label>
-            <div class="relative">
-              <select name="city" required
+            <div class="input-wrap relative" id="wrap-city">
+              <select id="f-city" name="city"
                       class="w-full bg-surface-container-low border-0 rounded-lg px-4 py-3.5 focus:ring-2 focus:ring-primary/20 appearance-none transition-all">
                 <option value="">اختر المنطقة</option>
                 <option>الرياض</option>
@@ -156,6 +203,7 @@
               </select>
               <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">location_on</span>
             </div>
+            <p class="err-msg" id="err-city">يرجى اختيار مقر السكن</p>
           </div>
 
           <!-- Car Ownership -->
@@ -252,19 +300,162 @@
 </footer>
 
 <script>
+// ─── تحويل الأرقام العربية والفارسية إلى إنجليزية ───────────────────────────
+function toEnglish(str) {
+  return str
+    .replace(/[\u0660-\u0669]/g, d => d.charCodeAt(0) - 0x0660) // عربي ٠-٩
+    .replace(/[\u06F0-\u06F9]/g, d => d.charCodeAt(0) - 0x06F0); // فارسي ۰-۹
+}
+
+// ─── إعداد حقل رقمي إنجليزي فقط ────────────────────────────────────────────
+function setupNumericOnly(inputId) {
+  const el = document.getElementById(inputId);
+  if (!el) return;
+
+  el.addEventListener('input', function () {
+    // حوّل أي أرقام عربية ثم احذف كل ما ليس رقماً إنجليزياً
+    const cleaned = toEnglish(this.value).replace(/\D/g, '');
+    if (this.value !== cleaned) {
+      // احتفظ بموقع المؤشر
+      const pos = this.selectionStart - (this.value.length - cleaned.length);
+      this.value = cleaned;
+      try { this.setSelectionRange(pos, pos); } catch(e) {}
+    }
+    clearError(inputId.replace('f-', ''));
+  });
+
+  // لصق النص — نفس التحويل
+  el.addEventListener('paste', function (e) {
+    e.preventDefault();
+    const pasted = (e.clipboardData || window.clipboardData).getData('text');
+    const cleaned = toEnglish(pasted).replace(/\D/g, '');
+    const start = this.selectionStart, end = this.selectionEnd;
+    this.value = this.value.slice(0, start) + cleaned + this.value.slice(end);
+    this.value = this.value.slice(0, parseInt(this.maxLength) || 999);
+    clearError(inputId.replace('f-', ''));
+  });
+}
+
+// ─── إظهار خطأ ──────────────────────────────────────────────────────────────
+function showError(fieldName, msg) {
+  const wrap = document.getElementById('wrap-' + fieldName);
+  const err  = document.getElementById('err-' + fieldName);
+  if (wrap) wrap.classList.add('has-error');
+  if (err)  { if (msg) err.textContent = msg; err.classList.add('show'); }
+}
+
+// ─── مسح خطأ ────────────────────────────────────────────────────────────────
+function clearError(fieldName) {
+  const wrap = document.getElementById('wrap-' + fieldName);
+  const err  = document.getElementById('err-' + fieldName);
+  if (wrap) wrap.classList.remove('has-error');
+  if (err)  err.classList.remove('show');
+}
+
+// ─── مسح الخطأ عند الكتابة في الحقول النصية ────────────────────────────────
+['full_name', 'age'].forEach(name => {
+  const el = document.getElementById('f-' + name);
+  if (el) el.addEventListener('input', () => clearError(name));
+});
+document.getElementById('f-city')?.addEventListener('change', () => clearError('city'));
+
+// ─── إعداد حقلي الهوية والجوال ──────────────────────────────────────────────
+setupNumericOnly('f-id_number');
+setupNumericOnly('f-phone');
+
+// ─── التحقق عند الإرسال ─────────────────────────────────────────────────────
+document.getElementById('applyForm').addEventListener('submit', function (e) {
+  e.preventDefault(); // نمنع الإرسال حتى نتحقق
+
+  let valid = true;
+  let firstError = null;
+
+  // ── الاسم الرباعي
+  const name = document.getElementById('f-full_name').value.trim();
+  if (name.length < 5) {
+    showError('full_name', 'الاسم الرباعي مطلوب (5 أحرف على الأقل)');
+    if (!firstError) firstError = 'f-full_name';
+    valid = false;
+  } else {
+    clearError('full_name');
+  }
+
+  // ── رقم الهوية: 10 أرقام إنجليزية بالضبط
+  const idVal = document.getElementById('f-id_number').value;
+  if (!/^\d{10}$/.test(idVal)) {
+    showError('id_number', 'رقم الهوية يجب أن يكون 10 أرقام إنجليزية بالضبط');
+    if (!firstError) firstError = 'f-id_number';
+    valid = false;
+  } else {
+    clearError('id_number');
+  }
+
+  // ── رقم الجوال: يبدأ بـ 05 وطوله 10
+  const phone = document.getElementById('f-phone').value;
+  if (!/^05\d{8}$/.test(phone)) {
+    showError('phone', 'رقم الجوال يجب أن يبدأ بـ 05 ويتكون من 10 أرقام إنجليزية');
+    if (!firstError) firstError = 'f-phone';
+    valid = false;
+  } else {
+    clearError('phone');
+  }
+
+  // ── العمر (اختياري لكن إذا أُدخل يجب أن يكون 18-60)
+  const ageVal = document.getElementById('f-age').value;
+  if (ageVal !== '') {
+    const age = parseInt(ageVal);
+    if (isNaN(age) || age < 18 || age > 60) {
+      showError('age', 'العمر يجب أن يكون بين 18 و 60 سنة');
+      if (!firstError) firstError = 'f-age';
+      valid = false;
+    } else {
+      clearError('age');
+    }
+  } else {
+    clearError('age');
+  }
+
+  // ── المدينة
+  const city = document.getElementById('f-city').value;
+  if (!city) {
+    showError('city', 'يرجى اختيار مقر السكن');
+    if (!firstError) firstError = 'f-city';
+    valid = false;
+  } else {
+    clearError('city');
+  }
+
+  // ── إذا في أخطاء: اسكرول لأول خطأ
+  if (!valid) {
+    const errEl = document.getElementById(firstError);
+    if (errEl) {
+      errEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      errEl.focus();
+    }
+    return;
+  }
+
+  // ── كل شيء صحيح: أرسل الفورم
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="material-symbols-outlined" style="animation:spin 1s linear infinite">refresh</span> جارٍ الإرسال...';
+  this.submit();
+});
+
+// ─── تحديث اسم الملف المرفق ──────────────────────────────────────────────────
 function updateFileName(input, labelId) {
   const label = document.getElementById(labelId);
   if (input.files && input.files[0]) {
-    label.textContent = input.files[0].name;
-    label.classList.add('text-green-700', 'font-semibold');
+    label.textContent = '✓ ' + input.files[0].name;
+    label.style.color = '#15803d';
+    label.style.fontWeight = '600';
   }
 }
 
-document.getElementById('applyForm').addEventListener('submit', function(e) {
-  const btn = document.getElementById('submitBtn');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="material-symbols-outlined animate-spin">refresh</span> جارٍ الإرسال...';
-});
+// أنيميشن دوران زر الإرسال
+const style = document.createElement('style');
+style.textContent = '@keyframes spin { to { transform: rotate(360deg); } }';
+document.head.appendChild(style);
 </script>
 </body>
 </html>
