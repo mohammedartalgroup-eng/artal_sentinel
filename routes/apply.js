@@ -60,10 +60,14 @@ router.post('/', (req, res) => {
 
       // Basic validation
       const errors = [];
-      if (!full_name || full_name.trim().length < 5) errors.push('الاسم الرباعي مطلوب');
-      if (!id_number || !/^\d{10}$/.test(id_number.trim())) errors.push('رقم الهوية يجب أن يكون 10 أرقام');
-      if (!phone || !/^05\d{8}$/.test(phone.trim())) errors.push('رقم الجوال غير صحيح');
-      if (!city) errors.push('مقر السكن مطلوب');
+      if (!full_name || full_name.trim().length < 5)          errors.push('الاسم الرباعي مطلوب (5 أحرف على الأقل)');
+      if (!id_number || !/^\d{10}$/.test(id_number.trim()))   errors.push('رقم الهوية يجب أن يكون 10 أرقام');
+      if (!phone || !/^05\d{8}$/.test(phone.trim()))          errors.push('رقم الجوال غير صحيح');
+      const ageInt = parseInt(age);
+      if (!age || isNaN(ageInt) || ageInt < 18 || ageInt > 60) errors.push('العمر مطلوب ويجب أن يكون بين 18 و 60 سنة');
+      if (!city)                                               errors.push('مقر السكن مطلوب');
+      if (has_car !== 'yes' && has_car !== 'no')               errors.push('يرجى تحديد ما إذا كنت تمتلك سيارة');
+      if (has_license !== 'yes' && has_license !== 'no')       errors.push('يرجى تحديد ما إذا كان لديك رخصة قيادة');
 
       if (errors.length) {
         return res.status(400).send(`

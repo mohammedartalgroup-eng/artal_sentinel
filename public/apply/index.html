@@ -46,10 +46,17 @@
     h1,h2,h3 { font-family:'Manrope',sans-serif; }
 
     /* حقل بحالة خطأ */
-    .input-wrap.has-error input,
+    .input-wrap.has-error input:not([type="radio"]),
     .input-wrap.has-error select {
       background-color: #fff5f5 !important;
       box-shadow: 0 0 0 2px #fca5a5 !important;
+    }
+    /* خطأ في مجموعة راديو */
+    #wrap-has_car.has-error,
+    #wrap-has_license.has-error {
+      outline: 2px solid #fca5a5;
+      outline-offset: 4px;
+      border-radius: 0.5rem;
     }
     /* رسالة الخطأ */
     .err-msg {
@@ -174,13 +181,15 @@
 
           <!-- Age -->
           <div>
-            <label class="block text-sm font-semibold text-on-surface-variant mb-2">العمر</label>
+            <label class="block text-sm font-semibold text-on-surface-variant mb-2">
+              العمر <span class="text-error">*</span>
+            </label>
             <div class="input-wrap" id="wrap-age">
               <input id="f-age" name="age" min="18" max="60"
                      class="w-full bg-surface-container-low border-0 rounded-lg px-4 py-3.5 focus:ring-2 focus:ring-primary/20 transition-all"
-                     placeholder="السنة" type="number" inputmode="numeric"/>
+                     placeholder="السنة (18 - 60)" type="number" inputmode="numeric"/>
             </div>
-            <p class="err-msg" id="err-age">العمر يجب أن يكون بين 18 و 60 سنة</p>
+            <p class="err-msg" id="err-age">العمر مطلوب ويجب أن يكون بين 18 و 60 سنة</p>
           </div>
 
           <!-- Residence -->
@@ -199,37 +208,47 @@
           </div>
 
           <!-- Car Ownership -->
-          <div class="md:col-span-1">
-            <label class="block text-sm font-semibold text-on-surface-variant mb-3">هل تمتلك سيارة؟</label>
+          <div class="md:col-span-1 input-wrap" id="wrap-has_car">
+            <label class="block text-sm font-semibold text-on-surface-variant mb-3">
+              هل تمتلك سيارة؟ <span class="text-error">*</span>
+            </label>
             <div class="flex gap-6">
               <label class="flex items-center gap-2 cursor-pointer">
                 <input class="w-5 h-5 text-primary border-slate-300 focus:ring-primary"
-                       name="has_car" type="radio" value="yes"/>
+                       name="has_car" type="radio" value="yes"
+                       onchange="clearError('has_car')"/>
                 <span class="text-on-surface">نعم</span>
               </label>
               <label class="flex items-center gap-2 cursor-pointer">
                 <input class="w-5 h-5 text-primary border-slate-300 focus:ring-primary"
-                       name="has_car" type="radio" value="no"/>
+                       name="has_car" type="radio" value="no"
+                       onchange="clearError('has_car')"/>
                 <span class="text-on-surface">لا</span>
               </label>
             </div>
+            <p class="err-msg" id="err-has_car">يرجى تحديد ما إذا كنت تمتلك سيارة</p>
           </div>
 
           <!-- License -->
-          <div class="md:col-span-1">
-            <label class="block text-sm font-semibold text-on-surface-variant mb-3">هل لديك رخصة قيادة؟</label>
+          <div class="md:col-span-1 input-wrap" id="wrap-has_license">
+            <label class="block text-sm font-semibold text-on-surface-variant mb-3">
+              هل لديك رخصة قيادة؟ <span class="text-error">*</span>
+            </label>
             <div class="flex gap-6">
               <label class="flex items-center gap-2 cursor-pointer">
                 <input class="w-5 h-5 text-primary border-slate-300 focus:ring-primary"
-                       name="has_license" type="radio" value="yes"/>
+                       name="has_license" type="radio" value="yes"
+                       onchange="clearError('has_license')"/>
                 <span class="text-on-surface">نعم</span>
               </label>
               <label class="flex items-center gap-2 cursor-pointer">
                 <input class="w-5 h-5 text-primary border-slate-300 focus:ring-primary"
-                       name="has_license" type="radio" value="no"/>
+                       name="has_license" type="radio" value="no"
+                       onchange="clearError('has_license')"/>
                 <span class="text-on-surface">لا</span>
               </label>
             </div>
+            <p class="err-msg" id="err-has_license">يرجى تحديد ما إذا كان لديك رخصة قيادة</p>
           </div>
         </div>
 
@@ -407,17 +426,13 @@ document.getElementById('applyForm').addEventListener('submit', function (e) {
     clearError('phone');
   }
 
-  // ── العمر (اختياري لكن إذا أُدخل يجب أن يكون 18-60)
+  // ── العمر (إلزامي، 18-60)
   const ageVal = document.getElementById('f-age').value;
-  if (ageVal !== '') {
-    const age = parseInt(ageVal);
-    if (isNaN(age) || age < 18 || age > 60) {
-      showError('age', 'العمر يجب أن يكون بين 18 و 60 سنة');
-      if (!firstError) firstError = 'f-age';
-      valid = false;
-    } else {
-      clearError('age');
-    }
+  const ageNum = parseInt(ageVal);
+  if (!ageVal || isNaN(ageNum) || ageNum < 18 || ageNum > 60) {
+    showError('age', 'العمر مطلوب ويجب أن يكون بين 18 و 60 سنة');
+    if (!firstError) firstError = 'f-age';
+    valid = false;
   } else {
     clearError('age');
   }
@@ -432,12 +447,30 @@ document.getElementById('applyForm').addEventListener('submit', function (e) {
     clearError('city');
   }
 
+  // ── السيارة (إلزامي)
+  if (!document.querySelector('input[name="has_car"]:checked')) {
+    showError('has_car', 'يرجى تحديد ما إذا كنت تمتلك سيارة');
+    if (!firstError) firstError = 'wrap-has_car';
+    valid = false;
+  } else {
+    clearError('has_car');
+  }
+
+  // ── الرخصة (إلزامي)
+  if (!document.querySelector('input[name="has_license"]:checked')) {
+    showError('has_license', 'يرجى تحديد ما إذا كان لديك رخصة قيادة');
+    if (!firstError) firstError = 'wrap-has_license';
+    valid = false;
+  } else {
+    clearError('has_license');
+  }
+
   // ── إذا في أخطاء: اسكرول لأول خطأ
   if (!valid) {
     const errEl = document.getElementById(firstError);
     if (errEl) {
       errEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      errEl.focus();
+      try { errEl.focus(); } catch(e) {}
     }
     return;
   }
