@@ -56,8 +56,32 @@ app.get('/success', (req, res) => {
   res.render('success', { settings });
 });
 
-// Root redirect
-app.get('/', (req, res) => res.redirect('/apply'));
+// Root — serve apply page directly (no redirect, so URL stays clean)
+app.get('/', (req, res) => {
+  const db = require('./database/db');
+  const accepting = db.prepare("SELECT value FROM settings WHERE key = 'accepting_applications'").get();
+  if (accepting && accepting.value === 'false') {
+    return res.status(503).send(`
+      <!DOCTYPE html>
+      <html dir="rtl" lang="ar">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Artal Security — التوظيف</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+      </head>
+      <body class="min-h-screen flex items-center justify-center" style="background:#001736">
+        <div class="text-center text-white p-8 max-w-md">
+          <div class="text-6xl mb-6">🔒</div>
+          <h1 class="text-2xl font-bold mb-4">التوظيف متوقف مؤقتاً</h1>
+          <p class="text-slate-300">شكراً لاهتمامك بالانضمام إلى فريقنا.<br>نحن لا نستقبل طلبات حالياً — يرجى المراجعة لاحقاً.</p>
+        </div>
+      </body>
+      </html>
+    `);
+  }
+  res.sendFile(path.join(__dirname, 'public', 'apply', 'index.html'));
+});
 
 // 404
 app.use((req, res) => {
