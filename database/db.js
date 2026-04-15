@@ -36,12 +36,26 @@ pool.run = async function (sql, params = []) {
   return { insertId: result.insertId, affectedRows: result.affectedRows };
 };
 
-// تسجيل نشاط
+// تسجيل نشاط المتقدم
 pool.logActivity = async function (applicantId, action, oldVal = null, newVal = null) {
   await this.run(
     'INSERT INTO applicant_activity (applicant_id, action, old_value, new_value) VALUES (?, ?, ?, ?)',
     [applicantId, action, oldVal, newVal]
   );
+};
+
+// تسجيل تدقيق النظام (لا يُوقف العملية إن فشل)
+pool.audit = async function (userId, username, action, targetType = null, targetId = null, targetName = null, details = null, ip = null) {
+  try {
+    await this.run(
+      `INSERT INTO audit_log
+         (user_id, username, action, target_type, target_id, target_name, details, ip)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [userId, username, action, targetType, targetId, targetName, details, ip]
+    );
+  } catch (e) {
+    console.error('[Audit]', e.message);
+  }
 };
 
 // جلب الإعدادات كـ object
@@ -155,6 +169,42 @@ async function initialize() {
       console.log('[DB] Migration: added column neighborhood');
     }
 
+    // ─── audit_log
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS audit_log (
+        id          INT AUTO_INCREMENT PRIMARY KEY,
+        user_id     INT,
+        username    VARCHAR(50)  NOT NULL,
+        action      VARCHAR(50)  NOT NULL,
+        target_type VARCHAR(20),
+        target_id   INT,
+        target_name VARCHAR(200),
+        details     VARCHAR(500),
+        ip          VARCHAR(45),
+        created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_user_id  (user_id),
+        INDEX idx_created  (created_at),
+        INDEX idx_action   (action)
+      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+    `);
+
+    // ─── ترحيل: إضافة role, is_active, last_login إلى admin_users
+    const [roleCols] = await conn.query("SHOW COLUMNS FROM admin_users LIKE 'role'");
+    if (roleCols.length === 0) {
+      await conn.query("ALTER TABLE admin_users ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'manager' AFTER username");
+      console.log('[DB] Migration: added column role (existing users → manager)');
+    }
+    const [activeCols] = await conn.query("SHOW COLUMNS FROM admin_users LIKE 'is_active'");
+    if (activeCols.length === 0) {
+      await conn.query("ALTER TABLE admin_users ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1 AFTER role");
+      console.log('[DB] Migration: added column is_active');
+    }
+    const [loginCols] = await conn.query("SHOW COLUMNS FROM admin_users LIKE 'last_login'");
+    if (loginCols.length === 0) {
+      await conn.query("ALTER TABLE admin_users ADD COLUMN last_login DATETIME DEFAULT NULL AFTER is_active");
+      console.log('[DB] Migration: added column last_login');
+    }
+
     // ─── الإعدادات الافتراضية
     const defaults = [
       ['phone',                  '+966 500 000 000'],
@@ -181,6 +231,20 @@ async function initialize() {
         ['admin', hash]
       );
       console.log('[DB] Default admin created — username: admin / password: admin123');
+    }
+
+    // ─── ترحيل: إنشاء حساب مدير رئيسي وتحويل admin إلى موظف
+    const [mgrExists] = await conn.query("SELECT id FROM admin_users WHERE username = 'artal_manager'");
+    if (mgrExists.length === 0) {
+      const mgrHash = await bcrypt.hash('Artal@2025', 12);
+      await conn.query(
+        "INSERT INTO admin_users (username, role, is_active, password_hash) VALUES ('artal_manager', 'manager', 1, ?)",
+        [mgrHash]
+      );
+      // تحويل حساب admin القديم إلى موظف
+      await conn.query("UPDATE admin_users SET role = 'employee' WHERE username = 'admin'");
+      console.log('[DB] Migration: artal_manager (manager) created — password: Artal@2025');
+      console.log('[DB] Migration: admin account demoted to employee');
     }
 
     console.log('[DB] MySQL connected & schema ready ✓');

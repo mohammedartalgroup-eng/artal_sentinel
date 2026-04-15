@@ -2,7 +2,9 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const db = require('../database/db');
-const requireAuth = require('../middleware/auth');
+const requireAuth    = require('../middleware/auth');
+const requireManager = require('../middleware/requireManager');
+const usersRouter    = require('./users');
 
 // ─── Status meta ──────────────────────────────────────────────────────────────
 const STATUS_META = {
@@ -44,8 +46,18 @@ router.post('/login', async (req, res) => {
     if (!user || !await bcrypt.compare(password, user.password_hash)) {
       return res.render('login', { error: 'اسم المستخدم أو كلمة المرور غير صحيحة', next: next || '/admin/dashboard' });
     }
-    req.session.adminId = user.id;
+    if (!user.is_active) {
+      return res.render('login', { error: 'هذا الحساب موقوف — تواصل مع المدير', next: next || '/admin/dashboard' });
+    }
+    req.session.adminId   = user.id;
     req.session.adminUser = user.username;
+    req.session.adminRole = user.role || 'employee';
+
+    await Promise.all([
+      db.run('UPDATE admin_users SET last_login = CURRENT_TIMESTAMP WHERE id = ?', [user.id]),
+      db.audit(user.id, user.username, 'login', 'system', null, null, null, req.ip),
+    ]);
+
     res.redirect(next || '/admin/dashboard');
   } catch (err) {
     console.error('[Login POST]', err.message);
@@ -53,12 +65,25 @@ router.post('/login', async (req, res) => {
   }
 });
 
-router.get('/logout', (req, res) => {
+router.get('/logout', async (req, res) => {
+  try {
+    await db.audit(req.session.adminId, req.session.adminUser, 'logout', 'system', null, null, null, req.ip);
+  } catch(_) {}
   req.session.destroy(() => res.redirect('/admin/login'));
 });
 
 // ─── All routes below require auth ───────────────────────────────────────────
 router.use(requireAuth);
+
+// متغيرات مشتركة لجميع views
+router.use((req, res, next) => {
+  res.locals.adminUser = req.session.adminUser;
+  res.locals.adminRole = req.session.adminRole || 'employee';
+  next();
+});
+
+// إدارة المستخدمين — للمديرين فقط
+router.use('/users', requireManager, usersRouter);
 
 // Root redirect
 router.get('/', (req, res) => res.redirect('/admin/dashboard'));
@@ -254,6 +279,8 @@ router.get('/applicants/export', async (req, res) => {
     const date = new Date().toISOString().split('T')[0];
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="artal_applicants_${date}.xlsx"`);
+    await db.audit(req.session.adminId, req.session.adminUser, 'export', 'applicant', null, null,
+      `تصدير ${rows.length} متقدم`, req.ip);
     await wb.xlsx.write(res);
     res.end();
   } catch (err) {
@@ -299,12 +326,12 @@ router.post('/applicants/:id/status', async (req, res) => {
       [status, req.params.id]
     );
 
-    await db.logActivity(
-      req.params.id,
-      'تغيير الحالة',
-      STATUS_META[applicant.status]?.label,
-      STATUS_META[status]?.label
-    );
+    const fullApplicant = await db.get('SELECT full_name FROM applicants WHERE id = ?', [req.params.id]);
+    await Promise.all([
+      db.logActivity(req.params.id, 'تغيير الحالة', STATUS_META[applicant.status]?.label, STATUS_META[status]?.label),
+      db.audit(req.session.adminId, req.session.adminUser, 'status_change', 'applicant', req.params.id,
+        fullApplicant?.full_name, `${STATUS_META[applicant.status]?.label} ← ${STATUS_META[status]?.label}`, req.ip),
+    ]);
 
     res.json({ ok: true, status, label: STATUS_META[status].label });
   } catch (err) {
@@ -329,7 +356,12 @@ router.post('/applicants/:id/rating', async (req, res) => {
       [rating, req.params.id]
     );
 
-    await db.logActivity(req.params.id, 'تحديث التقييم', `${applicant.rating} نجوم`, `${rating} نجوم`);
+    const ratedApplicant = await db.get('SELECT full_name FROM applicants WHERE id = ?', [req.params.id]);
+    await Promise.all([
+      db.logActivity(req.params.id, 'تحديث التقييم', `${applicant.rating} نجوم`, `${rating} نجوم`),
+      db.audit(req.session.adminId, req.session.adminUser, 'rating_change', 'applicant', req.params.id,
+        ratedApplicant?.full_name, `${applicant.rating}★ ← ${rating}★`, req.ip),
+    ]);
     res.json({ ok: true, rating });
   } catch (err) {
     console.error('[Rating POST]', err.message);
@@ -350,9 +382,12 @@ router.post('/applicants/:id/notes', async (req, res) => {
       [req.params.id, content.trim(), noteType]
     );
 
+    const noteApplicant = await db.get('SELECT full_name FROM applicants WHERE id = ?', [req.params.id]);
     await Promise.all([
       db.logActivity(req.params.id, `إضافة ${NOTE_TYPES[noteType].label}`, null, content.trim().substring(0, 60)),
       db.run('UPDATE applicants SET updated_at = CURRENT_TIMESTAMP WHERE id = ?', [req.params.id]),
+      db.audit(req.session.adminId, req.session.adminUser, 'note_add', 'applicant', req.params.id,
+        noteApplicant?.full_name, `${NOTE_TYPES[noteType].label}: ${content.trim().substring(0, 80)}`, req.ip),
     ]);
 
     const note = await db.get('SELECT * FROM applicant_notes WHERE id = ?', [result.insertId]);
@@ -367,10 +402,11 @@ router.post('/applicants/:id/notes', async (req, res) => {
 
 router.delete('/applicants/:id/notes/:nid', async (req, res) => {
   try {
-    await db.run(
-      'DELETE FROM applicant_notes WHERE id = ? AND applicant_id = ?',
-      [req.params.nid, req.params.id]
-    );
+    const delNote = await db.get('SELECT content FROM applicant_notes WHERE id = ?', [req.params.nid]);
+    await db.run('DELETE FROM applicant_notes WHERE id = ? AND applicant_id = ?', [req.params.nid, req.params.id]);
+    const delApplicant = await db.get('SELECT full_name FROM applicants WHERE id = ?', [req.params.id]);
+    await db.audit(req.session.adminId, req.session.adminUser, 'note_delete', 'applicant', req.params.id,
+      delApplicant?.full_name, delNote?.content?.substring(0, 80), req.ip);
     res.json({ ok: true });
   } catch (err) {
     console.error('[Notes DELETE]', err.message);
@@ -380,11 +416,13 @@ router.delete('/applicants/:id/notes/:nid', async (req, res) => {
 
 // ─── Delete Applicant ─────────────────────────────────────────────────────────
 
-router.delete('/applicants/:id', async (req, res) => {
+router.delete('/applicants/:id', requireManager, async (req, res) => {
   try {
     const applicant = await db.get('SELECT full_name FROM applicants WHERE id = ?', [req.params.id]);
     if (!applicant) return res.status(404).json({ error: 'غير موجود' });
     await db.run('DELETE FROM applicants WHERE id = ?', [req.params.id]);
+    await db.audit(req.session.adminId, req.session.adminUser, 'applicant_delete', 'applicant',
+      req.params.id, applicant.full_name, null, req.ip);
     res.json({ ok: true });
   } catch (err) {
     console.error('[Applicant DELETE]', err.message);
@@ -394,7 +432,7 @@ router.delete('/applicants/:id', async (req, res) => {
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
 
-router.get('/settings', async (req, res) => {
+router.get('/settings', requireManager, async (req, res) => {
   try {
     const settings = await db.getSettings();
     res.render('settings', { settings, success: req.query.saved, adminUser: req.session.adminUser });
@@ -404,7 +442,7 @@ router.get('/settings', async (req, res) => {
   }
 });
 
-router.post('/settings', async (req, res) => {
+router.post('/settings', requireManager, async (req, res) => {
   try {
     const allowed = ['phone', 'whatsapp', 'email', 'address', 'maps_url', 'company_name', 'accepting_applications'];
     const updates = [];
@@ -426,6 +464,7 @@ router.post('/settings', async (req, res) => {
     }
 
     await Promise.all(updates);
+    await db.audit(req.session.adminId, req.session.adminUser, 'settings_update', 'settings', null, null, null, req.ip);
     res.redirect('/admin/settings?saved=1');
   } catch (err) {
     console.error('[Settings POST]', err.message);
@@ -433,7 +472,7 @@ router.post('/settings', async (req, res) => {
   }
 });
 
-router.post('/settings/password', async (req, res) => {
+router.post('/settings/password', requireManager, async (req, res) => {
   try {
     const { current_password, new_password, confirm_password } = req.body;
     const [settings, admin] = await Promise.all([
@@ -453,10 +492,48 @@ router.post('/settings/password', async (req, res) => {
 
     const hash = await bcrypt.hash(new_password, 12);
     await db.run('UPDATE admin_users SET password_hash = ? WHERE id = ?', [hash, req.session.adminId]);
+    await db.audit(req.session.adminId, req.session.adminUser, 'password_change', 'user',
+      req.session.adminId, req.session.adminUser, 'تغيير كلمة المرور الشخصية', req.ip);
     res.redirect('/admin/settings?saved=2');
   } catch (err) {
     console.error('[Password POST]', err.message);
     res.status(500).send('خطأ في تغيير كلمة المرور');
+  }
+});
+
+// ─── Audit Log ────────────────────────────────────────────────────────────────
+
+router.get('/audit', requireManager, async (req, res) => {
+  try {
+    const { user = '', action = '', date_from = '', date_to = '', page = '1' } = req.query;
+    const PAGE_SIZE = 50;
+    const pageNum   = Math.max(1, parseInt(page) || 1);
+    const offset    = (pageNum - 1) * PAGE_SIZE;
+
+    const conditions = [];
+    const params     = [];
+    if (user)      { conditions.push('a.username = ?');              params.push(user); }
+    if (action)    { conditions.push('a.action = ?');                params.push(action); }
+    if (date_from) { conditions.push('DATE(a.created_at) >= ?');     params.push(date_from); }
+    if (date_to)   { conditions.push('DATE(a.created_at) <= ?');     params.push(date_to); }
+    const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+
+    const [countRow, logs, users] = await Promise.all([
+      db.get(`SELECT COUNT(*) as c FROM audit_log a ${where}`, params),
+      db.all(`SELECT a.* FROM audit_log a ${where} ORDER BY a.created_at DESC LIMIT ${PAGE_SIZE} OFFSET ${offset}`, params),
+      db.all('SELECT DISTINCT username FROM audit_log ORDER BY username ASC'),
+    ]);
+
+    const total      = Number(countRow?.c) || 0;
+    const totalPages = Math.ceil(total / PAGE_SIZE);
+
+    res.render('audit', {
+      logs, users, total, totalPages, pageNum,
+      filters: { user, action, date_from, date_to },
+    });
+  } catch (err) {
+    console.error('[Audit GET]', err.message);
+    res.status(500).send('خطأ في تحميل سجل التدقيق');
   }
 });
 
