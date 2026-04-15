@@ -11,8 +11,12 @@ const storage = multer.diskStorage({
   destination(req, file, cb) {
     const folder = file.fieldname === 'cv' ? 'cv' : 'id_images';
     const dest = path.join(UPLOAD_ROOT, folder);
-    if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
-    cb(null, dest);
+    try {
+      if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+      cb(null, dest);
+    } catch (err) {
+      cb(new Error(`لا يمكن حفظ الملف — تحقق من صلاحيات المجلد: ${dest}`));
+    }
   },
   filename(req, file, cb) {
     const ext = path.extname(file.originalname).toLowerCase();

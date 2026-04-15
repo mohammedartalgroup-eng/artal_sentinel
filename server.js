@@ -30,8 +30,9 @@ app.set('views', path.join(__dirname, 'views'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Static files
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Static files — يستخدم نفس UPLOADS_PATH المحدد في .env
+const UPLOADS_ROOT = process.env.UPLOADS_PATH || path.join(__dirname, 'uploads');
+app.use('/uploads', express.static(UPLOADS_ROOT));
 
 // Session — stored in MySQL
 const sessionStore = new MySQLStore({
