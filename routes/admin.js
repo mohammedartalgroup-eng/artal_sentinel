@@ -401,7 +401,7 @@ router.get('/settings', async (req, res) => {
 
 router.post('/settings', async (req, res) => {
   try {
-    const allowed = ['phone', 'email', 'address', 'company_name', 'accepting_applications'];
+    const allowed = ['phone', 'whatsapp', 'email', 'address', 'company_name', 'accepting_applications'];
     const updates = [];
 
     for (const key of allowed) {

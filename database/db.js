@@ -141,6 +141,7 @@ async function initialize() {
     // ─── الإعدادات الافتراضية
     const defaults = [
       ['phone',                  '+966 500 000 000'],
+      ['whatsapp',               '+966 500 000 000'],
       ['email',                  'recruitment@artal.com'],
       ['address',                'الرياض، المملكة العربية السعودية'],
       ['company_name',           'Artal Security Guards'],
