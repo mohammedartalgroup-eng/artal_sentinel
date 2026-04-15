@@ -116,6 +116,27 @@ app.use((req, res) => {
   `);
 });
 
+// Global error handler — يلتقط أي خطأ يصل عبر next(err) ويمنع انهيار العملية
+app.use((err, req, res, next) => {
+  console.error('[Express Error]', err.stack || err.message);
+  if (res.headersSent) return next(err);
+  res.status(500).send(`
+    <html dir="rtl"><body style="font-family:sans-serif;text-align:center;padding:4rem;background:#fff5f5">
+      <h2 style="color:#ba1a1a">حدث خطأ غير متوقع</h2>
+      <p>يرجى المحاولة مرة أخرى.</p>
+      <a href="/">العودة</a>
+    </body></html>
+  `);
+});
+
+// حماية العملية من الانهيار الكامل — يسجّل الخطأ بدلاً من الإيقاف
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] uncaughtException:', err.stack || err.message);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[FATAL] unhandledRejection:', reason?.stack || reason);
+});
+
 app.listen(PORT, () => {
   console.log('');
   console.log('  ╔══════════════════════════════════════╗');

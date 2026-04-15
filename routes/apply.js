@@ -36,10 +36,25 @@ router.get('/', async (req, res) => {
 });
 
 // POST /apply — process application submission
-router.post(
-  '/',
-  upload.fields([{ name: 'cv', maxCount: 1 }, { name: 'id_image', maxCount: 1 }]),
-  async (req, res) => {
+router.post('/', (req, res) => {
+  // تشغيل multer يدوياً لنتمكن من التقاط أخطائه (حجم الملف، النوع، إلخ)
+  upload.fields([{ name: 'cv', maxCount: 1 }, { name: 'id_image', maxCount: 1 }])(req, res, async (uploadErr) => {
+    // خطأ multer — نوع ملف خاطئ أو تجاوز الحجم
+    if (uploadErr) {
+      console.error('[Apply Upload]', uploadErr.message);
+      return res.status(400).send(`
+        <!DOCTYPE html><html dir="rtl" lang="ar">
+        <head><meta charset="utf-8"><script src="https://cdn.tailwindcss.com"></script></head>
+        <body class="p-8 bg-red-50">
+          <div class="max-w-md mx-auto bg-white p-6 rounded-xl shadow">
+            <h2 class="text-red-700 font-bold text-lg mb-4">خطأ في رفع الملف</h2>
+            <p class="text-red-600">${uploadErr.message}</p>
+            <a href="/apply" class="mt-6 block text-center bg-blue-900 text-white py-3 rounded-lg">العودة للنموذج</a>
+          </div>
+        </body></html>
+      `);
+    }
+
     try {
       const { full_name, id_number, phone, age, city, has_car, has_license } = req.body;
 
@@ -119,7 +134,7 @@ router.post(
         </body></html>
       `);
     }
-  }
-);
+  });
+});
 
 module.exports = router;
