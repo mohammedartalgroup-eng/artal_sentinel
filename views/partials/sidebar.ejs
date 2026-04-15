@@ -22,15 +22,7 @@
       <span>المتقدمون</span>
     </a>
 
-    <% if (locals.adminRole === 'manager') { %>
     <div class="border-t border-white/10 my-3"></div>
-    <p class="px-4 text-[9px] font-semibold text-white/25 uppercase tracking-widest mb-1">إدارة النظام</p>
-    <a href="/admin/users"
-       class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all
-              <%= currentPage === 'users' ? 'bg-white/10 text-white' : 'text-[#7594ca] hover:bg-white/5 hover:text-white' %>">
-      <span class="material-symbols-outlined text-lg">manage_accounts</span>
-      <span>المستخدمون</span>
-    </a>
     <a href="/admin/performance"
        class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all
               <%= currentPage === 'performance' ? 'bg-white/10 text-white' : 'text-[#7594ca] hover:bg-white/5 hover:text-white' %>">
@@ -42,6 +34,13 @@
               <%= currentPage === 'audit' ? 'bg-white/10 text-white' : 'text-[#7594ca] hover:bg-white/5 hover:text-white' %>">
       <span class="material-symbols-outlined text-lg">policy</span>
       <span>سجل التدقيق</span>
+    </a>
+    <% if (locals.adminRole === 'manager') { %>
+    <a href="/admin/users"
+       class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all
+              <%= currentPage === 'users' ? 'bg-white/10 text-white' : 'text-[#7594ca] hover:bg-white/5 hover:text-white' %>">
+      <span class="material-symbols-outlined text-lg">manage_accounts</span>
+      <span>المستخدمون</span>
     </a>
     <a href="/admin/settings"
        class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all

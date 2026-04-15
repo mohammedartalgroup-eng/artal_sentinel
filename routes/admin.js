@@ -505,7 +505,7 @@ router.post('/settings/password', requireManager, async (req, res) => {
 
 // ─── Audit Log ────────────────────────────────────────────────────────────────
 
-router.get('/audit', requireManager, async (req, res) => {
+router.get('/audit', async (req, res) => {
   try {
     const { user = '', action = '', date_from = '', date_to = '', page = '1' } = req.query;
     const PAGE_SIZE = 50;
@@ -541,7 +541,7 @@ router.get('/audit', requireManager, async (req, res) => {
 
 // ─── Employee Performance ─────────────────────────────────────────────────────
 
-router.get('/performance', requireManager, async (req, res) => {
+router.get('/performance', async (req, res) => {
   try {
     const { period = '30', date_from = '', date_to = '' } = req.query;
 
