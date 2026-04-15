@@ -142,10 +142,25 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
               <span class="material-symbols-outlined text-[#43474f] text-lg mt-0.5">location_on</span>
               <div>
                 <div class="text-xs text-[#43474f] font-semibold uppercase tracking-wider">مقر السكن</div>
+                <% if (applicant.region) { %>
+                <div class="text-xs text-[#7594ca] font-medium mt-0.5"><%= applicant.region %></div>
+                <% } %>
                 <div class="mt-0.5"><%= applicant.city || '—' %></div>
+                <% if (applicant.neighborhood) { %>
+                <div class="text-xs text-[#43474f] mt-0.5">حي <%= applicant.neighborhood %></div>
+                <% } %>
               </div>
             </div>
-            <div class="grid grid-cols-2 gap-3 pt-2">
+            <div class="grid grid-cols-3 gap-3 pt-2">
+              <div class="bg-[#f8f9fb] rounded-xl p-3 text-center">
+                <span class="material-symbols-outlined text-2xl <%= applicant.gender === 'male' ? 'text-blue-500' : applicant.gender === 'female' ? 'text-pink-500' : 'text-[#c4c6d0]' %>">
+                  <%= applicant.gender === 'female' ? 'female' : 'male' %>
+                </span>
+                <div class="text-xs text-[#43474f] mt-1">الجنس</div>
+                <div class="text-sm font-semibold <%= applicant.gender === 'male' ? 'text-blue-600' : applicant.gender === 'female' ? 'text-pink-600' : 'text-[#43474f]' %>">
+                  <%= applicant.gender === 'male' ? 'ذكر' : applicant.gender === 'female' ? 'أنثى' : '—' %>
+                </div>
+              </div>
               <div class="bg-[#f8f9fb] rounded-xl p-3 text-center">
                 <span class="material-symbols-outlined text-2xl <%= applicant.has_car ? 'text-green-600' : 'text-[#c4c6d0]' %>">
                   directions_car

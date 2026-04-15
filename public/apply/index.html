@@ -52,11 +52,30 @@
       box-shadow: 0 0 0 2px #fca5a5 !important;
     }
     /* خطأ في مجموعة راديو */
+    #wrap-gender.has-error,
     #wrap-has_car.has-error,
     #wrap-has_license.has-error {
       outline: 2px solid #fca5a5;
       outline-offset: 4px;
       border-radius: 0.5rem;
+    }
+    /* ─── Searchable Select ─────────────────────────────────── */
+    .ss-trigger {
+      background: var(--md-sys-color-surface-container-low, #eff1f4);
+      border-radius: 0.5rem;
+      transition: box-shadow .15s, background .15s;
+      cursor: pointer;
+    }
+    .ss-trigger:focus { outline: none; box-shadow: 0 0 0 2px rgba(var(--primary-rgb,0,23,54),.2); }
+    .ss-trigger:disabled { opacity: .5; cursor: not-allowed; }
+    .ss-panel { max-height: 320px; }
+    .ss-option { transition: background .1s; }
+    .ss-option:hover { background: #f2f4f6; }
+    .ss-option.ss-selected { background: rgba(0,23,54,.06); font-weight: 600; color:#001736; }
+    /* error state for searchable select */
+    .input-wrap.has-error .ss-trigger {
+      background: #fff5f5 !important;
+      box-shadow: 0 0 0 2px #fca5a5 !important;
     }
     /* رسالة الخطأ */
     .err-msg {
@@ -103,7 +122,7 @@
     </div>
     <div class="relative z-10 text-center px-4 max-w-4xl mx-auto">
       <h1 class="text-4xl md:text-5xl font-extrabold text-white mb-6 leading-tight">
-        انضم إلى نخبة الحراسات الأمنية
+        انضم إلى شركة أرطال للحراسات الأمنية المدنية الخاصة
       </h1>
       <p class="text-on-primary-container font-medium text-lg max-w-2xl mx-auto opacity-90">
         نبحث عن الكفاءات الوطنية المتميزة للانضمام إلى فريقنا الاحترافي في تقديم الحلول الأمنية المتقدمة
@@ -180,31 +199,112 @@
           </div>
 
           <!-- Age -->
-          <div>
+          <div class="md:col-span-2">
             <label class="block text-sm font-semibold text-on-surface-variant mb-2">
               العمر <span class="text-error">*</span>
             </label>
             <div class="input-wrap" id="wrap-age">
-              <input id="f-age" name="age" min="18" max="60"
+              <input id="f-age" name="age" min="23" max="50"
                      class="w-full bg-surface-container-low border-0 rounded-lg px-4 py-3.5 focus:ring-2 focus:ring-primary/20 transition-all"
-                     placeholder="السنة (18 - 60)" type="number" inputmode="numeric"/>
+                     placeholder="السنة (23 - 50)" type="number" inputmode="numeric"/>
             </div>
-            <p class="err-msg" id="err-age">العمر مطلوب ويجب أن يكون بين 18 و 60 سنة</p>
+            <p class="err-msg" id="err-age">العمر مطلوب ويجب أن يكون بين 23 و 50 سنة</p>
           </div>
 
-          <!-- Residence -->
+          <!-- Region (full width) -->
+          <div class="md:col-span-2">
+            <label class="block text-sm font-semibold text-on-surface-variant mb-2">
+              المنطقة الإدارية <span class="text-error">*</span>
+            </label>
+            <div class="input-wrap relative" id="wrap-region">
+              <input type="hidden" name="region" id="f-region" value="">
+              <button type="button" id="ss-region-trigger"
+                      class="ss-trigger w-full px-4 py-3.5 flex items-center justify-between gap-2 text-sm"
+                      onclick="ssToggle('region')">
+                <span id="ss-region-display" class="text-slate-400">اختر المنطقة الإدارية</span>
+                <span class="material-symbols-outlined text-slate-400 transition-transform duration-200" id="ss-region-arrow">expand_more</span>
+              </button>
+              <div class="ss-panel absolute z-50 w-full mt-1 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden hidden"
+                   id="ss-region-panel">
+                <div class="p-2 border-b border-slate-100">
+                  <div class="relative">
+                    <input type="text" id="ss-region-search" autocomplete="off"
+                           placeholder="ابحث عن منطقة…"
+                           class="w-full bg-slate-50 rounded-lg px-3 py-2 pr-8 text-sm border border-slate-200 outline-none focus:border-[#7594ca]"
+                           oninput="ssFilter('region')">
+                    <span class="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-base pointer-events-none">search</span>
+                  </div>
+                </div>
+                <ul class="overflow-y-auto py-1 text-sm" style="max-height:210px" id="ss-region-list"></ul>
+              </div>
+            </div>
+            <p class="err-msg" id="err-region">يرجى اختيار المنطقة الإدارية</p>
+          </div>
+
+          <!-- City -->
           <div>
             <label class="block text-sm font-semibold text-on-surface-variant mb-2">
-              مقر السكن الحالي <span class="text-error">*</span>
+              المدينة / المحافظة <span class="text-error">*</span>
             </label>
             <div class="input-wrap relative" id="wrap-city">
-              <select id="f-city" name="city"
-                      class="w-full bg-surface-container-low border-0 rounded-lg px-4 py-3.5 focus:ring-2 focus:ring-primary/20 appearance-none transition-all">
-                <option value="">جاري التحميل…</option>
-              </select>
-              <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">location_on</span>
+              <input type="hidden" name="city" id="f-city" value="">
+              <button type="button" id="ss-city-trigger" disabled
+                      class="ss-trigger w-full px-4 py-3.5 flex items-center justify-between gap-2 text-sm"
+                      onclick="ssToggle('city')">
+                <span id="ss-city-display" class="text-slate-400">اختر المنطقة أولاً</span>
+                <span class="material-symbols-outlined text-slate-400 transition-transform duration-200" id="ss-city-arrow">expand_more</span>
+              </button>
+              <div class="ss-panel absolute z-50 w-full mt-1 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden hidden"
+                   id="ss-city-panel">
+                <div class="p-2 border-b border-slate-100">
+                  <div class="relative">
+                    <input type="text" id="ss-city-search" autocomplete="off"
+                           placeholder="ابحث عن مدينة…"
+                           class="w-full bg-slate-50 rounded-lg px-3 py-2 pr-8 text-sm border border-slate-200 outline-none focus:border-[#7594ca]"
+                           oninput="ssFilter('city')">
+                    <span class="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-base pointer-events-none">search</span>
+                  </div>
+                </div>
+                <ul class="overflow-y-auto py-1 text-sm" style="max-height:210px" id="ss-city-list"></ul>
+              </div>
             </div>
-            <p class="err-msg" id="err-city">يرجى اختيار مقر السكن</p>
+            <p class="err-msg" id="err-city">يرجى اختيار المدينة أو المحافظة</p>
+          </div>
+
+          <!-- Neighborhood (free text, optional) -->
+          <div>
+            <label class="block text-sm font-semibold text-on-surface-variant mb-2">
+              الحي <span class="text-error">*</span>
+            </label>
+            <div class="input-wrap relative" id="wrap-neighborhood">
+              <input id="f-neighborhood" name="neighborhood"
+                     class="w-full bg-surface-container-low border-0 rounded-lg px-4 py-3.5 focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-slate-400"
+                     placeholder="مثال: العليا، النزهة…" type="text" maxlength="100"/>
+              <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">holiday_village</span>
+            </div>
+            <p class="err-msg" id="err-neighborhood">يرجى كتابة اسم الحي</p>
+          </div>
+
+          <!-- Gender -->
+          <div class="md:col-span-1 input-wrap" id="wrap-gender">
+            <label class="block text-sm font-semibold text-on-surface-variant mb-3">
+              الجنس <span class="text-error">*</span>
+            </label>
+            <div class="flex gap-6">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input class="w-5 h-5 text-primary border-slate-300 focus:ring-primary"
+                       name="gender" type="radio" value="male"
+                       onchange="clearError('gender')"/>
+                <span class="text-on-surface">ذكر</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input class="w-5 h-5 text-primary border-slate-300 focus:ring-primary"
+                       name="gender" type="radio" value="female"
+                       onchange="clearError('gender')"/>
+                <span class="text-on-surface">أنثى</span>
+              </label>
+            </div>
+            <p class="err-msg" id="err-gender">يرجى تحديد الجنس</p>
           </div>
 
           <!-- Car Ownership -->
@@ -308,23 +408,110 @@
 </footer>
 
 <script>
-// ─── تحميل المدن ديناميكياً من قاعدة البيانات ────────────────────────────────
-(async function loadCities() {
-  const select = document.getElementById('f-city');
-  try {
-    const res  = await fetch('/api/cities');
-    const list = await res.json();
-    select.innerHTML = '<option value="">اختر المنطقة</option>';
-    list.forEach(city => {
-      const opt = document.createElement('option');
-      opt.value = city;
-      opt.textContent = city;
-      select.appendChild(opt);
-    });
-  } catch (e) {
-    select.innerHTML = '<option value="">— تعذّر تحميل المدن —</option>';
+// ─── بيانات المناطق والمدن ────────────────────────────────────────────────────
+let SA_DATA = [];
+let SS_ACTIVE = null; // الـ panel المفتوح حالياً
+
+fetch('/data/sa-regions.json')
+  .then(r => r.json())
+  .then(data => {
+    SA_DATA = data;
+    ssRenderList('region', data.map(r => r.name));
+  })
+  .catch(() => {
+    document.getElementById('ss-region-display').textContent = '— تعذّر التحميل —';
+  });
+
+// ─── Searchable Select API ────────────────────────────────────────────────────
+function ssRenderList(id, items) {
+  const list   = document.getElementById(`ss-${id}-list`);
+  const hidden = document.getElementById(`f-${id}`);
+  if (!items.length) {
+    list.innerHTML = '<li class="px-4 py-3 text-slate-400 text-center text-xs">لا نتائج</li>';
+    return;
   }
-})();
+  list.innerHTML = items.map(item => `
+    <li class="ss-option px-4 py-2.5 cursor-pointer flex items-center justify-between
+               ${hidden.value === item ? 'ss-selected' : ''}"
+        data-value="${item}" onclick="ssSelect('${id}', this.dataset.value)">
+      <span>${item}</span>
+      ${hidden.value === item ? '<span class="material-symbols-outlined text-[#001736] text-base">check</span>' : ''}
+    </li>`).join('');
+}
+
+function ssToggle(id) {
+  const panel = document.getElementById(`ss-${id}-panel`);
+  const isOpen = !panel.classList.contains('hidden');
+  if (SS_ACTIVE && SS_ACTIVE !== id) ssClose(SS_ACTIVE);
+  isOpen ? ssClose(id) : ssOpen(id);
+}
+
+function ssOpen(id) {
+  const panel  = document.getElementById(`ss-${id}-panel`);
+  const arrow  = document.getElementById(`ss-${id}-arrow`);
+  const search = document.getElementById(`ss-${id}-search`);
+  panel.classList.remove('hidden');
+  arrow.style.transform = 'rotate(180deg)';
+  search.value = '';
+  ssFilter(id); // reset filter
+  search.focus();
+  SS_ACTIVE = id;
+}
+
+function ssClose(id) {
+  const panel = document.getElementById(`ss-${id}-panel`);
+  const arrow = document.getElementById(`ss-${id}-arrow`);
+  if (panel) panel.classList.add('hidden');
+  if (arrow) arrow.style.transform = '';
+  if (SS_ACTIVE === id) SS_ACTIVE = null;
+}
+
+function ssFilter(id) {
+  const q = document.getElementById(`ss-${id}-search`).value.trim();
+  let options;
+  if (id === 'region') {
+    options = SA_DATA.map(r => r.name);
+  } else {
+    const rVal = document.getElementById('f-region').value;
+    const reg  = SA_DATA.find(r => r.name === rVal);
+    options = reg ? reg.cities : [];
+  }
+  ssRenderList(id, q ? options.filter(o => o.includes(q)) : options);
+}
+
+function ssSelect(id, value) {
+  const hidden  = document.getElementById(`f-${id}`);
+  const display = document.getElementById(`ss-${id}-display`);
+  hidden.value  = value;
+  display.textContent = value;
+  display.classList.remove('text-slate-400');
+  display.classList.add('text-[#191c1e]');
+  ssClose(id);
+  clearError(id);
+
+  // ── Cascade: عند اختيار المنطقة → تهيئة قائمة المدن
+  if (id === 'region') {
+    const reg = SA_DATA.find(r => r.name === value);
+    // إعادة تعيين المدينة
+    document.getElementById('f-city').value = '';
+    const cityDisplay = document.getElementById('ss-city-display');
+    cityDisplay.textContent = 'اختر المدينة / المحافظة';
+    cityDisplay.classList.add('text-slate-400');
+    cityDisplay.classList.remove('text-[#191c1e]');
+    clearError('city');
+    // تفعيل قائمة المدن
+    const trigger = document.getElementById('ss-city-trigger');
+    trigger.disabled = false;
+    if (reg) ssRenderList('city', reg.cities);
+  }
+}
+
+// ── إغلاق عند الضغط خارج أي dropdown
+document.addEventListener('click', e => {
+  if (!SS_ACTIVE) return;
+  const wrap = document.getElementById(`wrap-${SS_ACTIVE}`);
+  if (wrap && !wrap.contains(e.target)) ssClose(SS_ACTIVE);
+});
 
 // ─── تحويل الأرقام العربية والفارسية إلى إنجليزية ───────────────────────────
 function toEnglish(str) {
@@ -383,7 +570,8 @@ function clearError(fieldName) {
   const el = document.getElementById('f-' + name);
   if (el) el.addEventListener('input', () => clearError(name));
 });
-document.getElementById('f-city')?.addEventListener('change', () => clearError('city'));
+// clearError للمنطقة والمدينة يتم داخل ssSelect مباشرةً
+document.getElementById('f-neighborhood')?.addEventListener('input', () => clearError('neighborhood'));
 
 // ─── إعداد حقلي الهوية والجوال ──────────────────────────────────────────────
 setupNumericOnly('f-id_number');
@@ -429,22 +617,51 @@ document.getElementById('applyForm').addEventListener('submit', function (e) {
   // ── العمر (إلزامي، 18-60)
   const ageVal = document.getElementById('f-age').value;
   const ageNum = parseInt(ageVal);
-  if (!ageVal || isNaN(ageNum) || ageNum < 18 || ageNum > 60) {
-    showError('age', 'العمر مطلوب ويجب أن يكون بين 18 و 60 سنة');
+  if (!ageVal || isNaN(ageNum) || ageNum < 23 || ageNum > 50) {
+    showError('age', 'العمر مطلوب ويجب أن يكون بين 23 و 50 سنة');
     if (!firstError) firstError = 'f-age';
     valid = false;
   } else {
     clearError('age');
   }
 
-  // ── المدينة
+  // ── المنطقة الإدارية
+  const region = document.getElementById('f-region').value;
+  if (!region) {
+    showError('region', 'يرجى اختيار المنطقة الإدارية');
+    if (!firstError) firstError = 'wrap-region';
+    valid = false;
+  } else {
+    clearError('region');
+  }
+
+  // ── المدينة / المحافظة
   const city = document.getElementById('f-city').value;
   if (!city) {
-    showError('city', 'يرجى اختيار مقر السكن');
-    if (!firstError) firstError = 'f-city';
+    showError('city', 'يرجى اختيار المدينة أو المحافظة');
+    if (!firstError) firstError = 'wrap-city';
     valid = false;
   } else {
     clearError('city');
+  }
+
+  // ── الحي (إلزامي)
+  const neighborhood = document.getElementById('f-neighborhood').value.trim();
+  if (!neighborhood) {
+    showError('neighborhood', 'يرجى كتابة اسم الحي');
+    if (!firstError) firstError = 'f-neighborhood';
+    valid = false;
+  } else {
+    clearError('neighborhood');
+  }
+
+  // ── الجنس (إلزامي)
+  if (!document.querySelector('input[name="gender"]:checked')) {
+    showError('gender', 'يرجى تحديد الجنس');
+    if (!firstError) firstError = 'wrap-gender';
+    valid = false;
+  } else {
+    clearError('gender');
   }
 
   // ── السيارة (إلزامي)

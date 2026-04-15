@@ -22,7 +22,13 @@ const NOTE_TYPES = {
   follow_up:  { label: 'متابعة',   icon: 'notifications_active' },
 };
 
-// Cities loaded from DB (not hardcoded anymore)
+// ─── المناطق الإدارية (ثابتة — التقسيم الإداري للمملكة العربية السعودية) ─────
+const REGIONS = [
+  'منطقة الرياض','منطقة مكة المكرمة','المنطقة الشرقية',
+  'منطقة المدينة المنورة','منطقة القصيم','منطقة عسير',
+  'منطقة تبوك','منطقة حائل','منطقة الحدود الشمالية',
+  'منطقة جازان','منطقة نجران','منطقة الباحة','منطقة الجوف',
+];
 
 // ─── Login ────────────────────────────────────────────────────────────────────
 
@@ -116,7 +122,7 @@ router.get('/dashboard', async (req, res) => {
 router.get('/applicants', async (req, res) => {
   try {
     const {
-      q = '', status = '', city = '', has_car = '', has_license = '',
+      q = '', status = '', region = '', has_car = '', has_license = '',
       age_min = '', age_max = '', date_from = '', date_to = '',
       sort = 'created_at', order = 'desc', page = '1'
     } = req.query;
@@ -132,8 +138,8 @@ router.get('/applicants', async (req, res) => {
       conditions.push('(full_name LIKE ? OR id_number LIKE ?)');
       params.push(`%${q}%`, `%${q}%`);
     }
-    if (status) { conditions.push('status = ?'); params.push(status); }
-    if (city)   { conditions.push('city = ?');   params.push(city); }
+    if (status) { conditions.push('status = ?');  params.push(status); }
+    if (region) { conditions.push('region = ?');  params.push(region); }
     if (has_car !== '')     { conditions.push('has_car = ?');     params.push(parseInt(has_car)); }
     if (has_license !== '') { conditions.push('has_license = ?'); params.push(parseInt(has_license)); }
     if (age_min) { conditions.push('age >= ?'); params.push(parseInt(age_min)); }
@@ -142,29 +148,27 @@ router.get('/applicants', async (req, res) => {
     if (date_to)   { conditions.push('DATE(created_at) <= ?'); params.push(date_to); }
 
     const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
-    const safeSort  = ['created_at', 'full_name', 'status', 'age', 'city', 'rating'].includes(sort) ? sort : 'created_at';
+    const safeSort  = ['created_at', 'full_name', 'status', 'age', 'region', 'rating'].includes(sort) ? sort : 'created_at';
     const safeOrder = order === 'asc' ? 'ASC' : 'DESC';
 
-    const [countRow, applicants, citiesRows] = await Promise.all([
+    const [countRow, applicants] = await Promise.all([
       db.get(`SELECT COUNT(*) as c FROM applicants ${where}`, params),
       db.all(`
-        SELECT id, full_name, id_number, phone, age, city, has_car, has_license,
+        SELECT id, full_name, id_number, phone, age, gender, region, city, has_car, has_license,
                status, rating, created_at
         FROM applicants ${where}
         ORDER BY ${safeSort} ${safeOrder}
         LIMIT ${PAGE_SIZE} OFFSET ${offset}
       `, params),
-      db.all('SELECT name FROM cities ORDER BY sort_order, id'),
     ]);
 
     const total = countRow?.c || 0;
     const totalPages = Math.ceil(total / PAGE_SIZE);
-    const CITIES = citiesRows.map(r => r.name);
 
     res.render('applicants', {
       applicants, total, totalPages, pageNum,
-      filters: { q, status, city, has_car, has_license, age_min, age_max, date_from, date_to, sort, order },
-      STATUS_META, CITIES, adminUser: req.session.adminUser
+      filters: { q, status, region, has_car, has_license, age_min, age_max, date_from, date_to, sort, order },
+      STATUS_META, REGIONS, adminUser: req.session.adminUser
     });
   } catch (err) {
     console.error('[Applicants GET]', err.message);
@@ -179,15 +183,15 @@ router.get('/applicants/export', async (req, res) => {
     const ExcelJS = require('exceljs');
 
     const {
-      q = '', status = '', city = '', has_car = '', has_license = '',
+      q = '', status = '', region = '', has_car = '', has_license = '',
       age_min = '', age_max = '', date_from = '', date_to = ''
     } = req.query;
 
     const conditions = [];
     const params = [];
     if (q) { conditions.push('(full_name LIKE ? OR id_number LIKE ?)'); params.push(`%${q}%`, `%${q}%`); }
-    if (status) { conditions.push('status = ?'); params.push(status); }
-    if (city)   { conditions.push('city = ?');   params.push(city); }
+    if (status) { conditions.push('status = ?');  params.push(status); }
+    if (region) { conditions.push('region = ?');  params.push(region); }
     if (has_car !== '')     { conditions.push('has_car = ?');     params.push(parseInt(has_car)); }
     if (has_license !== '') { conditions.push('has_license = ?'); params.push(parseInt(has_license)); }
     if (age_min) { conditions.push('age >= ?'); params.push(parseInt(age_min)); }
@@ -197,7 +201,7 @@ router.get('/applicants/export', async (req, res) => {
     const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
 
     const rows = await db.all(`
-      SELECT full_name, id_number, phone, age, city,
+      SELECT full_name, id_number, phone, age, gender, region, city, neighborhood,
              has_car, has_license, status, rating, created_at
       FROM applicants ${where} ORDER BY created_at DESC
     `, params);
@@ -211,7 +215,10 @@ router.get('/applicants/export', async (req, res) => {
       { header: 'رقم الهوية',        key: 'id_number',    width: 16 },
       { header: 'رقم الجوال',        key: 'phone',        width: 16 },
       { header: 'العمر',             key: 'age',          width: 8  },
+      { header: 'الجنس',             key: 'gender',       width: 10 },
+      { header: 'المنطقة',           key: 'region',       width: 22 },
       { header: 'المدينة',           key: 'city',         width: 16 },
+      { header: 'الحي',              key: 'neighborhood', width: 18 },
       { header: 'يمتلك سيارة',       key: 'has_car',      width: 14 },
       { header: 'رخصة قيادة',        key: 'has_license',  width: 14 },
       { header: 'الحالة',            key: 'status',       width: 18 },
@@ -228,6 +235,7 @@ router.get('/applicants/export', async (req, res) => {
       const statusLabel = STATUS_META[r.status]?.label || r.status;
       ws.addRow({
         ...r,
+        gender: r.gender === 'male' ? 'ذكر' : r.gender === 'female' ? 'أنثى' : '—',
         has_car: r.has_car ? 'نعم' : 'لا',
         has_license: r.has_license ? 'نعم' : 'لا',
         status: statusLabel,
@@ -376,106 +384,6 @@ router.delete('/applicants/:id', async (req, res) => {
   } catch (err) {
     console.error('[Applicant DELETE]', err.message);
     res.status(500).json({ error: 'خطأ في حذف المتقدم' });
-  }
-});
-
-// ─── Cities ───────────────────────────────────────────────────────────────────
-
-router.get('/cities', async (req, res) => {
-  try {
-    const cities = await db.all(`
-      SELECT c.id, c.name, c.sort_order,
-             COUNT(a.id) AS applicant_count
-      FROM cities c
-      LEFT JOIN applicants a ON a.city = c.name
-      GROUP BY c.id
-      ORDER BY c.sort_order, c.id
-    `);
-    res.render('cities', {
-      cities,
-      success: req.query.success || null,
-      error:   req.query.error   || null,
-      adminUser: req.session.adminUser,
-    });
-  } catch (err) {
-    console.error('[Cities GET]', err.message);
-    res.status(500).send('خطأ في تحميل المدن');
-  }
-});
-
-router.post('/cities', async (req, res) => {
-  try {
-    const name = (req.body.name || '').trim();
-    if (!name || name.length > 60)
-      return res.redirect('/admin/cities?error=' + encodeURIComponent('اسم المدينة مطلوب (حتى 60 حرفاً)'));
-
-    // الترتيب = آخر رقم + 1
-    const last = await db.get('SELECT MAX(sort_order) as m FROM cities');
-    const order = (last?.m ?? -1) + 1;
-
-    await db.run('INSERT INTO cities (name, sort_order) VALUES (?, ?)', [name, order]);
-    res.redirect('/admin/cities?success=' + encodeURIComponent(`تمت إضافة «${name}»`));
-  } catch (err) {
-    if (err.code === 'ER_DUP_ENTRY') {
-      return res.redirect('/admin/cities?error=' + encodeURIComponent('هذه المدينة موجودة مسبقاً'));
-    }
-    console.error('[Cities POST]', err.message);
-    res.redirect('/admin/cities?error=' + encodeURIComponent('حدث خطأ أثناء الإضافة'));
-  }
-});
-
-router.post('/cities/:id/delete', async (req, res) => {
-  try {
-    await db.run('DELETE FROM cities WHERE id = ?', [req.params.id]);
-    res.redirect('/admin/cities?success=' + encodeURIComponent('تم حذف المدينة'));
-  } catch (err) {
-    console.error('[Cities DELETE]', err.message);
-    res.redirect('/admin/cities?error=' + encodeURIComponent('حدث خطأ أثناء الحذف'));
-  }
-});
-
-router.post('/cities/:id/up', async (req, res) => {
-  try {
-    // جلب المدينة الحالية والتي قبلها
-    const city = await db.get('SELECT id, sort_order FROM cities WHERE id = ?', [req.params.id]);
-    if (!city) return res.redirect('/admin/cities');
-
-    const prev = await db.get(
-      'SELECT id, sort_order FROM cities WHERE sort_order < ? ORDER BY sort_order DESC LIMIT 1',
-      [city.sort_order]
-    );
-    if (prev) {
-      await Promise.all([
-        db.run('UPDATE cities SET sort_order = ? WHERE id = ?', [prev.sort_order, city.id]),
-        db.run('UPDATE cities SET sort_order = ? WHERE id = ?', [city.sort_order, prev.id]),
-      ]);
-    }
-    res.redirect('/admin/cities');
-  } catch (err) {
-    console.error('[Cities UP]', err.message);
-    res.redirect('/admin/cities');
-  }
-});
-
-router.post('/cities/:id/down', async (req, res) => {
-  try {
-    const city = await db.get('SELECT id, sort_order FROM cities WHERE id = ?', [req.params.id]);
-    if (!city) return res.redirect('/admin/cities');
-
-    const next = await db.get(
-      'SELECT id, sort_order FROM cities WHERE sort_order > ? ORDER BY sort_order ASC LIMIT 1',
-      [city.sort_order]
-    );
-    if (next) {
-      await Promise.all([
-        db.run('UPDATE cities SET sort_order = ? WHERE id = ?', [next.sort_order, city.id]),
-        db.run('UPDATE cities SET sort_order = ? WHERE id = ?', [city.sort_order, next.id]),
-      ]);
-    }
-    res.redirect('/admin/cities');
-  } catch (err) {
-    console.error('[Cities DOWN]', err.message);
-    res.redirect('/admin/cities');
   }
 });
 

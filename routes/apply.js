@@ -56,18 +56,21 @@ router.post('/', (req, res) => {
     }
 
     try {
-      const { full_name, id_number, phone, age, city, has_car, has_license } = req.body;
+      const { full_name, id_number, phone, age, gender, region, city, neighborhood, has_car, has_license } = req.body;
 
       // Basic validation
       const errors = [];
-      if (!full_name || full_name.trim().length < 5)          errors.push('الاسم الرباعي مطلوب (5 أحرف على الأقل)');
-      if (!id_number || !/^\d{10}$/.test(id_number.trim()))   errors.push('رقم الهوية يجب أن يكون 10 أرقام');
-      if (!phone || !/^05\d{8}$/.test(phone.trim()))          errors.push('رقم الجوال غير صحيح');
+      if (!full_name || full_name.trim().length < 5)            errors.push('الاسم الرباعي مطلوب (5 أحرف على الأقل)');
+      if (!id_number || !/^\d{10}$/.test(id_number.trim()))     errors.push('رقم الهوية يجب أن يكون 10 أرقام');
+      if (!phone || !/^05\d{8}$/.test(phone.trim()))            errors.push('رقم الجوال غير صحيح');
       const ageInt = parseInt(age);
-      if (!age || isNaN(ageInt) || ageInt < 18 || ageInt > 60) errors.push('العمر مطلوب ويجب أن يكون بين 18 و 60 سنة');
-      if (!city)                                               errors.push('مقر السكن مطلوب');
-      if (has_car !== 'yes' && has_car !== 'no')               errors.push('يرجى تحديد ما إذا كنت تمتلك سيارة');
-      if (has_license !== 'yes' && has_license !== 'no')       errors.push('يرجى تحديد ما إذا كان لديك رخصة قيادة');
+      if (!age || isNaN(ageInt) || ageInt < 23 || ageInt > 50)  errors.push('العمر مطلوب ويجب أن يكون بين 23 و 50 سنة');
+      if (!region || !region.trim())                            errors.push('المنطقة الإدارية مطلوبة');
+      if (!city || !city.trim())                                errors.push('المدينة أو المحافظة مطلوبة');
+      if (!neighborhood || !neighborhood.trim())                errors.push('اسم الحي مطلوب');
+      if (gender !== 'male' && gender !== 'female')              errors.push('يرجى تحديد الجنس');
+      if (has_car !== 'yes' && has_car !== 'no')                errors.push('يرجى تحديد ما إذا كنت تمتلك سيارة');
+      if (has_license !== 'yes' && has_license !== 'no')        errors.push('يرجى تحديد ما إذا كان لديك رخصة قيادة');
 
       if (errors.length) {
         return res.status(400).send(`
@@ -110,14 +113,17 @@ router.post('/', (req, res) => {
 
       const result = await db.run(
         `INSERT INTO applicants
-          (full_name, id_number, phone, age, city, has_car, has_license, cv_path, id_image_path)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (full_name, id_number, phone, age, gender, region, city, neighborhood, has_car, has_license, cv_path, id_image_path)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           full_name.trim(),
           id_number.trim(),
           phone.trim(),
-          age ? parseInt(age) : null,
-          city,
+          ageInt,
+          gender,
+          region.trim(),
+          city.trim(),
+          neighborhood ? neighborhood.trim() : null,
           has_car === 'yes' ? 1 : 0,
           has_license === 'yes' ? 1 : 0,
           cvFile ? cvFile.filename : null,

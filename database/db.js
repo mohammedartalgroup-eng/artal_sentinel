@@ -119,25 +119,23 @@ async function initialize() {
       ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
     `);
 
-    await conn.query(`
-      CREATE TABLE IF NOT EXISTS cities (
-        id         INT AUTO_INCREMENT PRIMARY KEY,
-        name       VARCHAR(60)  NOT NULL UNIQUE,
-        sort_order INT          NOT NULL DEFAULT 0,
-        created_at DATETIME     DEFAULT CURRENT_TIMESTAMP
-      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
-    `);
+    // ─── ترحيل: إضافة gender إلى applicants إن لم يكن موجوداً
+    const [gCols] = await conn.query("SHOW COLUMNS FROM applicants LIKE 'gender'");
+    if (gCols.length === 0) {
+      await conn.query("ALTER TABLE applicants ADD COLUMN gender VARCHAR(6) AFTER age");
+      console.log('[DB] Migration: added column gender');
+    }
 
-    // ─── مدن افتراضية
-    const defaultCities = [
-      'الرياض','جدة','الدمام','مكة المكرمة','المدينة المنورة',
-      'الطائف','القصيم','أبها','تبوك','حائل','أخرى'
-    ];
-    for (const [i, city] of defaultCities.entries()) {
-      await conn.query(
-        'INSERT IGNORE INTO cities (name, sort_order) VALUES (?, ?)',
-        [city, i]
-      );
+    // ─── ترحيل: إضافة region و neighborhood إلى applicants إن لم تكونا موجودتين
+    const [rCols] = await conn.query("SHOW COLUMNS FROM applicants LIKE 'region'");
+    if (rCols.length === 0) {
+      await conn.query("ALTER TABLE applicants ADD COLUMN region VARCHAR(60) AFTER city");
+      console.log('[DB] Migration: added column region');
+    }
+    const [nCols] = await conn.query("SHOW COLUMNS FROM applicants LIKE 'neighborhood'");
+    if (nCols.length === 0) {
+      await conn.query("ALTER TABLE applicants ADD COLUMN neighborhood VARCHAR(100) AFTER region");
+      console.log('[DB] Migration: added column neighborhood');
     }
 
     // ─── الإعدادات الافتراضية

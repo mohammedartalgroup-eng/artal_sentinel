@@ -76,13 +76,13 @@
             </select>
           </div>
 
-          <!-- City -->
+          <!-- Region -->
           <div>
-            <label class="block text-xs text-[#43474f] font-semibold mb-1">المدينة</label>
-            <select name="city">
+            <label class="block text-xs text-[#43474f] font-semibold mb-1">المنطقة</label>
+            <select name="region">
               <option value="">الكل</option>
-              <% CITIES.forEach(c => { %>
-              <option value="<%= c %>" <%= filters.city === c ? 'selected' : '' %>><%= c %></option>
+              <% REGIONS.forEach(r => { %>
+              <option value="<%= r %>" <%= filters.region === r ? 'selected' : '' %>><%= r %></option>
               <% }) %>
             </select>
           </div>
@@ -173,7 +173,8 @@
               <th class="text-right px-4 py-4 font-semibold">الهوية</th>
               <th class="text-right px-4 py-4 font-semibold">الجوال</th>
               <th class="text-right px-4 py-4 font-semibold">العمر</th>
-              <th class="text-right px-4 py-4 font-semibold">المدينة</th>
+              <th class="text-center px-4 py-4 font-semibold">الجنس</th>
+              <th class="text-right px-4 py-4 font-semibold">المنطقة / المدينة</th>
               <th class="text-center px-4 py-4 font-semibold">سيارة</th>
               <th class="text-center px-4 py-4 font-semibold">رخصة</th>
               <th class="text-right px-4 py-4 font-semibold">الحالة</th>
@@ -197,7 +198,21 @@
               <td class="px-4 py-3.5 text-[#43474f] font-mono text-xs"><%= a.id_number %></td>
               <td class="px-4 py-3.5 text-[#43474f]" dir="ltr"><%= a.phone %></td>
               <td class="px-4 py-3.5 text-[#43474f]"><%= a.age || '—' %></td>
-              <td class="px-4 py-3.5 text-[#43474f]"><%= a.city || '—' %></td>
+              <td class="px-4 py-3.5 text-center text-xs font-medium">
+                <% if (a.gender === 'male') { %>
+                <span class="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">ذكر</span>
+                <% } else if (a.gender === 'female') { %>
+                <span class="px-2 py-0.5 rounded-full bg-pink-100 text-pink-700">أنثى</span>
+                <% } else { %>
+                <span class="text-[#c4c6d0]">—</span>
+                <% } %>
+              </td>
+              <td class="px-4 py-3.5 text-[#43474f]">
+                <% if (a.region) { %>
+                <div class="text-xs text-[#7594ca] font-medium"><%= a.region.replace('منطقة ','').replace('المنطقة ','') %></div>
+                <% } %>
+                <div><%= a.city || '—' %></div>
+              </td>
               <td class="px-4 py-3.5 text-center">
                 <span class="material-symbols-outlined text-base <%= a.has_car ? 'text-green-600' : 'text-[#c4c6d0]' %>">
                   <%= a.has_car ? 'directions_car' : 'block' %>
