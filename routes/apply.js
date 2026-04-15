@@ -5,36 +5,41 @@ const upload = require('../middleware/upload');
 const path = require('path');
 
 // GET /apply — public application form
-router.get('/', (req, res) => {
-  const accepting = db.prepare("SELECT value FROM settings WHERE key = 'accepting_applications'").get();
-  if (accepting && accepting.value === 'false') {
-    return res.status(503).send(`
-      <!DOCTYPE html>
-      <html dir="rtl" lang="ar">
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Artal Security — التوظيف</title>
-        <script src="https://cdn.tailwindcss.com"></script>
-      </head>
-      <body class="min-h-screen flex items-center justify-center" style="background:#001736">
-        <div class="text-center text-white p-8 max-w-md">
-          <div class="text-6xl mb-6">🔒</div>
-          <h1 class="text-2xl font-bold mb-4">التوظيف متوقف مؤقتاً</h1>
-          <p class="text-slate-300">شكراً لاهتمامك بالانضمام إلى فريقنا.<br>نحن لا نستقبل طلبات حالياً — يرجى المراجعة لاحقاً.</p>
-        </div>
-      </body>
-      </html>
-    `);
+router.get('/', async (req, res) => {
+  try {
+    const setting = await db.get("SELECT value FROM settings WHERE `key` = 'accepting_applications'");
+    if (setting && setting.value === 'false') {
+      return res.status(503).send(`
+        <!DOCTYPE html>
+        <html dir="rtl" lang="ar">
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>أرطال للحراسة الأمنية</title>
+          <script src="https://cdn.tailwindcss.com"></script>
+        </head>
+        <body class="min-h-screen flex items-center justify-center" style="background:#001736">
+          <div class="text-center text-white p-8 max-w-md">
+            <div class="text-6xl mb-6">🔒</div>
+            <h1 class="text-2xl font-bold mb-4">التوظيف متوقف مؤقتاً</h1>
+            <p class="text-slate-300">شكراً لاهتمامك بالانضمام إلى فريقنا.<br>نحن لا نستقبل طلبات حالياً — يرجى المراجعة لاحقاً.</p>
+          </div>
+        </body>
+        </html>
+      `);
+    }
+    res.sendFile(path.join(__dirname, '..', 'public', 'apply', 'index.html'));
+  } catch (err) {
+    console.error('[Apply GET]', err.message);
+    res.sendFile(path.join(__dirname, '..', 'public', 'apply', 'index.html'));
   }
-  res.sendFile(path.join(__dirname, '..', 'public', 'apply', 'index.html'));
 });
 
 // POST /apply — process application submission
 router.post(
   '/',
   upload.fields([{ name: 'cv', maxCount: 1 }, { name: 'id_image', maxCount: 1 }]),
-  (req, res) => {
+  async (req, res) => {
     try {
       const { full_name, id_number, phone, age, city, has_car, has_license } = req.body;
 
@@ -42,7 +47,7 @@ router.post(
       const errors = [];
       if (!full_name || full_name.trim().length < 5) errors.push('الاسم الرباعي مطلوب');
       if (!id_number || !/^\d{10}$/.test(id_number.trim())) errors.push('رقم الهوية يجب أن يكون 10 أرقام');
-      if (!phone || !/^05\d{8}$/.test(phone.trim())) errors.push('رقم الجوال غير صحيح (يجب أن يبدأ بـ 05)');
+      if (!phone || !/^05\d{8}$/.test(phone.trim())) errors.push('رقم الجوال غير صحيح');
       if (!city) errors.push('مقر السكن مطلوب');
 
       if (errors.length) {
@@ -62,7 +67,10 @@ router.post(
       }
 
       // Check duplicate ID
-      const existing = db.prepare('SELECT id FROM applicants WHERE id_number = ?').get(id_number.trim());
+      const existing = await db.get(
+        'SELECT id FROM applicants WHERE id_number = ?',
+        [id_number.trim()]
+      );
       if (existing) {
         return res.status(409).send(`
           <!DOCTYPE html><html dir="rtl" lang="ar">
@@ -81,27 +89,28 @@ router.post(
       const cvFile = req.files?.cv?.[0];
       const idFile = req.files?.id_image?.[0];
 
-      const result = db.prepare(`
-        INSERT INTO applicants
+      const result = await db.run(
+        `INSERT INTO applicants
           (full_name, id_number, phone, age, city, has_car, has_license, cv_path, id_image_path)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        full_name.trim(),
-        id_number.trim(),
-        phone.trim(),
-        age ? parseInt(age) : null,
-        city,
-        has_car === 'yes' ? 1 : 0,
-        has_license === 'yes' ? 1 : 0,
-        cvFile ? cvFile.filename : null,
-        idFile ? idFile.filename : null
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          full_name.trim(),
+          id_number.trim(),
+          phone.trim(),
+          age ? parseInt(age) : null,
+          city,
+          has_car === 'yes' ? 1 : 0,
+          has_license === 'yes' ? 1 : 0,
+          cvFile ? cvFile.filename : null,
+          idFile ? idFile.filename : null,
+        ]
       );
 
-      db.logActivity(result.lastInsertRowid, 'تقديم جديد', null, 'pending');
+      await db.logActivity(result.insertId, 'تقديم جديد', null, 'pending');
 
       res.redirect('/success');
     } catch (err) {
-      console.error('[Apply] Error:', err.message);
+      console.error('[Apply POST]', err.message);
       res.status(500).send(`
         <!DOCTYPE html><html dir="rtl"><body style="text-align:center;padding:4rem;font-family:sans-serif">
           <h2 style="color:#ba1a1a">حدث خطأ أثناء إرسال الطلب</h2>

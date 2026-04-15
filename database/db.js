@@ -1,126 +1,160 @@
-const Database = require('better-sqlite3');
+const mysql = require('mysql2/promise');
 const bcrypt = require('bcryptjs');
-const path = require('path');
-const fs = require('fs');
 
-// ─── مسار قاعدة البيانات ────────────────────────────────────────────────────
-// على السيرفر: اضبط متغير البيئة DB_PATH لمسار خارج مجلد المشروع
-//   مثال: DB_PATH=/var/artal-sentinel/artal.db
-// محلياً: يستخدم مجلد data/ داخل المشروع تلقائياً
-const DATA_DIR = process.env.DB_PATH
-  ? path.dirname(process.env.DB_PATH)
-  : path.join(__dirname, '..', 'data');
+// ─── Connection Pool ─────────────────────────────────────────────────────────
 
-const DB_PATH = process.env.DB_PATH
-  ? process.env.DB_PATH
-  : path.join(DATA_DIR, 'artal.db');
+const pool = mysql.createPool({
+  host:     process.env.DB_HOST || 'localhost',
+  port:     parseInt(process.env.DB_PORT) || 3306,
+  user:     process.env.DB_USER,
+  password: process.env.DB_PASS,
+  database: process.env.DB_NAME,
+  waitForConnections: true,
+  connectionLimit: 10,
+  charset: 'utf8mb4',
+  timezone: '+00:00',
+  decimalNumbers: true
+});
 
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+// ─── Helper Methods ──────────────────────────────────────────────────────────
 
-const db = new Database(DB_PATH);
-
-// Performance settings
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
-db.pragma('synchronous = NORMAL');
-
-// ─── Schema ────────────────────────────────────────────────────────────────
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS applicants (
-    id               INTEGER PRIMARY KEY AUTOINCREMENT,
-    full_name        TEXT    NOT NULL,
-    id_number        TEXT    NOT NULL UNIQUE,
-    phone            TEXT    NOT NULL,
-    age              INTEGER,
-    city             TEXT,
-    has_car          INTEGER DEFAULT 0,
-    has_license      INTEGER DEFAULT 0,
-    cv_path          TEXT,
-    id_image_path    TEXT,
-    status           TEXT    NOT NULL DEFAULT 'pending',
-    rating           INTEGER NOT NULL DEFAULT 0,
-    created_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at       DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE IF NOT EXISTS applicant_notes (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    applicant_id INTEGER NOT NULL,
-    content      TEXT    NOT NULL,
-    type         TEXT    NOT NULL DEFAULT 'note',
-    created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (applicant_id) REFERENCES applicants(id) ON DELETE CASCADE
-  );
-
-  CREATE TABLE IF NOT EXISTS applicant_activity (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    applicant_id INTEGER NOT NULL,
-    action       TEXT    NOT NULL,
-    old_value    TEXT,
-    new_value    TEXT,
-    created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (applicant_id) REFERENCES applicants(id) ON DELETE CASCADE
-  );
-
-  CREATE TABLE IF NOT EXISTS settings (
-    key        TEXT PRIMARY KEY,
-    value      TEXT NOT NULL DEFAULT '',
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE IF NOT EXISTS admin_users (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    username      TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_applicants_status     ON applicants(status);
-  CREATE INDEX IF NOT EXISTS idx_applicants_city       ON applicants(city);
-  CREATE INDEX IF NOT EXISTS idx_applicants_created_at ON applicants(created_at);
-  CREATE INDEX IF NOT EXISTS idx_notes_applicant       ON applicant_notes(applicant_id);
-  CREATE INDEX IF NOT EXISTS idx_activity_applicant    ON applicant_activity(applicant_id);
-`);
-
-// ─── Default Settings ───────────────────────────────────────────────────────
-
-const insertSetting = db.prepare(
-  'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)'
-);
-
-[
-  ['phone',                   '+966 500 000 000'],
-  ['email',                   'recruitment@artal.com'],
-  ['address',                 'الرياض، المملكة العربية السعودية'],
-  ['company_name',            'Artal Security Guards'],
-  ['accepting_applications',  'true'],
-].forEach(([k, v]) => insertSetting.run(k, v));
-
-// ─── Default Admin ──────────────────────────────────────────────────────────
-
-const adminExists = db.prepare('SELECT id FROM admin_users LIMIT 1').get();
-if (!adminExists) {
-  const hash = bcrypt.hashSync('admin123', 12);
-  db.prepare('INSERT INTO admin_users (username, password_hash) VALUES (?, ?)')
-    .run('admin', hash);
-  console.log('[DB] Default admin created — username: admin / password: admin123');
-}
-
-// ─── Helper: log activity ───────────────────────────────────────────────────
-
-db.logActivity = function (applicantId, action, oldVal = null, newVal = null) {
-  this.prepare(`
-    INSERT INTO applicant_activity (applicant_id, action, old_value, new_value)
-    VALUES (?, ?, ?, ?)
-  `).run(applicantId, action, oldVal, newVal);
+// جلب صف واحد
+pool.get = async function (sql, params = []) {
+  const [rows] = await this.execute(sql, params);
+  return rows[0] || null;
 };
 
-// ─── Helper: get settings map ──────────────────────────────────────────────
+// جلب جميع الصفوف
+pool.all = async function (sql, params = []) {
+  const [rows] = await this.execute(sql, params);
+  return rows;
+};
 
-db.getSettings = function () {
-  const rows = this.prepare('SELECT key, value FROM settings').all();
+// تنفيذ INSERT / UPDATE / DELETE
+pool.run = async function (sql, params = []) {
+  const [result] = await this.execute(sql, params);
+  return { insertId: result.insertId, affectedRows: result.affectedRows };
+};
+
+// تسجيل نشاط
+pool.logActivity = async function (applicantId, action, oldVal = null, newVal = null) {
+  await this.run(
+    'INSERT INTO applicant_activity (applicant_id, action, old_value, new_value) VALUES (?, ?, ?, ?)',
+    [applicantId, action, oldVal, newVal]
+  );
+};
+
+// جلب الإعدادات كـ object
+pool.getSettings = async function () {
+  const rows = await this.all('SELECT `key`, value FROM settings');
   return Object.fromEntries(rows.map(r => [r.key, r.value]));
 };
 
-module.exports = db;
+// ─── Schema ──────────────────────────────────────────────────────────────────
+
+async function initialize() {
+  const conn = await pool.getConnection();
+  try {
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS applicants (
+        id            INT AUTO_INCREMENT PRIMARY KEY,
+        full_name     VARCHAR(200) NOT NULL,
+        id_number     VARCHAR(10)  NOT NULL UNIQUE,
+        phone         VARCHAR(10)  NOT NULL,
+        age           TINYINT UNSIGNED,
+        city          VARCHAR(60),
+        has_car       TINYINT(1)   NOT NULL DEFAULT 0,
+        has_license   TINYINT(1)   NOT NULL DEFAULT 0,
+        cv_path       VARCHAR(255),
+        id_image_path VARCHAR(255),
+        status        VARCHAR(20)  NOT NULL DEFAULT 'pending',
+        rating        TINYINT      NOT NULL DEFAULT 0,
+        created_at    DATETIME     DEFAULT CURRENT_TIMESTAMP,
+        updated_at    DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_status     (status),
+        INDEX idx_city       (city),
+        INDEX idx_created_at (created_at)
+      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+    `);
+
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS applicant_notes (
+        id           INT AUTO_INCREMENT PRIMARY KEY,
+        applicant_id INT          NOT NULL,
+        content      TEXT         NOT NULL,
+        type         VARCHAR(20)  NOT NULL DEFAULT 'note',
+        created_at   DATETIME     DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (applicant_id) REFERENCES applicants(id) ON DELETE CASCADE,
+        INDEX idx_applicant (applicant_id)
+      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+    `);
+
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS applicant_activity (
+        id           INT AUTO_INCREMENT PRIMARY KEY,
+        applicant_id INT          NOT NULL,
+        action       VARCHAR(100) NOT NULL,
+        old_value    VARCHAR(255),
+        new_value    VARCHAR(255),
+        created_at   DATETIME     DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (applicant_id) REFERENCES applicants(id) ON DELETE CASCADE,
+        INDEX idx_applicant (applicant_id)
+      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+    `);
+
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS settings (
+        \`key\`      VARCHAR(50)  PRIMARY KEY,
+        value        TEXT         NOT NULL DEFAULT '',
+        updated_at   DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+    `);
+
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS admin_users (
+        id            INT AUTO_INCREMENT PRIMARY KEY,
+        username      VARCHAR(50)  UNIQUE NOT NULL,
+        password_hash VARCHAR(255) NOT NULL,
+        created_at    DATETIME     DEFAULT CURRENT_TIMESTAMP
+      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+    `);
+
+    // ─── الإعدادات الافتراضية
+    const defaults = [
+      ['phone',                  '+966 500 000 000'],
+      ['email',                  'recruitment@artal.com'],
+      ['address',                'الرياض، المملكة العربية السعودية'],
+      ['company_name',           'Artal Security Guards'],
+      ['accepting_applications', 'true'],
+    ];
+    for (const [k, v] of defaults) {
+      await conn.query(
+        'INSERT IGNORE INTO settings (`key`, value) VALUES (?, ?)',
+        [k, v]
+      );
+    }
+
+    // ─── مستخدم أدمن افتراضي
+    const [admins] = await conn.query('SELECT id FROM admin_users LIMIT 1');
+    if (admins.length === 0) {
+      const hash = await bcrypt.hash('admin123', 12);
+      await conn.query(
+        'INSERT INTO admin_users (username, password_hash) VALUES (?, ?)',
+        ['admin', hash]
+      );
+      console.log('[DB] Default admin created — username: admin / password: admin123');
+    }
+
+    console.log('[DB] MySQL connected & schema ready ✓');
+  } finally {
+    conn.release();
+  }
+}
+
+// تشغيل الـ initialization فور تحميل الوحدة
+initialize().catch(err => {
+  console.error('[DB] Initialization failed:', err.message);
+  process.exit(1);
+});
+
+module.exports = pool;
