@@ -3,8 +3,17 @@ const bcrypt = require('bcryptjs');
 const path = require('path');
 const fs = require('fs');
 
-const DATA_DIR = path.join(__dirname, '..', 'data');
-const DB_PATH = path.join(DATA_DIR, 'artal.db');
+// ─── مسار قاعدة البيانات ────────────────────────────────────────────────────
+// على السيرفر: اضبط متغير البيئة DB_PATH لمسار خارج مجلد المشروع
+//   مثال: DB_PATH=/var/artal-sentinel/artal.db
+// محلياً: يستخدم مجلد data/ داخل المشروع تلقائياً
+const DATA_DIR = process.env.DB_PATH
+  ? path.dirname(process.env.DB_PATH)
+  : path.join(__dirname, '..', 'data');
+
+const DB_PATH = process.env.DB_PATH
+  ? process.env.DB_PATH
+  : path.join(DATA_DIR, 'artal.db');
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 

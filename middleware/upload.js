@@ -2,7 +2,9 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
-const UPLOAD_ROOT = path.join(__dirname, '..', 'uploads');
+// على السيرفر: اضبط UPLOADS_PATH لمسار خارج مجلد المشروع
+// مثال: UPLOADS_PATH=/var/artal-sentinel/uploads
+const UPLOAD_ROOT = process.env.UPLOADS_PATH || path.join(__dirname, '..', 'uploads');
 
 // Storage engine — separate folders per file type
 const storage = multer.diskStorage({

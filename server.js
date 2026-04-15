@@ -4,6 +4,9 @@ const SQLiteStore = require('connect-sqlite3')(session);
 const path = require('path');
 const fs = require('fs');
 
+// تحميل متغيرات البيئة من .env إن وُجد
+try { require('dotenv').config(); } catch(e) { /* dotenv اختياري */ }
+
 // Initialize DB — runs migrations on first boot
 require('./database/db');
 
