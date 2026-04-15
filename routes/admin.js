@@ -537,4 +537,122 @@ router.get('/audit', requireManager, async (req, res) => {
   }
 });
 
+// ─── Employee Performance ─────────────────────────────────────────────────────
+
+router.get('/performance', requireManager, async (req, res) => {
+  try {
+    const { period = '30', date_from = '', date_to = '' } = req.query;
+
+    let fromDate, toDate;
+    const now = new Date();
+    if (date_from && date_to) {
+      fromDate = date_from;
+      toDate   = date_to;
+    } else {
+      const days = parseInt(period) || 30;
+      const from = new Date(now);
+      from.setDate(now.getDate() - days + 1);
+      fromDate = from.toISOString().split('T')[0];
+      toDate   = now.toISOString().split('T')[0];
+    }
+
+    const periodDays = Math.max(1,
+      Math.round((new Date(toDate) - new Date(fromDate)) / 86400000) + 1
+    );
+
+    const employees = await db.all(`
+      SELECT
+        u.id,
+        u.username,
+        u.is_active,
+        u.last_login,
+        COUNT(CASE WHEN a.action NOT IN ('login','logout') THEN 1 END)
+          AS total_actions,
+        COUNT(DISTINCT CASE WHEN a.action NOT IN ('login','logout') THEN DATE(a.created_at) END)
+          AS active_days,
+        COUNT(CASE WHEN a.action = 'status_change'  THEN 1 END)
+          AS status_changes,
+        COUNT(CASE WHEN a.action = 'note_add'       THEN 1 END)
+          AS notes_total,
+        COUNT(CASE WHEN a.action = 'note_add' AND a.details LIKE 'مكالمة:%' THEN 1 END)
+          AS calls,
+        COUNT(CASE WHEN a.action = 'note_add' AND a.details LIKE 'مقابلة:%' THEN 1 END)
+          AS interviews,
+        COUNT(CASE WHEN a.action = 'note_add' AND a.details LIKE 'متابعة:%' THEN 1 END)
+          AS follow_ups,
+        COUNT(CASE WHEN a.action = 'rating_change'  THEN 1 END)
+          AS ratings_given,
+        COUNT(DISTINCT CASE WHEN a.target_type = 'applicant' THEN a.target_id END)
+          AS unique_applicants,
+        MAX(CASE WHEN a.action NOT IN ('login','logout') THEN a.created_at END)
+          AS last_action_at,
+        (SELECT MAX(al2.created_at) FROM audit_log al2
+         WHERE al2.user_id = u.id AND al2.action NOT IN ('login','logout'))
+          AS overall_last_action
+      FROM admin_users u
+      LEFT JOIN audit_log a
+        ON a.user_id = u.id
+        AND DATE(a.created_at) >= ? AND DATE(a.created_at) <= ?
+      WHERE u.role = 'employee'
+      GROUP BY u.id
+      ORDER BY total_actions DESC
+    `, [fromDate, toDate]);
+
+    // تحويل وإثراء البيانات
+    const nowTs = Date.now();
+    const enriched = employees.map(e => {
+      const ta           = Number(e.total_actions);
+      const calls        = Number(e.calls);
+      const interviews   = Number(e.interviews);
+      const follow_ups   = Number(e.follow_ups);
+      const notes_total  = Number(e.notes_total);
+      const overallLast  = e.overall_last_action ? new Date(e.overall_last_action) : null;
+      const daysSince    = overallLast
+        ? Math.floor((nowTs - overallLast.getTime()) / 86400000)
+        : null;
+
+      return {
+        ...e,
+        total_actions:     ta,
+        active_days:       Number(e.active_days),
+        status_changes:    Number(e.status_changes),
+        notes_total,
+        calls,
+        interviews,
+        follow_ups,
+        plain_notes:       Math.max(0, notes_total - calls - interviews - follow_ups),
+        ratings_given:     Number(e.ratings_given),
+        unique_applicants: Number(e.unique_applicants),
+        days_since_overall: daysSince,
+      };
+    });
+
+    const totalTeamActions    = enriched.reduce((s, e) => s + e.total_actions,     0);
+    const totalTeamApplicants = enriched.reduce((s, e) => s + e.unique_applicants,  0);
+    const maxActions          = enriched.length ? enriched[0].total_actions : 1; // sorted desc
+
+    enriched.forEach(e => {
+      e.action_share = totalTeamActions > 0
+        ? Math.round(e.total_actions / totalTeamActions * 100)
+        : 0;
+      e.bar_pct = maxActions > 0
+        ? Math.round(e.total_actions / maxActions * 100)
+        : 0;
+    });
+
+    res.render('performance', {
+      employees: enriched,
+      periodDays,
+      totalTeamActions,
+      totalTeamApplicants,
+      filters: { period, date_from, date_to },
+      fromDate,
+      toDate,
+    });
+  } catch (err) {
+    console.error('[Performance GET]', err.message);
+    res.status(500).send('خطأ في تحميل تقرير الأداء');
+  }
+});
+
 module.exports = router;

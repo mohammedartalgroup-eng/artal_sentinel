@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>أداء الموظفين — أرتال Sentinel</title>
+  <link rel="icon" type="image/png" href="/images/icon.png">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; background: #f2f4f6; }
+    h1,h2,h3 { font-family: 'Manrope', sans-serif; }
+    .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+    select, input[type="date"] {
+      background: white; border: 1px solid #e0e3e5; border-radius: 0.75rem;
+      padding: 0.45rem 0.75rem; font-size: 0.8rem; outline: none; transition: border-color .15s;
+    }
+    select:focus, input:focus { border-color: #7594ca; }
+    .kpi-val  { font-family: 'Manrope', sans-serif; font-size: 1.65rem; font-weight: 800; line-height: 1; }
+    .kpi-lbl  { font-size: 0.7rem; color: #6b7280; margin-top: 4px; }
+    .bar-track { background: #e8ecf0; border-radius: 999px; height: 6px; overflow: hidden; }
+    .bar-fill  { height: 100%; border-radius: 999px; transition: width .4s; }
+  </style>
+</head>
+<body class="text-[#191c1e]">
+<%- include('partials/sidebar', { currentPage: 'performance' }) %>
+
+<%
+  function timeSince(date) {
+    if (!date) return null;
+    const diff  = Date.now() - new Date(date).getTime();
+    const mins  = Math.floor(diff / 60000);
+    if (mins < 60)  return `منذ ${mins || 1} دقيقة`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs  < 24)  return `منذ ${hrs} ساعة`;
+    const days = Math.floor(hrs / 24);
+    if (days === 1) return 'منذ أمس';
+    if (days <  7)  return `منذ ${days} أيام`;
+    return new Date(date).toLocaleDateString('ar-SA');
+  }
+
+  function actLevel(e, periodDays) {
+    if (e.active_days === 0)                          return 'none';
+    if (e.active_days >= Math.ceil(periodDays * 0.6)) return 'high';
+    if (e.active_days >= Math.ceil(periodDays * 0.3)) return 'mid';
+    return 'low';
+  }
+
+  const LEVEL = {
+    high: { border: 'border-l-[3px] border-l-emerald-500', dot: 'bg-emerald-500', label: 'نشاط عالٍ',    lc: 'text-emerald-600 bg-emerald-50' },
+    mid:  { border: 'border-l-[3px] border-l-amber-400',   dot: 'bg-amber-400',   label: 'نشاط متوسط',  lc: 'text-amber-600  bg-amber-50'  },
+    low:  { border: 'border-l-[3px] border-l-orange-400',  dot: 'bg-orange-400',  label: 'نشاط محدود',  lc: 'text-orange-600 bg-orange-50' },
+    none: { border: 'border-l-[3px] border-l-red-400',     dot: 'bg-red-400',     label: 'لا نشاط',     lc: 'text-red-600    bg-red-50'    },
+  };
+%>
+
+<div class="mr-64 min-h-screen">
+
+  <!-- Top bar -->
+  <header class="bg-white border-b border-[#eceef0] px-8 py-5 flex items-center justify-between sticky top-0 z-30">
+    <div>
+      <h1 class="text-xl font-bold text-[#001736]">أداء الموظفين</h1>
+      <p class="text-xs text-[#43474f] mt-0.5">
+        الفترة: <strong><%= fromDate %></strong> — <strong><%= toDate %></strong>
+        &nbsp;·&nbsp; <strong><%= periodDays %></strong> يوم
+      </p>
+    </div>
+    <!-- Period selector -->
+    <form method="GET" action="/admin/performance" class="flex items-center gap-2" id="periodForm">
+      <%
+        const periods = [
+          { val: '7',  label: '٧ أيام'  },
+          { val: '30', label: '٣٠ يوم'  },
+          { val: '90', label: '٩٠ يوم'  },
+        ];
+        const activePeriod = filters.date_from ? 'custom' : (filters.period || '30');
+      %>
+      <% periods.forEach(p => { %>
+        <a href="/admin/performance?period=<%= p.val %>"
+           class="px-3.5 py-1.5 rounded-lg text-xs font-medium transition-colors
+                  <%= activePeriod === p.val ? 'bg-[#001736] text-white' : 'bg-white border border-[#e0e3e5] text-[#43474f] hover:bg-[#f2f4f6]' %>">
+          <%= p.label %>
+        </a>
+      <% }) %>
+      <button type="button" onclick="toggleCustom()"
+         class="px-3.5 py-1.5 rounded-lg text-xs font-medium transition-colors border
+                <%= activePeriod === 'custom' ? 'bg-[#001736] text-white border-[#001736]' : 'bg-white border-[#e0e3e5] text-[#43474f] hover:bg-[#f2f4f6]' %>">
+        مخصص
+      </button>
+      <div id="customDates" class="<%= activePeriod === 'custom' ? 'flex' : 'hidden' %> items-center gap-2">
+        <input type="date" name="date_from" value="<%= filters.date_from || '' %>" required>
+        <span class="text-xs text-[#6b7280]">إلى</span>
+        <input type="date" name="date_to"   value="<%= filters.date_to   || '' %>" required>
+        <button type="submit"
+          class="bg-[#001736] text-white text-xs px-3 py-1.5 rounded-lg hover:bg-[#002a5c] transition-colors">
+          تطبيق
+        </button>
+      </div>
+    </form>
+  </header>
+
+  <main class="p-8 space-y-6">
+
+    <% if (employees.length === 0) { %>
+    <!-- Empty state -->
+    <div class="bg-white rounded-2xl py-20 text-center">
+      <span class="material-symbols-outlined text-5xl text-[#cdd3db] block mb-3">person_off</span>
+      <p class="text-sm text-[#43474f]">لا يوجد موظفون مسجّلون في النظام بعد</p>
+      <a href="/admin/users" class="mt-4 inline-flex items-center gap-1.5 text-[#405f91] text-sm hover:underline">
+        <span class="material-symbols-outlined text-base">manage_accounts</span>
+        إضافة موظف
+      </a>
+    </div>
+    <% } else { %>
+
+    <!-- Team overview -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div class="bg-white rounded-2xl p-5">
+        <p class="text-xs text-[#6b7280] mb-1">إجمالي إجراءات الفريق</p>
+        <p class="kpi-val text-[#001736]"><%= totalTeamActions %></p>
+        <p class="kpi-lbl">خلال الفترة المحددة</p>
+      </div>
+      <div class="bg-white rounded-2xl p-5">
+        <p class="text-xs text-[#6b7280] mb-1">متقدمون عولجوا</p>
+        <p class="kpi-val text-[#405f91]"><%= totalTeamApplicants %></p>
+        <p class="kpi-lbl">ملف مميز تم التفاعل معه</p>
+      </div>
+      <div class="bg-white rounded-2xl p-5">
+        <p class="text-xs text-[#6b7280] mb-1">الموظفون</p>
+        <p class="kpi-val text-[#001736]"><%= employees.length %></p>
+        <p class="kpi-lbl"><%= employees.filter(e=>e.active_days>0).length %> نشط في هذه الفترة</p>
+      </div>
+      <div class="bg-white rounded-2xl p-5">
+        <p class="text-xs text-[#6b7280] mb-1">أيام الفترة</p>
+        <p class="kpi-val text-[#001736]"><%= periodDays %></p>
+        <p class="kpi-lbl">يوم عمل متاح للتقييم</p>
+      </div>
+    </div>
+
+    <!-- Employee cards -->
+    <div class="space-y-4">
+      <% employees.forEach(emp => {
+        const lvl = LEVEL[actLevel(emp, periodDays)];
+        const avgPerDay = emp.active_days > 0
+          ? (emp.total_actions / emp.active_days).toFixed(1)
+          : '٠';
+        const lastLoginStr   = timeSince(emp.last_login);
+        const lastActionStr  = emp.days_since_overall !== null
+          ? (emp.days_since_overall === 0 ? 'اليوم' : `منذ ${emp.days_since_overall} يوم`)
+          : 'لا يوجد';
+      %>
+      <div class="bg-white rounded-2xl shadow-sm overflow-hidden <%= lvl.border %>">
+
+        <!-- Card header -->
+        <div class="px-6 pt-5 pb-4 flex items-start justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-full bg-[#e8edf5] flex items-center justify-center flex-shrink-0">
+              <span class="material-symbols-outlined text-[#405f91]" style="font-variation-settings:'FILL' 1">person</span>
+            </div>
+            <div>
+              <h3 class="font-bold text-[#001736] text-base"><%= emp.username %></h3>
+              <div class="flex items-center gap-2 mt-0.5">
+                <span class="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full <%= lvl.lc %>">
+                  <span class="w-1.5 h-1.5 rounded-full <%= lvl.dot %>"></span>
+                  <%= lvl.label %>
+                </span>
+                <% if (!emp.is_active) { %>
+                  <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-50 text-red-600">حساب موقوف</span>
+                <% } %>
+              </div>
+            </div>
+          </div>
+          <div class="text-left text-xs text-[#6b7280] space-y-1">
+            <div class="flex items-center gap-1.5 justify-end">
+              <span class="material-symbols-outlined text-sm text-[#9ca3af]">login</span>
+              <span>آخر دخول: <strong><%= lastLoginStr || 'لم يسجل' %></strong></span>
+            </div>
+            <div class="flex items-center gap-1.5 justify-end">
+              <span class="material-symbols-outlined text-sm text-[#9ca3af]">edit_note</span>
+              <span>آخر إجراء فعلي: <strong><%= lastActionStr %></strong></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- KPIs grid -->
+        <div class="grid grid-cols-4 divide-x divide-x-reverse divide-[#f0f1f3] border-t border-b border-[#f0f1f3]">
+          <div class="px-6 py-4 text-center">
+            <p class="kpi-val <%= emp.total_actions === 0 ? 'text-[#9ca3af]' : 'text-[#001736]' %>"><%= emp.total_actions %></p>
+            <p class="kpi-lbl">إجمالي الإجراءات</p>
+          </div>
+          <div class="px-6 py-4 text-center">
+            <p class="kpi-val <%= emp.unique_applicants === 0 ? 'text-[#9ca3af]' : 'text-[#405f91]' %>"><%= emp.unique_applicants %></p>
+            <p class="kpi-lbl">متقدمون عولجوا</p>
+          </div>
+          <div class="px-6 py-4 text-center">
+            <p class="kpi-val <%= emp.status_changes === 0 ? 'text-[#9ca3af]' : 'text-[#0d7aad]' %>"><%= emp.status_changes %></p>
+            <p class="kpi-lbl">تغييرات الحالة</p>
+          </div>
+          <div class="px-6 py-4 text-center">
+            <p class="kpi-val <%= emp.active_days === 0 ? 'text-[#9ca3af]' : 'text-[#059669]' %>">
+              <%= emp.active_days %>
+              <span class="text-sm font-normal text-[#9ca3af]">/ <%= periodDays %></span>
+            </p>
+            <p class="kpi-lbl">أيام النشاط</p>
+          </div>
+        </div>
+
+        <!-- Contact breakdown + activity bar -->
+        <div class="px-6 py-4 flex items-center justify-between gap-6 flex-wrap">
+
+          <!-- Contact types -->
+          <div class="flex items-center gap-5">
+            <div class="flex items-center gap-1.5 text-sm">
+              <span class="material-symbols-outlined text-base text-[#6b7280]" style="font-variation-settings:'FILL' 1">call</span>
+              <span class="font-semibold text-[#191c1e]"><%= emp.calls %></span>
+              <span class="text-xs text-[#6b7280]">مكالمة</span>
+            </div>
+            <div class="flex items-center gap-1.5 text-sm">
+              <span class="material-symbols-outlined text-base text-[#6b7280]" style="font-variation-settings:'FILL' 1">handshake</span>
+              <span class="font-semibold text-[#191c1e]"><%= emp.interviews %></span>
+              <span class="text-xs text-[#6b7280]">مقابلة</span>
+            </div>
+            <div class="flex items-center gap-1.5 text-sm">
+              <span class="material-symbols-outlined text-base text-[#6b7280]" style="font-variation-settings:'FILL' 1">notifications_active</span>
+              <span class="font-semibold text-[#191c1e]"><%= emp.follow_ups %></span>
+              <span class="text-xs text-[#6b7280]">متابعة</span>
+            </div>
+            <div class="flex items-center gap-1.5 text-sm">
+              <span class="material-symbols-outlined text-base text-[#6b7280]" style="font-variation-settings:'FILL' 1">sticky_note_2</span>
+              <span class="font-semibold text-[#191c1e]"><%= emp.plain_notes %></span>
+              <span class="text-xs text-[#6b7280]">ملاحظة</span>
+            </div>
+            <div class="flex items-center gap-1.5 text-sm border-r border-[#e8ecf0] pr-5 mr-1">
+              <span class="material-symbols-outlined text-base text-[#6b7280]" style="font-variation-settings:'FILL' 1">star</span>
+              <span class="font-semibold text-[#191c1e]"><%= emp.ratings_given %></span>
+              <span class="text-xs text-[#6b7280]">تقييم</span>
+            </div>
+            <div class="flex items-center gap-1.5 text-sm border-r border-[#e8ecf0] pr-5">
+              <span class="material-symbols-outlined text-base text-[#6b7280]">speed</span>
+              <span class="font-semibold text-[#191c1e]"><%= avgPerDay %></span>
+              <span class="text-xs text-[#6b7280]">إجراء/يوم</span>
+            </div>
+          </div>
+
+          <!-- Team share + audit link -->
+          <div class="flex items-center gap-4 flex-shrink-0">
+            <% if (employees.length > 1) { %>
+            <div class="text-left min-w-[120px]">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-[10px] text-[#6b7280]">نسبة نشاط الفريق</span>
+                <span class="text-xs font-bold text-[#001736]"><%= emp.action_share %>٪</span>
+              </div>
+              <div class="bar-track w-32">
+                <div class="bar-fill bg-[#405f91]" style="width:<%= emp.bar_pct %>%"></div>
+              </div>
+            </div>
+            <% } %>
+            <a href="/admin/audit?user=<%= encodeURIComponent(emp.username) %>"
+               class="flex items-center gap-1.5 text-xs text-[#405f91] hover:text-[#001736] font-medium transition-colors whitespace-nowrap">
+              <span class="material-symbols-outlined text-sm">policy</span>
+              سجل التدقيق
+            </a>
+          </div>
+        </div>
+
+        <!-- Warning banner if truly inactive -->
+        <% if (emp.active_days === 0) { %>
+        <div class="mx-6 mb-4 px-4 py-2.5 rounded-xl bg-red-50 border border-red-100 flex items-center gap-2 text-xs text-red-700">
+          <span class="material-symbols-outlined text-sm" style="font-variation-settings:'FILL' 1">warning</span>
+          لم يُسجَّل أي إجراء فعلي خلال هذه الفترة
+          <% if (emp.days_since_overall !== null) { %>
+            — آخر نشاط كان منذ <strong><%= emp.days_since_overall %> يوم</strong>
+          <% } else { %>
+            — لا يوجد نشاط في السجل كليًا
+          <% } %>
+        </div>
+        <% } %>
+
+      </div>
+      <% }) %>
+    </div>
+
+    <!-- Comparison table (if > 1 employee) -->
+    <% if (employees.length > 1) { %>
+    <div class="bg-white rounded-2xl overflow-hidden shadow-sm">
+      <div class="px-6 py-4 border-b border-[#eceef0]">
+        <h2 class="font-bold text-[#001736] text-sm flex items-center gap-2">
+          <span class="material-symbols-outlined text-base">leaderboard</span>
+          المقارنة السريعة
+        </h2>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="bg-[#f7f8fa] text-xs font-semibold text-[#43474f]">
+              <th class="px-5 py-3 text-right">الموظف</th>
+              <th class="px-5 py-3 text-center">الإجراءات</th>
+              <th class="px-5 py-3 text-center">متقدمون</th>
+              <th class="px-5 py-3 text-center">تغييرات الحالة</th>
+              <th class="px-5 py-3 text-center">مكالمات</th>
+              <th class="px-5 py-3 text-center">مقابلات</th>
+              <th class="px-5 py-3 text-center">متابعات</th>
+              <th class="px-5 py-3 text-center">أيام النشاط</th>
+              <th class="px-5 py-3 text-center">إجراء/يوم</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-[#f0f1f3]">
+            <% employees.forEach((emp, idx) => {
+              const avgD = emp.active_days > 0 ? (emp.total_actions / emp.active_days).toFixed(1) : '—';
+              const lvl2 = LEVEL[actLevel(emp, periodDays)];
+            %>
+            <tr class="hover:bg-[#f7f8fa] transition-colors">
+              <td class="px-5 py-3">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-bold text-[#9ca3af] w-4"><%= idx + 1 %></span>
+                  <span class="w-2 h-2 rounded-full flex-shrink-0 <%= lvl2.dot %>"></span>
+                  <span class="font-medium text-[#001736]"><%= emp.username %></span>
+                </div>
+              </td>
+              <td class="px-5 py-3 text-center font-bold text-[#001736]"><%= emp.total_actions %></td>
+              <td class="px-5 py-3 text-center text-[#405f91] font-semibold"><%= emp.unique_applicants %></td>
+              <td class="px-5 py-3 text-center text-[#0d7aad] font-semibold"><%= emp.status_changes %></td>
+              <td class="px-5 py-3 text-center"><%= emp.calls %></td>
+              <td class="px-5 py-3 text-center"><%= emp.interviews %></td>
+              <td class="px-5 py-3 text-center"><%= emp.follow_ups %></td>
+              <td class="px-5 py-3 text-center">
+                <span class="font-semibold"><%= emp.active_days %></span>
+                <span class="text-[#9ca3af]">/<%= periodDays %></span>
+              </td>
+              <td class="px-5 py-3 text-center font-semibold text-[#059669]"><%= avgD %></td>
+            </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <% } %>
+
+    <% } /* end employees.length > 0 */ %>
+
+  </main>
+</div>
+
+<script>
+  function toggleCustom() {
+    const el = document.getElementById('customDates');
+    el.classList.toggle('hidden');
+    el.classList.toggle('flex');
+  }
+</script>
+</body>
+</html>
