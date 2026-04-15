@@ -10,8 +10,9 @@ try { require('dotenv').config(); } catch(e) { /* dotenv اختياري */ }
 // Initialize DB — runs schema creation on first boot
 require('./database/db');
 
-const applyRouter = require('./routes/apply');
-const adminRouter = require('./routes/admin');
+const applyRouter   = require('./routes/apply');
+const adminRouter   = require('./routes/admin');
+const regionsRouter = require('./routes/regions');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -57,8 +58,9 @@ app.use(session({
 }));
 
 // Routes — before static so /apply accepting_applications check fires first
-app.use('/apply', applyRouter);
-app.use('/admin', adminRouter);
+app.use('/apply',  applyRouter);
+app.use('/admin',  adminRouter);
+app.use('/data',   regionsRouter);   // بيانات المناطق — مضمّنة في الكود لا تحتاج ملف
 
 // Static fallback (for any other assets in public/)
 app.use(express.static(path.join(__dirname, 'public')));
