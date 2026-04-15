@@ -56,7 +56,7 @@ router.post('/', (req, res) => {
     }
 
     try {
-      const { full_name, id_number, phone, age, gender, region, city, neighborhood, has_car, has_license } = req.body;
+      const { full_name, id_number, phone, age, gender, region, city, neighborhood, has_car, has_license, english, qualification, specialization } = req.body;
 
       // Basic validation
       const errors = [];
@@ -64,11 +64,16 @@ router.post('/', (req, res) => {
       if (!id_number || !/^\d{10}$/.test(id_number.trim()))     errors.push('رقم الهوية يجب أن يكون 10 أرقام');
       if (!phone || !/^05\d{8}$/.test(phone.trim()))            errors.push('رقم الجوال غير صحيح');
       const ageInt = parseInt(age);
-      if (!age || isNaN(ageInt) || ageInt < 23 || ageInt > 50)  errors.push('العمر مطلوب ويجب أن يكون بين 23 و 50 سنة');
+      if (!age || isNaN(ageInt))         errors.push('يرجى إدخال العمر');
+      else if (ageInt >= 100)            errors.push('العمر غير صحيح — يرجى إدخال عمرك وليس سنة ميلادك');
+      else if (ageInt <= 20)             errors.push('العمر يجب أن يكون 21 سنة فأكبر');
       if (!region || !region.trim())                            errors.push('المنطقة الإدارية مطلوبة');
       if (!city || !city.trim())                                errors.push('المدينة أو المحافظة مطلوبة');
       if (!neighborhood || !neighborhood.trim())                errors.push('اسم الحي مطلوب');
       if (gender !== 'male' && gender !== 'female')              errors.push('يرجى تحديد الجنس');
+      if (english !== 'yes' && english !== 'no')                 errors.push('يرجى تحديد إجادة اللغة الإنجليزية');
+      const validQuals = ['none','primary','middle','high_school','university'];
+      if (!qualification || !validQuals.includes(qualification)) errors.push('يرجى اختيار المؤهل العلمي');
       if (has_car !== 'yes' && has_car !== 'no')                errors.push('يرجى تحديد ما إذا كنت تمتلك سيارة');
       if (has_license !== 'yes' && has_license !== 'no')        errors.push('يرجى تحديد ما إذا كان لديك رخصة قيادة');
 
@@ -113,8 +118,9 @@ router.post('/', (req, res) => {
 
       const result = await db.run(
         `INSERT INTO applicants
-          (full_name, id_number, phone, age, gender, region, city, neighborhood, has_car, has_license, cv_path, id_image_path)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (full_name, id_number, phone, age, gender, region, city, neighborhood,
+           has_car, has_license, english, qualification, specialization, cv_path, id_image_path)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           full_name.trim(),
           id_number.trim(),
@@ -126,6 +132,9 @@ router.post('/', (req, res) => {
           neighborhood ? neighborhood.trim() : null,
           has_car === 'yes' ? 1 : 0,
           has_license === 'yes' ? 1 : 0,
+          english === 'yes' ? 1 : 0,
+          qualification,
+          specialization ? specialization.trim() : null,
           cvFile ? cvFile.filename : null,
           idFile ? idFile.filename : null,
         ]

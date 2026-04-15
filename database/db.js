@@ -119,6 +119,23 @@ async function initialize() {
       ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
     `);
 
+    // ─── ترحيل: إضافة english, qualification, specialization
+    const [enCols] = await conn.query("SHOW COLUMNS FROM applicants LIKE 'english'");
+    if (enCols.length === 0) {
+      await conn.query("ALTER TABLE applicants ADD COLUMN english TINYINT(1) DEFAULT NULL AFTER has_license");
+      console.log('[DB] Migration: added column english');
+    }
+    const [quCols] = await conn.query("SHOW COLUMNS FROM applicants LIKE 'qualification'");
+    if (quCols.length === 0) {
+      await conn.query("ALTER TABLE applicants ADD COLUMN qualification VARCHAR(20) DEFAULT NULL AFTER english");
+      console.log('[DB] Migration: added column qualification');
+    }
+    const [spCols] = await conn.query("SHOW COLUMNS FROM applicants LIKE 'specialization'");
+    if (spCols.length === 0) {
+      await conn.query("ALTER TABLE applicants ADD COLUMN specialization VARCHAR(100) DEFAULT NULL AFTER qualification");
+      console.log('[DB] Migration: added column specialization');
+    }
+
     // ─── ترحيل: إضافة gender إلى applicants إن لم يكن موجوداً
     const [gCols] = await conn.query("SHOW COLUMNS FROM applicants LIKE 'gender'");
     if (gCols.length === 0) {

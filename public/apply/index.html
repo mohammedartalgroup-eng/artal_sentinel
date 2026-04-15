@@ -54,7 +54,8 @@
     /* خطأ في مجموعة راديو */
     #wrap-gender.has-error,
     #wrap-has_car.has-error,
-    #wrap-has_license.has-error {
+    #wrap-has_license.has-error,
+    #wrap-english.has-error {
       outline: 2px solid #fca5a5;
       outline-offset: 4px;
       border-radius: 0.5rem;
@@ -204,11 +205,11 @@
               العمر <span class="text-error">*</span>
             </label>
             <div class="input-wrap" id="wrap-age">
-              <input id="f-age" name="age" min="23" max="50"
+              <input id="f-age" name="age" min="21" max="99"
                      class="w-full bg-surface-container-low border-0 rounded-lg px-4 py-3.5 focus:ring-2 focus:ring-primary/20 transition-all"
-                     placeholder="السنة (23 - 50)" type="number" inputmode="numeric"/>
+                     placeholder="السنة (21 فأكبر)" type="number" inputmode="numeric"/>
             </div>
-            <p class="err-msg" id="err-age">العمر مطلوب ويجب أن يكون بين 23 و 50 سنة</p>
+            <p class="err-msg" id="err-age">العمر مطلوب ويجب أن يكون 21 سنة فأكبر</p>
           </div>
 
           <!-- Region (full width) -->
@@ -350,6 +351,63 @@
             </div>
             <p class="err-msg" id="err-has_license">يرجى تحديد ما إذا كان لديك رخصة قيادة</p>
           </div>
+
+          <!-- English Proficiency -->
+          <div class="md:col-span-1 input-wrap" id="wrap-english">
+            <label class="block text-sm font-semibold text-on-surface-variant mb-3">
+              هل تجيد اللغة الإنجليزية؟ <span class="text-error">*</span>
+            </label>
+            <div class="flex gap-6">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input class="w-5 h-5 text-primary border-slate-300 focus:ring-primary"
+                       name="english" type="radio" value="yes"
+                       onchange="clearError('english')"/>
+                <span class="text-on-surface">نعم</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input class="w-5 h-5 text-primary border-slate-300 focus:ring-primary"
+                       name="english" type="radio" value="no"
+                       onchange="clearError('english')"/>
+                <span class="text-on-surface">لا</span>
+              </label>
+            </div>
+            <p class="err-msg" id="err-english">يرجى تحديد إجادة اللغة الإنجليزية</p>
+          </div>
+
+          <!-- Qualification -->
+          <div class="md:col-span-1">
+            <label class="block text-sm font-semibold text-on-surface-variant mb-2">
+              المؤهل العلمي <span class="text-error">*</span>
+            </label>
+            <div class="input-wrap" id="wrap-qualification">
+              <select name="qualification" id="f-qualification"
+                      class="w-full bg-surface-container-low border-0 rounded-lg px-4 py-3.5 focus:ring-2 focus:ring-primary/20 transition-all text-sm appearance-none cursor-pointer"
+                      onchange="clearError('qualification')">
+                <option value="">— اختر المؤهل —</option>
+                <option value="none">بدون مؤهل</option>
+                <option value="primary">ابتدائي</option>
+                <option value="middle">متوسط</option>
+                <option value="high_school">ثانوي</option>
+                <option value="university">جامعي</option>
+              </select>
+            </div>
+            <p class="err-msg" id="err-qualification">يرجى اختيار المؤهل العلمي</p>
+          </div>
+
+          <!-- Specialization (optional) -->
+          <div class="md:col-span-2">
+            <label class="block text-sm font-semibold text-on-surface-variant mb-2">
+              التخصص <span class="text-xs text-slate-400 font-normal">(اختياري)</span>
+            </label>
+            <div class="relative">
+              <input id="f-specialization" name="specialization"
+                     class="w-full bg-surface-container-low border-0 rounded-lg px-4 py-3.5 focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-slate-400"
+                     placeholder="مثال: أمن وحماية، إدارة أعمال، تقنية معلومات…"
+                     type="text" maxlength="100"/>
+              <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">school</span>
+            </div>
+          </div>
+
         </div>
 
         <!-- File Uploads -->
@@ -614,11 +672,19 @@ document.getElementById('applyForm').addEventListener('submit', function (e) {
     clearError('phone');
   }
 
-  // ── العمر (إلزامي، 18-60)
+  // ── العمر (إلزامي، أكبر من 20)
   const ageVal = document.getElementById('f-age').value;
   const ageNum = parseInt(ageVal);
-  if (!ageVal || isNaN(ageNum) || ageNum < 23 || ageNum > 50) {
-    showError('age', 'العمر مطلوب ويجب أن يكون بين 23 و 50 سنة');
+  if (!ageVal || isNaN(ageNum)) {
+    showError('age', 'يرجى إدخال العمر');
+    if (!firstError) firstError = 'f-age';
+    valid = false;
+  } else if (ageNum >= 100) {
+    showError('age', 'العمر غير صحيح — يرجى إدخال عمرك وليس سنة ميلادك');
+    if (!firstError) firstError = 'f-age';
+    valid = false;
+  } else if (ageNum <= 20) {
+    showError('age', 'العمر يجب أن يكون 21 سنة فأكبر');
     if (!firstError) firstError = 'f-age';
     valid = false;
   } else {
@@ -653,6 +719,24 @@ document.getElementById('applyForm').addEventListener('submit', function (e) {
     valid = false;
   } else {
     clearError('neighborhood');
+  }
+
+  // ── اللغة الإنجليزية (إلزامي)
+  if (!document.querySelector('input[name="english"]:checked')) {
+    showError('english', 'يرجى تحديد إجادة اللغة الإنجليزية');
+    if (!firstError) firstError = 'wrap-english';
+    valid = false;
+  } else {
+    clearError('english');
+  }
+
+  // ── المؤهل (إلزامي)
+  if (!document.getElementById('f-qualification').value) {
+    showError('qualification', 'يرجى اختيار المؤهل العلمي');
+    if (!firstError) firstError = 'wrap-qualification';
+    valid = false;
+  } else {
+    clearError('qualification');
   }
 
   // ── الجنس (إلزامي)

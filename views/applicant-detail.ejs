@@ -173,7 +173,23 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
                 <% } %>
               </div>
             </div>
-            <div class="grid grid-cols-3 gap-3 pt-2">
+            <%
+              const QUAL_LABELS = { none:'بدون مؤهل', primary:'ابتدائي', middle:'متوسط', high_school:'ثانوي', university:'جامعي' };
+            %>
+            <% if (applicant.qualification) { %>
+            <div class="flex items-start gap-3 pt-1">
+              <span class="material-symbols-outlined text-[#43474f] text-lg mt-0.5">school</span>
+              <div>
+                <div class="text-xs text-[#43474f] font-semibold uppercase tracking-wider">المؤهل العلمي</div>
+                <div class="mt-0.5 font-medium"><%= QUAL_LABELS[applicant.qualification] || applicant.qualification %></div>
+                <% if (applicant.specialization) { %>
+                <div class="text-xs text-[#7594ca] mt-0.5">تخصص: <%= applicant.specialization %></div>
+                <% } %>
+              </div>
+            </div>
+            <% } %>
+
+            <div class="grid grid-cols-2 gap-3 pt-2">
               <div class="bg-[#f8f9fb] rounded-xl p-3 text-center">
                 <span class="material-symbols-outlined text-2xl <%= applicant.gender === 'male' ? 'text-blue-500' : applicant.gender === 'female' ? 'text-pink-500' : 'text-[#c4c6d0]' %>">
                   <%= applicant.gender === 'female' ? 'female' : 'male' %>
@@ -201,6 +217,17 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
                   <%= applicant.has_license ? 'نعم' : 'لا' %>
                 </div>
               </div>
+              <% if (applicant.english != null) { %>
+              <div class="bg-[#f8f9fb] rounded-xl p-3 text-center">
+                <span class="material-symbols-outlined text-2xl <%= applicant.english ? 'text-blue-500' : 'text-[#c4c6d0]' %>">
+                  translate
+                </span>
+                <div class="text-xs text-[#43474f] mt-1">إنجليزية</div>
+                <div class="text-sm font-semibold <%= applicant.english ? 'text-blue-600' : 'text-[#43474f]' %>">
+                  <%= applicant.english ? 'نعم' : 'لا' %>
+                </div>
+              </div>
+              <% } %>
             </div>
           </div>
         </div>
@@ -403,7 +430,8 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
     const genderLabel = applicant.gender === 'male' ? 'ذكر' : applicant.gender === 'female' ? 'أنثى' : '—';
     const statusLabel = STATUS_META[applicant.status]?.label || applicant.status;
     const ratingStars = '★'.repeat(applicant.rating) + '☆'.repeat(5 - applicant.rating);
-    // Timeline مرتّب من الأقدم للأحدث للطباعة
+    const QUAL_PRINT = { none:'بدون مؤهل', primary:'ابتدائي', middle:'متوسط', high_school:'ثانوي', university:'جامعي' };
+    // الطباعة: الملاحظات + سجل النظام معاً، مرتّبة من الأقدم للأحدث
     const printTimeline = [
       ...notes.map(n => ({ ...n, _type: 'note' })),
       ...activity.map(a => ({ ...a, _type: 'activity' }))
@@ -468,6 +496,23 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
             <span style="color:<%= applicant.has_license ? '#15803d' : '#6b7280' %>;font-weight:600">
               <%= applicant.has_license ? '✓ نعم' : '✗ لا' %>
             </span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:8px 12px;font-weight:700;color:#43474f;border:1px solid #e0e3e5">إجادة الإنجليزية</td>
+          <td style="padding:8px 12px;border:1px solid #e0e3e5">
+            <% if (applicant.english == null) { %>—<% } else { %>
+            <span style="color:<%= applicant.english ? '#15803d' : '#6b7280' %>;font-weight:600">
+              <%= applicant.english ? '✓ نعم' : '✗ لا' %>
+            </span>
+            <% } %>
+          </td>
+          <td style="padding:8px 12px;font-weight:700;color:#43474f;border:1px solid #e0e3e5">المؤهل العلمي</td>
+          <td style="padding:8px 12px;border:1px solid #e0e3e5">
+            <%= QUAL_PRINT[applicant.qualification] || applicant.qualification || '—' %>
+            <% if (applicant.specialization) { %>
+            <span style="color:#506169;font-size:11px"> · تخصص: <%= applicant.specialization %></span>
+            <% } %>
           </td>
         </tr>
       </tbody>

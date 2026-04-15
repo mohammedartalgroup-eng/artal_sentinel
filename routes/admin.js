@@ -155,7 +155,7 @@ router.get('/applicants', async (req, res) => {
       db.get(`SELECT COUNT(*) as c FROM applicants ${where}`, params),
       db.all(`
         SELECT id, full_name, id_number, phone, age, gender, region, city, has_car, has_license,
-               status, rating, created_at
+               english, qualification, specialization, status, rating, created_at
         FROM applicants ${where}
         ORDER BY ${safeSort} ${safeOrder}
         LIMIT ${PAGE_SIZE} OFFSET ${offset}
@@ -202,7 +202,7 @@ router.get('/applicants/export', async (req, res) => {
 
     const rows = await db.all(`
       SELECT full_name, id_number, phone, age, gender, region, city, neighborhood,
-             has_car, has_license, status, rating, created_at
+             has_car, has_license, english, qualification, specialization, status, rating, created_at
       FROM applicants ${where} ORDER BY created_at DESC
     `, params);
 
@@ -221,6 +221,9 @@ router.get('/applicants/export', async (req, res) => {
       { header: 'الحي',              key: 'neighborhood', width: 18 },
       { header: 'يمتلك سيارة',       key: 'has_car',      width: 14 },
       { header: 'رخصة قيادة',        key: 'has_license',  width: 14 },
+      { header: 'إنجليزية',          key: 'english',      width: 12 },
+      { header: 'المؤهل',            key: 'qualification',width: 14 },
+      { header: 'التخصص',            key: 'specialization',width: 20 },
       { header: 'الحالة',            key: 'status',       width: 18 },
       { header: 'التقييم',           key: 'rating',       width: 10 },
       { header: 'تاريخ التقديم',     key: 'created_at',   width: 20 },
@@ -238,6 +241,8 @@ router.get('/applicants/export', async (req, res) => {
         gender: r.gender === 'male' ? 'ذكر' : r.gender === 'female' ? 'أنثى' : '—',
         has_car: r.has_car ? 'نعم' : 'لا',
         has_license: r.has_license ? 'نعم' : 'لا',
+        english: r.english == null ? '—' : r.english ? 'نعم' : 'لا',
+        qualification: { none:'بدون مؤهل', primary:'ابتدائي', middle:'متوسط', high_school:'ثانوي', university:'جامعي' }[r.qualification] || (r.qualification || '—'),
         status: statusLabel,
         rating: '★'.repeat(r.rating) || '—',
       });
