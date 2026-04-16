@@ -29,10 +29,10 @@ const storage = multer.diskStorage({
 // File type validation
 function fileFilter(req, file, cb) {
   if (file.fieldname === 'cv') {
-    const allowed = ['.pdf', '.doc', '.docx'];
+    const allowed = ['.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png'];
     const ext = path.extname(file.originalname).toLowerCase();
     if (allowed.includes(ext)) return cb(null, true);
-    return cb(new Error('السيرة الذاتية يجب أن تكون PDF أو DOC'));
+    return cb(new Error('السيرة الذاتية يجب أن تكون PDF أو DOC أو JPG أو PNG'));
   }
   if (file.fieldname === 'id_image') {
     const allowed = ['.jpg', '.jpeg', '.png', '.webp'];

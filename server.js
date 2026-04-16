@@ -1,3 +1,6 @@
+// ── توقيت الرياض (UTC+3) — يجب أن يكون قبل أي شيء آخر
+process.env.TZ = 'Asia/Riyadh';
+
 const express = require('express');
 const session = require('express-session');
 const MySQLStore = require('express-mysql-session')(session);
