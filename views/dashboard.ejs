@@ -154,7 +154,7 @@
                   <%= sm.label %>
                 </span>
               </td>
-              <td class="py-3 text-[#43474f] text-xs"><%= new Date(a.created_at).toLocaleDateString('ar-SA') %></td>
+              <td class="py-3 text-[#43474f] text-xs"><%= fmtDate(a.created_at) %></td>
               <td class="py-3">
                 <a href="/admin/applicants/<%= a.id %>" class="text-[#405f91] hover:underline text-xs">عرض</a>
               </td>

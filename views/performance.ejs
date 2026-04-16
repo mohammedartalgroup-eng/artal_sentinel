@@ -37,7 +37,7 @@
     const days = Math.floor(hrs / 24);
     if (days === 1) return 'منذ أمس';
     if (days <  7)  return `منذ ${days} أيام`;
-    return new Date(date).toLocaleDateString('ar-SA');
+    return fmtDate(date);
   }
 
   function actLevel(e, periodDays) {

@@ -288,7 +288,7 @@
                 </span>
               </td>
               <td class="px-4 py-3.5 text-[#43474f] text-xs whitespace-nowrap">
-                <%= new Date(a.created_at).toLocaleDateString('ar-SA') %>
+                <%= fmtDate(a.created_at) %>
               </td>
               <td class="px-4 py-3.5">
                 <a href="/admin/applicants/<%= a.id %>"

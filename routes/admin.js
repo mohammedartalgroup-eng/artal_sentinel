@@ -79,10 +79,17 @@ router.get('/logout', async (req, res) => {
 router.use(requireAuth);
 
 // متغيرات مشتركة لجميع views
+const RYD = 'Asia/Riyadh';
 router.use((req, res, next) => {
-  res.locals.adminUser = req.session.adminUser;           // البريد الإلكتروني
+  res.locals.adminUser = req.session.adminUser;
   res.locals.adminName = req.session.adminName || req.session.adminUser;
   res.locals.adminRole = req.session.adminRole || 'employee';
+
+  // دوال تنسيق التاريخ بتوقيت الرياض — متاحة في جميع EJS views
+  res.locals.fmtDate     = (d) => d ? new Date(d).toLocaleDateString('ar-SA', { timeZone: RYD }) : '—';
+  res.locals.fmtDateLong = (d) => d ? new Date(d).toLocaleDateString('ar-SA', { timeZone: RYD, year:'numeric', month:'long', day:'numeric' }) : '—';
+  res.locals.fmtTime     = (d) => d ? new Date(d).toLocaleTimeString('ar-SA', { timeZone: RYD, hour:'2-digit', minute:'2-digit' }) : '—';
+  res.locals.fmtDateTime = (d) => d ? `${res.locals.fmtDate(d)} ${res.locals.fmtTime(d)}` : '—';
   next();
 });
 

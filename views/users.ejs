@@ -154,16 +154,16 @@
               </td>
               <td class="px-4 py-4 text-[#43474f] text-xs">
                 <% if (u.last_login) { %>
-                <%= new Date(u.last_login).toLocaleDateString('ar-SA') %>
+                <%= fmtDate(u.last_login) %>
                 <span class="block text-[#7594ca]">
-                  <%= new Date(u.last_login).toLocaleTimeString('ar-SA', { hour:'2-digit', minute:'2-digit' }) %>
+                  <%= fmtTime(u.last_login) %>
                 </span>
                 <% } else { %>
                 <span class="text-[#c4c6d0]">لم يسجّل دخولاً</span>
                 <% } %>
               </td>
               <td class="px-4 py-4 text-[#43474f] text-xs">
-                <%= new Date(u.created_at).toLocaleDateString('ar-SA') %>
+                <%= fmtDate(u.created_at) %>
               </td>
               <td class="px-4 py-4 text-center">
                 <a href="/admin/audit?user=<%= u.username %>"

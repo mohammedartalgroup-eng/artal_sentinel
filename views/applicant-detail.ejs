@@ -67,7 +67,7 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
       </div>
       <p class="text-xs text-[#43474f] mt-0.5">
         تقديم رقم #<%= applicant.id %> —
-        <%= new Date(applicant.created_at).toLocaleDateString('ar-SA', { year:'numeric', month:'long', day:'numeric' }) %>
+        <%= fmtDateLong(applicant.created_at) %>
       </p>
     </div>
     <div class="flex items-center gap-2">
@@ -354,7 +354,7 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
           <% if (applicant.ext_check_done) { %>
           <div class="mt-4 pt-3 border-t border-[#f2f4f6] flex items-center justify-between">
             <span class="text-[10px] text-[#9ca3af]">
-              فُحص بتاريخ: <%= applicant.ext_checked_at ? new Date(applicant.ext_checked_at).toLocaleDateString('ar-SA') : '—' %>
+              فُحص بتاريخ: <%= fmtDate(applicant.ext_checked_at) %>
             </span>
             <button onclick="extRecheck()"
                     class="text-[10px] text-[#405f91] hover:underline flex items-center gap-0.5">
@@ -500,12 +500,12 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
                       </span>
                       <% } %>
                       <span class="text-xs text-[#43474f] whitespace-nowrap">
-                        <%= new Date(item.created_at).toLocaleDateString('ar-SA') %>
-                        <%= new Date(item.created_at).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }) %>
+                        <%= fmtDate(item.created_at) %>
+                        <%= fmtTime(item.created_at) %>
                       </span>
                       <% if (item.updated_at) { %>
                       <span class="block text-[10px] text-[#9ca3af] whitespace-nowrap">
-                        عُدّل: <%= new Date(item.updated_at).toLocaleDateString('ar-SA') %>
+                        عُدّل: <%= fmtDate(item.updated_at) %>
                       </span>
                       <% } %>
                     </div>
@@ -550,9 +550,9 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
      style="font-family:'Segoe UI',Tahoma,Arial,sans-serif;color:#111;background:#fff;max-width:100%">
 
   <%
-    const printDate = new Date().toLocaleDateString('ar-SA', { year:'numeric', month:'long', day:'numeric' });
-    const printTime = new Date().toLocaleTimeString('ar-SA', { hour:'2-digit', minute:'2-digit' });
-    const appliedDate = new Date(applicant.created_at).toLocaleDateString('ar-SA', { year:'numeric', month:'long', day:'numeric' });
+    const printDate   = fmtDateLong(new Date());
+    const printTime   = fmtTime(new Date());
+    const appliedDate = fmtDateLong(applicant.created_at);
     const genderLabel = applicant.gender === 'male' ? 'ذكر' : applicant.gender === 'female' ? 'أنثى' : '—';
     const statusLabel = STATUS_META[applicant.status]?.label || applicant.status;
     const ratingStars = '★'.repeat(applicant.rating) + '☆'.repeat(5 - applicant.rating);
@@ -697,8 +697,8 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
         <% printTimeline.forEach((item, idx) => { %>
         <tr class="pd-avoid-break" style="background:<%= idx % 2 === 0 ? '#fff' : '#fafbfc' %>">
           <td style="padding:8px 10px;border:1px solid #e0e3e5;color:#506169;white-space:nowrap;font-size:11px">
-            <%= new Date(item.created_at).toLocaleDateString('ar-SA') %><br>
-            <span style="color:#7594ca"><%= new Date(item.created_at).toLocaleTimeString('ar-SA', { hour:'2-digit', minute:'2-digit' }) %></span>
+            <%= fmtDate(item.created_at) %><br>
+            <span style="color:#7594ca"><%= fmtTime(item.created_at) %></span>
           </td>
           <td style="padding:8px 10px;border:1px solid #e0e3e5;text-align:center">
             <% if (item._type === 'note') { %>
