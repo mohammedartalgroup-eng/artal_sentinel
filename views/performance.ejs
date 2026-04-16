@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>أداء الموظفين — أرتال Sentinel</title>
+  <title>أداء الفريق — أرتال Sentinel</title>
   <link rel="icon" type="image/png" href="/images/icon.png">
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -60,7 +60,7 @@
   <!-- Top bar -->
   <header class="bg-white border-b border-[#eceef0] px-8 py-5 flex items-center justify-between sticky top-0 z-30">
     <div>
-      <h1 class="text-xl font-bold text-[#001736]">أداء الموظفين</h1>
+      <h1 class="text-xl font-bold text-[#001736]">أداء الفريق</h1>
       <p class="text-xs text-[#43474f] mt-0.5">
         الفترة: <strong><%= fromDate %></strong> — <strong><%= toDate %></strong>
         &nbsp;·&nbsp; <strong><%= periodDays %></strong> يوم
@@ -106,10 +106,10 @@
     <!-- Empty state -->
     <div class="bg-white rounded-2xl py-20 text-center">
       <span class="material-symbols-outlined text-5xl text-[#cdd3db] block mb-3">person_off</span>
-      <p class="text-sm text-[#43474f]">لا يوجد موظفون مسجّلون في النظام بعد</p>
+      <p class="text-sm text-[#43474f]">لا يوجد مستخدمون مسجّلون في النظام بعد</p>
       <a href="/admin/users" class="mt-4 inline-flex items-center gap-1.5 text-[#405f91] text-sm hover:underline">
         <span class="material-symbols-outlined text-base">manage_accounts</span>
-        إضافة موظف
+        إضافة مستخدم
       </a>
     </div>
     <% } else { %>
@@ -127,7 +127,7 @@
         <p class="kpi-lbl">ملف مميز تم التفاعل معه</p>
       </div>
       <div class="bg-white rounded-2xl p-5">
-        <p class="text-xs text-[#6b7280] mb-1">الموظفون</p>
+        <p class="text-xs text-[#6b7280] mb-1">أعضاء الفريق</p>
         <p class="kpi-val text-[#001736]"><%= employees.length %></p>
         <p class="kpi-lbl"><%= employees.filter(e=>e.active_days>0).length %> نشط في هذه الفترة</p>
       </div>
@@ -159,8 +159,14 @@
               <span class="material-symbols-outlined text-[#405f91]" style="font-variation-settings:'FILL' 1">person</span>
             </div>
             <div>
-              <h3 class="font-bold text-[#001736] text-base"><%= emp.username %></h3>
-              <div class="flex items-center gap-2 mt-0.5">
+              <div class="flex items-center gap-2">
+                <h3 class="font-bold text-[#001736] text-base"><%= emp.full_name || emp.username %></h3>
+                <% if (emp.role === 'manager') { %>
+                <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700">مدير</span>
+                <% } %>
+              </div>
+              <div class="text-[11px] text-[#9ca3af] mt-0.5"><%= emp.username %></div>
+              <div class="flex items-center gap-2 mt-1">
                 <span class="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full <%= lvl.lc %>">
                   <span class="w-1.5 h-1.5 rounded-full <%= lvl.dot %>"></span>
                   <%= lvl.label %>
@@ -294,7 +300,7 @@
         <table class="w-full text-sm">
           <thead>
             <tr class="bg-[#f7f8fa] text-xs font-semibold text-[#43474f]">
-              <th class="px-5 py-3 text-right">الموظف</th>
+              <th class="px-5 py-3 text-right">المستخدم</th>
               <th class="px-5 py-3 text-center">الإجراءات</th>
               <th class="px-5 py-3 text-center">متقدمون</th>
               <th class="px-5 py-3 text-center">تغييرات الحالة</th>

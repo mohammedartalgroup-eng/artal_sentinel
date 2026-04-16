@@ -117,7 +117,7 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
       <button onclick="updateStatus('on_hold')"
               class="px-4 py-2 rounded-xl text-xs font-semibold border transition-all
                      <%= applicant.status === 'on_hold' ? 'bg-gray-500 text-white border-gray-500' : 'border-[#e0e3e5] text-[#43474f] hover:bg-[#f2f4f6]' %>">
-        معلق
+        احتياطي
       </button>
       <button onclick="updateStatus('rejected')"
               class="px-4 py-2 rounded-xl text-xs font-semibold border transition-all

@@ -14,7 +14,7 @@ const STATUS_META = {
   shortlisted: { label: 'مرشح للمقابلة',    color: 'purple' },
   interviewed: { label: 'تمت المقابلة',      color: 'orange' },
   hired:       { label: 'تم التعيين',        color: 'green' },
-  on_hold:     { label: 'معلق',              color: 'gray' },
+  on_hold:     { label: 'احتياطي',           color: 'gray' },
   rejected:    { label: 'مرفوض',             color: 'red' },
 };
 
@@ -636,6 +636,8 @@ router.get('/performance', async (req, res) => {
       SELECT
         u.id,
         u.username,
+        u.full_name,
+        u.role,
         u.is_active,
         u.last_login,
         COUNT(CASE WHEN a.action NOT IN ('login','logout') THEN 1 END)
@@ -665,7 +667,7 @@ router.get('/performance', async (req, res) => {
       LEFT JOIN audit_log a
         ON a.user_id = u.id
         AND DATE(a.created_at) >= ? AND DATE(a.created_at) <= ?
-      WHERE u.role = 'employee'
+      WHERE u.role IN ('employee', 'manager')
       GROUP BY u.id
       ORDER BY total_actions DESC
     `, [fromDate, toDate]);
