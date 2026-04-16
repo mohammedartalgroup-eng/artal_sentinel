@@ -35,10 +35,10 @@ function fileFilter(req, file, cb) {
     return cb(new Error('السيرة الذاتية يجب أن تكون PDF أو DOC أو JPG أو PNG'));
   }
   if (file.fieldname === 'id_image') {
-    const allowed = ['.jpg', '.jpeg', '.png', '.webp'];
+    const allowed = ['.jpg', '.jpeg', '.png', '.webp', '.pdf'];
     const ext = path.extname(file.originalname).toLowerCase();
     if (allowed.includes(ext)) return cb(null, true);
-    return cb(new Error('صورة الهوية يجب أن تكون JPG أو PNG'));
+    return cb(new Error('صورة الهوية يجب أن تكون JPG أو PNG أو PDF'));
   }
   cb(null, false);
 }
