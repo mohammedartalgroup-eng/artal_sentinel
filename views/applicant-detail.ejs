@@ -365,7 +365,7 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
 
             <% timelineItems.forEach((item, idx) => { %>
             <div class="flex gap-4 pb-5 <%= idx < timelineItems.length - 1 ? 'border-b border-[#f2f4f6]' : '' %>"
-                 id="<%= item._type === 'note' ? 'note-' + item.id : '' %>">
+                 id="<%= item._type === 'note' ? 'note-' + item.id : 'activity-' + item.id %>">
               <!-- Icon -->
               <div class="flex-shrink-0 mt-1">
                 <% if (item._type === 'note') { %>
@@ -419,7 +419,8 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
                     </div>
                     <% } %>
                   </div>
-                  <div class="flex items-center gap-2 flex-shrink-0">
+                  <div class="flex flex-col items-end gap-1 flex-shrink-0">
+                    <!-- التاريخ والمستخدم -->
                     <div class="text-left">
                       <% if (item.user_name) { %>
                       <span class="block text-[10px] text-[#7594ca] font-medium whitespace-nowrap">
@@ -437,16 +438,25 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
                       </span>
                       <% } %>
                     </div>
+                    <!-- أزرار العمليات -->
                     <% if (item._type === 'note') { %>
-                    <button onclick="startEdit(<%= item.id %>, this)"
-                            class="text-[#c4c6d0] hover:text-[#405f91] transition-colors" title="تعديل">
-                      <span class="material-symbols-outlined text-sm">edit</span>
-                    </button>
-                    <% } %>
-                    <% if (item._type === 'note' && locals.adminRole === 'manager') { %>
-                    <button onclick="deleteNote(<%= item.id %>)"
-                            class="text-[#c4c6d0] hover:text-red-500 transition-colors" title="حذف">
-                      <span class="material-symbols-outlined text-sm">close</span>
+                    <div class="flex items-center gap-1" id="note-actions-<%= item.id %>">
+                      <button onclick="startEdit(<%= item.id %>)"
+                              class="flex items-center gap-1 text-[10px] font-medium text-[#405f91] bg-[#eef2fa] hover:bg-[#dce6f7] px-2 py-0.5 rounded-lg transition-colors">
+                        <span class="material-symbols-outlined text-[11px]">edit</span>
+                        تعديل
+                      </button>
+                      <button onclick="deleteNote(<%= item.id %>)"
+                              class="flex items-center gap-1 text-[10px] font-medium text-red-500 bg-red-50 hover:bg-red-100 px-2 py-0.5 rounded-lg transition-colors">
+                        <span class="material-symbols-outlined text-[11px]">delete</span>
+                        حذف
+                      </button>
+                    </div>
+                    <% } else { %>
+                    <button onclick="deleteActivity(<%= item.id %>)"
+                            class="flex items-center gap-1 text-[10px] font-medium text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-0.5 rounded-lg transition-colors">
+                      <span class="material-symbols-outlined text-[11px]">delete</span>
+                      حذف
                     </button>
                     <% } %>
                   </div>
@@ -763,6 +773,21 @@ function deleteNote(nid) {
   });
 }
 
+function deleteActivity(aid) {
+  if (!confirm('هل تريد حذف هذا الإدخال من السجل؟')) return;
+  fetch(`/admin/applicants/${APPLICANT_ID}/activity/${aid}`, { method: 'DELETE' })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      const el = document.getElementById('activity-' + aid);
+      if (el) el.remove();
+      toast('تم حذف الإدخال', 'delete');
+    } else {
+      toast(data.error || 'خطأ في الحذف', 'error', true);
+    }
+  });
+}
+
 function deleteApplicant() {
   if (!confirm('هل أنت متأكد من حذف هذا المتقدم؟ لا يمكن التراجع عن هذا الإجراء.')) return;
   fetch(`/admin/applicants/${APPLICANT_ID}`, { method: 'DELETE' })
@@ -776,24 +801,19 @@ function deleteApplicant() {
 }
 
 // ─── تعديل الملاحظة ───────────────────────────────────────────────────────────
-function startEdit(nid, btn) {
-  document.getElementById('note-text-'       + nid).classList.add('hidden');
-  document.getElementById('note-edit-'       + nid).classList.remove('hidden');
-  btn.classList.add('hidden');
+function startEdit(nid) {
+  document.getElementById('note-text-'    + nid).classList.add('hidden');
+  document.getElementById('note-edit-'    + nid).classList.remove('hidden');
+  document.getElementById('note-actions-' + nid).classList.add('hidden');
   const ta = document.getElementById('note-edit-input-' + nid);
   ta.focus();
   ta.setSelectionRange(ta.value.length, ta.value.length);
 }
 
 function cancelEdit(nid) {
-  document.getElementById('note-text-'  + nid).classList.remove('hidden');
-  document.getElementById('note-edit-' + nid).classList.add('hidden');
-  // أعد إظهار زر التعديل
-  const row = document.getElementById('note-' + nid);
-  if (row) {
-    const editBtn = row.querySelector('[onclick^="startEdit"]');
-    if (editBtn) editBtn.classList.remove('hidden');
-  }
+  document.getElementById('note-text-'    + nid).classList.remove('hidden');
+  document.getElementById('note-edit-'    + nid).classList.add('hidden');
+  document.getElementById('note-actions-' + nid).classList.remove('hidden');
 }
 
 function saveEdit(nid) {

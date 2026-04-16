@@ -396,7 +396,6 @@ router.post('/applicants/:id/notes', async (req, res) => {
 
     const noteApplicant = await db.get('SELECT full_name FROM applicants WHERE id = ?', [req.params.id]);
     await Promise.all([
-      db.logActivity(req.params.id, `إضافة ${NOTE_TYPES[noteType].label}`, null, content.trim().substring(0, 60), req.session.adminName || null),
       db.run('UPDATE applicants SET updated_at = CURRENT_TIMESTAMP WHERE id = ?', [req.params.id]),
       db.audit(req.session.adminId, req.session.adminUser, 'note_add', 'applicant', req.params.id,
         noteApplicant?.full_name, `${NOTE_TYPES[noteType].label}: ${content.trim().substring(0, 80)}`, req.ip),
@@ -426,6 +425,29 @@ router.delete('/applicants/:id/notes/:nid', async (req, res) => {
   }
 });
 
+// ─── Delete Activity Entry ────────────────────────────────────────────────────
+
+router.delete('/applicants/:id/activity/:aid', async (req, res) => {
+  try {
+    const entry = await db.get(
+      'SELECT action, new_value FROM applicant_activity WHERE id = ? AND applicant_id = ?',
+      [req.params.aid, req.params.id]
+    );
+    if (!entry) return res.status(404).json({ error: 'الإدخال غير موجود' });
+
+    await db.run('DELETE FROM applicant_activity WHERE id = ? AND applicant_id = ?', [req.params.aid, req.params.id]);
+
+    const actApplicant = await db.get('SELECT full_name FROM applicants WHERE id = ?', [req.params.id]);
+    await db.audit(req.session.adminId, req.session.adminUser, 'activity_delete', 'applicant', req.params.id,
+      actApplicant?.full_name, `حذف سجل: ${entry.action}${entry.new_value ? ' — ' + entry.new_value.substring(0, 50) : ''}`, req.ip);
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[Activity DELETE]', err.message);
+    res.status(500).json({ error: 'خطأ في حذف الإدخال' });
+  }
+});
+
 // ─── Edit Note ────────────────────────────────────────────────────────────────
 
 router.patch('/applicants/:id/notes/:nid', async (req, res) => {
@@ -445,11 +467,8 @@ router.patch('/applicants/:id/notes/:nid', async (req, res) => {
     );
 
     const editApplicant = await db.get('SELECT full_name FROM applicants WHERE id = ?', [req.params.id]);
-    await Promise.all([
-      db.logActivity(req.params.id, 'تعديل ملاحظة', note.content.substring(0, 60), content.trim().substring(0, 60), req.session.adminName || null),
-      db.audit(req.session.adminId, req.session.adminUser, 'note_edit', 'applicant', req.params.id,
-        editApplicant?.full_name, `${note.content.substring(0, 60)} ← ${content.trim().substring(0, 60)}`, req.ip),
-    ]);
+    await db.audit(req.session.adminId, req.session.adminUser, 'note_edit', 'applicant', req.params.id,
+      editApplicant?.full_name, `${note.content.substring(0, 60)} ← ${content.trim().substring(0, 60)}`, req.ip);
 
     res.json({ ok: true, content: content.trim() });
   } catch (err) {

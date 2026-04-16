@@ -96,6 +96,7 @@
                 <option value="note_add"       <%= filters.action === 'note_add'       ? 'selected' : '' %>>إضافة ملاحظة</option>
                 <option value="note_edit"      <%= filters.action === 'note_edit'      ? 'selected' : '' %>>تعديل ملاحظة</option>
                 <option value="note_delete"    <%= filters.action === 'note_delete'    ? 'selected' : '' %>>حذف ملاحظة</option>
+                <option value="activity_delete" <%= filters.action === 'activity_delete' ? 'selected' : '' %>>حذف سجل نشاط</option>
                 <option value="applicant_delete" <%= filters.action === 'applicant_delete' ? 'selected' : '' %>>حذف متقدم</option>
                 <option value="export"         <%= filters.action === 'export'         ? 'selected' : '' %>>تصدير Excel</option>
               </optgroup>
@@ -187,6 +188,7 @@
                     note_add:         { label: 'ملاحظة جديدة',      bg: '#e0f2fe', color: '#0277bd' },
                     note_edit:        { label: 'تعديل ملاحظة',      bg: '#e8f4fd', color: '#0369a1' },
                     note_delete:      { label: 'حذف ملاحظة',        bg: '#fff0f0', color: '#c62828' },
+                    activity_delete:  { label: 'حذف سجل نشاط',     bg: '#fff0f0', color: '#b45309' },
                     applicant_delete: { label: 'حذف متقدم',         bg: '#fce4ec', color: '#c62828' },
                     export:           { label: 'تصدير Excel',       bg: '#e8f5e9', color: '#1b5e20' },
                     user_create:      { label: 'إنشاء مستخدم',      bg: '#e0f7fa', color: '#00695c' },
