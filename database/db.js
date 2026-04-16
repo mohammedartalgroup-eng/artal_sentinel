@@ -205,6 +205,21 @@ async function initialize() {
       console.log('[DB] Migration: added column last_login');
     }
 
+    // ─── ترحيل: إضافة حقول الفحص الخارجي إلى applicants
+    const [extCols] = await conn.query("SHOW COLUMNS FROM applicants LIKE 'ext_check_done'");
+    if (extCols.length === 0) {
+      await conn.query(`
+        ALTER TABLE applicants
+          ADD COLUMN ext_check_done  TINYINT(1)   NOT NULL DEFAULT 0,
+          ADD COLUMN ext_found       TINYINT(1)   DEFAULT NULL,
+          ADD COLUMN ext_employee_id INT          DEFAULT NULL,
+          ADD COLUMN ext_status      TINYINT(1)   DEFAULT NULL,
+          ADD COLUMN ext_job_status  VARCHAR(50)  DEFAULT NULL,
+          ADD COLUMN ext_checked_at  DATETIME     DEFAULT NULL
+      `);
+      console.log('[DB] Migration: added ext_check columns to applicants');
+    }
+
     // ─── ترحيل: إضافة user_name إلى applicant_notes و applicant_activity
     const [anCols] = await conn.query("SHOW COLUMNS FROM applicant_notes LIKE 'user_name'");
     if (anCols.length === 0) {

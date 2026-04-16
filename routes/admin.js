@@ -6,6 +6,7 @@ const requireAuth    = require('../middleware/auth');
 const requireManager = require('../middleware/requireManager');
 const usersRouter    = require('./users');
 const SA_REGIONS     = require('./regions').SA_REGIONS;
+const { checkExternal } = require('../utils/extCheck');
 
 // ─── Status meta ──────────────────────────────────────────────────────────────
 const STATUS_META = {
@@ -188,7 +189,8 @@ router.get('/applicants', async (req, res) => {
       db.get(`SELECT COUNT(*) as c FROM applicants ${where}`, params),
       db.all(`
         SELECT id, full_name, id_number, phone, age, gender, region, city, neighborhood, has_car, has_license,
-               english, qualification, specialization, status, rating, created_at
+               english, qualification, specialization, status, rating, created_at,
+               ext_check_done, ext_found
         FROM applicants ${where}
         ORDER BY ${safeSort} ${safeOrder}
         LIMIT ${PAGE_SIZE} OFFSET ${offset}
@@ -308,6 +310,11 @@ router.get('/applicants/:id', async (req, res) => {
     const applicant = await db.get('SELECT * FROM applicants WHERE id = ?', [req.params.id]);
     if (!applicant) return res.status(404).send('المتقدم غير موجود');
 
+    // إذا لم يُفحص بعد — شغّل الفحص في الخلفية (لا ينتظره)
+    if (!applicant.ext_check_done && applicant.id_number) {
+      checkExternal(applicant.id, applicant.id_number).catch(() => {});
+    }
+
     const [notes, activity] = await Promise.all([
       db.all('SELECT * FROM applicant_notes WHERE applicant_id = ? ORDER BY created_at DESC', [applicant.id]),
       db.all('SELECT * FROM applicant_activity WHERE applicant_id = ? ORDER BY created_at DESC', [applicant.id]),
@@ -320,6 +327,26 @@ router.get('/applicants/:id', async (req, res) => {
   } catch (err) {
     console.error('[Applicant Detail]', err.message);
     res.status(500).send('خطأ في تحميل بيانات المتقدم');
+  }
+});
+
+// ─── External System Check (manual / AJAX) ───────────────────────────────────
+
+router.post('/applicants/:id/ext-check', async (req, res) => {
+  try {
+    const applicant = await db.get('SELECT id, id_number FROM applicants WHERE id = ?', [req.params.id]);
+    if (!applicant) return res.status(404).json({ error: 'غير موجود' });
+
+    await checkExternal(applicant.id, applicant.id_number);
+
+    const updated = await db.get(
+      'SELECT ext_check_done, ext_found, ext_employee_id, ext_status, ext_job_status, ext_checked_at FROM applicants WHERE id = ?',
+      [req.params.id]
+    );
+    res.json({ ok: true, ...updated });
+  } catch (err) {
+    console.error('[ExtCheck POST]', err.message);
+    res.status(500).json({ error: 'خطأ في الفحص' });
   }
 });
 

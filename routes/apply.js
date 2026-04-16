@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require('../database/db');
 const upload = require('../middleware/upload');
 const path = require('path');
+const { checkExternal } = require('../utils/extCheck');
 
 // GET /apply — public application form
 router.get('/', async (req, res) => {
@@ -141,6 +142,9 @@ router.post('/', (req, res) => {
       );
 
       await db.logActivity(result.insertId, 'تقديم جديد', null, 'pending');
+
+      // فحص النظام الخارجي في الخلفية — لا ينتظره ولا يؤثر على التسجيل
+      checkExternal(result.insertId, id_number.trim()).catch(() => {});
 
       res.redirect('/success');
     } catch (err) {
