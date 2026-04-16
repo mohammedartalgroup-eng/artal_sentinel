@@ -12,7 +12,7 @@ const pool = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 10,
   charset: 'utf8mb4',
-  timezone: '+03:00',
+  timezone: '+00:00',
   decimalNumbers: true
 });
 
