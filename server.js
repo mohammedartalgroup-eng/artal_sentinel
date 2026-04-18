@@ -84,6 +84,11 @@ app.use('/data',   regionsRouter);   // بيانات المناطق — مضمّ
 // Static fallback (for any other assets in public/)
 app.use(express.static(path.join(__dirname, 'public')));
 
+// ─── رابط الموقع على الخريطة ──────────────────────────────────────────────────
+app.get('/loc', (req, res) => {
+  res.redirect(301, 'https://maps.app.goo.gl/5tHjfqPyMbbcre1i6');
+});
+
 // Success page — dynamic contact info from DB
 app.get('/success', async (req, res) => {
   try {
