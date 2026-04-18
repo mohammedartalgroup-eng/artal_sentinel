@@ -46,6 +46,19 @@ app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 // ملاحظة: /uploads لم يعد يُخدَّم كـ static عام.
 // الملفات تُخدَّم عبر /admin/files/:folder/:filename (يتطلب تسجيل دخول) — راجع routes/admin.js
 
+// ─── ملفات عامة مسموح بها صراحةً (لا تحتاج تسجيل دخول) ─────────────────────
+const UPLOADS_ROOT = process.env.UPLOADS_PATH || path.join(__dirname, 'uploads');
+// قائمة بيضاء — أضف هنا أي ملف تريد إتاحته للعموم
+const PUBLIC_FILES = ['hiring_req.pdf'];
+
+app.get('/uploads/:filename', (req, res) => {
+  const { filename } = req.params;
+  if (!PUBLIC_FILES.includes(filename)) return res.status(403).end();
+  res.sendFile(path.join(UPLOADS_ROOT, filename), (err) => {
+    if (err && !res.headersSent) res.status(404).send('الملف غير موجود');
+  });
+});
+
 // مطلوب لأن التطبيق يعمل خلف Nginx — بدونه لا يُحفظ الـ session cookie على HTTPS
 app.set('trust proxy', 1);
 
