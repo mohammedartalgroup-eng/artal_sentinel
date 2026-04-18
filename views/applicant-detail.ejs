@@ -305,10 +305,18 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
           <% if (!applicant.ext_check_done) { %>
           <!-- لم يُفحص بعد — سيُطلق JS الفحص تلقائياً -->
           <div id="ext-pending" class="flex items-center gap-2 text-sm text-[#43474f]">
-            <span class="material-symbols-outlined text-base text-[#7594ca]" id="ext-spinner">autorenew</span>
+            <span class="material-symbols-outlined text-base text-[#7594ca] animate-spin" id="ext-spinner">autorenew</span>
             <span id="ext-pending-text">جاري التحقق...</span>
           </div>
           <div id="ext-result-box" class="hidden mt-3"></div>
+          <!-- زر يدوي في حال فشل التحقق التلقائي -->
+          <div class="mt-3 pt-3 border-t border-[#f2f4f6]">
+            <button onclick="extRecheck()"
+                    class="text-[10px] text-[#405f91] hover:underline flex items-center gap-0.5">
+              <span class="material-symbols-outlined text-[12px]">refresh</span>
+              فحص يدوي
+            </button>
+          </div>
 
           <% } else if (applicant.ext_found) { %>
           <%
@@ -948,11 +956,17 @@ function extRecheck() {
     .then(r => r.json())
     .then(data => {
       if (data.ok) {
-        toast('تم تحديث نتيجة الفحص', 'check_circle');
-        setTimeout(() => location.reload(), 800);
+        if (data.ext_found) {
+          toast('✅ تم العثور عليه في النظام السابق', 'check_circle');
+        } else {
+          toast('لم يُعثر عليه في النظام السابق', 'info');
+        }
+        setTimeout(() => location.reload(), 1000);
+      } else {
+        toast('تعذر الاتصال بالنظام الخارجي — تحقق من الاتصال', 'error', true);
       }
     })
-    .catch(() => toast('تعذر الاتصال بالنظام الخارجي', 'error', true));
+    .catch(() => toast('تعذر الاتصال بالخادم', 'error', true));
 }
 
 // ─── تعديل الملاحظة ───────────────────────────────────────────────────────────
