@@ -46,6 +46,9 @@ app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 // ملاحظة: /uploads لم يعد يُخدَّم كـ static عام.
 // الملفات تُخدَّم عبر /admin/files/:folder/:filename (يتطلب تسجيل دخول) — راجع routes/admin.js
 
+// مطلوب لأن التطبيق يعمل خلف Nginx — بدونه لا يُحفظ الـ session cookie على HTTPS
+app.set('trust proxy', 1);
+
 // Session — stored in MySQL
 const sessionStore = new MySQLStore({
   host:               process.env.DB_HOST || 'localhost',
@@ -69,7 +72,7 @@ app.use(session({
     maxAge:   24 * 60 * 60 * 1000,
     httpOnly: true,
     sameSite: 'strict',
-    secure:   process.env.NODE_ENV === 'production',  // true على السيرفر (HTTPS)
+    secure:   process.env.SECURE_COOKIE === 'true',    // عيّن SECURE_COOKIE=true في .env على السيرفر
   },
 }));
 
