@@ -370,41 +370,6 @@ router.get('/applicants/:id', async (req, res) => {
   }
 });
 
-// ─── تشخيص اتصال النظام الخارجي (للمدير فقط) ────────────────────────────────
-router.get('/ext-debug', requireManager, (req, res) => {
-  const https   = require('https');
-  const secret  = process.env.EXT_API_SECRET || 'artal@NID%2026';
-  const start   = Date.now();
-
-  const options = {
-    hostname: 'artalsys.com',
-    path:     '/api/employees/check-national-id?national_id=1000000001',
-    method:   'GET',
-    headers:  { 'X-Secret': secret },
-    timeout:  10000,
-  };
-
-  const result = { secret_source: process.env.EXT_API_SECRET ? 'env' : 'fallback (hardcoded)', secret_preview: secret.slice(0, 8) + '...' };
-
-  const probe = https.request(options, (apiRes) => {
-    let body = '';
-    apiRes.on('data', c => body += c);
-    apiRes.on('end', () => {
-      res.json({
-        ok:            true,
-        status_code:   apiRes.statusCode,
-        duration_ms:   Date.now() - start,
-        response_body: body,
-        ...result,
-      });
-    });
-  });
-
-  probe.on('error',   (e) => res.json({ ok: false, error: e.message, code: e.code, ...result }));
-  probe.on('timeout', ()  => { probe.destroy(); res.json({ ok: false, error: 'timeout بعد 10 ثوانٍ', ...result }); });
-  probe.end();
-});
-
 // ─── External System Check (manual / AJAX) ───────────────────────────────────
 
 router.post('/applicants/:id/ext-check', async (req, res) => {
