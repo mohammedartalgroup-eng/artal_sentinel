@@ -2,6 +2,7 @@
 process.env.TZ = 'Asia/Riyadh';
 
 const express = require('express');
+const helmet  = require('helmet');
 const session = require('express-session');
 const MySQLStore = require('express-mysql-session')(session);
 const path = require('path');
@@ -20,6 +21,14 @@ const regionsRouter = require('./routes/regions');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// ─── Security Headers (Helmet) ────────────────────────────────────────────────
+// CSP مُعطَّل مؤقتاً لأن الصفحات تستخدم Tailwind CDN — يُفعَّل لاحقاً مع self-hosted assets
+app.use(helmet({
+  contentSecurityPolicy:      false,   // سيُفعَّل لاحقاً بعد نقل الأصول لـ self-hosted
+  crossOriginEmbedderPolicy:  false,   // مطلوب لصور Google في صفحة التقديم
+}));
+// إخفاء X-Powered-By يتم تلقائياً بواسطة helmet
+
 // Ensure upload directories exist
 ['uploads/cv', 'uploads/id_images'].forEach(dir => {
   const full = path.join(__dirname, dir);
@@ -30,13 +39,12 @@ const PORT = process.env.PORT || 3000;
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
-// Body parsers
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Body parsers — حد أقصى 2MB لمنع هجمات الـ payload الضخمة
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
-// Static files — يستخدم نفس UPLOADS_PATH المحدد في .env
-const UPLOADS_ROOT = process.env.UPLOADS_PATH || path.join(__dirname, 'uploads');
-app.use('/uploads', express.static(UPLOADS_ROOT));
+// ملاحظة: /uploads لم يعد يُخدَّم كـ static عام.
+// الملفات تُخدَّم عبر /admin/files/:folder/:filename (يتطلب تسجيل دخول) — راجع routes/admin.js
 
 // Session — stored in MySQL
 const sessionStore = new MySQLStore({
@@ -57,7 +65,12 @@ app.use(session({
   secret: process.env.SESSION_SECRET || 'artal-sentinel-secret-key-change-in-prod',
   resave: false,
   saveUninitialized: false,
-  cookie: { maxAge: 24 * 60 * 60 * 1000, httpOnly: true },
+  cookie: {
+    maxAge:   24 * 60 * 60 * 1000,
+    httpOnly: true,
+    sameSite: 'strict',
+    secure:   process.env.NODE_ENV === 'production',  // true على السيرفر (HTTPS)
+  },
 }));
 
 // Routes — before static so /apply accepting_applications check fires first
@@ -150,7 +163,7 @@ app.listen(PORT, () => {
   console.log('  ╠══════════════════════════════════════╣');
   console.log(`  ║  App:    http://localhost:${PORT}/         ║`);
   console.log(`  ║  Admin:  http://localhost:${PORT}/admin   ║`);
-  console.log('  ║  Login:  admin / admin123            ║');
+  console.log('  ║  Login:  /admin/login                ║');
   console.log('  ╚══════════════════════════════════════╝');
   console.log('');
 });

@@ -1,12 +1,24 @@
-const express = require('express');
-const router = express.Router();
-const bcrypt = require('bcryptjs');
-const db = require('../database/db');
+const express   = require('express');
+const router     = express.Router();
+const bcrypt     = require('bcryptjs');
+const path       = require('path');
+const db         = require('../database/db');
+const rateLimit  = require('express-rate-limit');
 const requireAuth    = require('../middleware/auth');
 const requireManager = require('../middleware/requireManager');
 const usersRouter    = require('./users');
 const SA_REGIONS     = require('./regions').SA_REGIONS;
 const { checkExternal } = require('../utils/extCheck');
+
+// ─── Rate Limiter — تسجيل الدخول فقط ─────────────────────────────────────────
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,   // 15 دقيقة
+  max: 20,                     // 20 محاولة كحد أقصى
+  skipSuccessfulRequests: true, // لا تحسب المحاولات الناجحة
+  message: { error: 'تم تجاوز عدد المحاولات المسموح بها، حاول مرة أخرى بعد 15 دقيقة' },
+  standardHeaders: true,
+  legacyHeaders:   false,
+});
 
 // ─── Status meta ──────────────────────────────────────────────────────────────
 const STATUS_META = {
@@ -41,7 +53,7 @@ router.get('/login', (req, res) => {
   res.render('login', { error: null, next: req.query.next || '/admin/dashboard' });
 });
 
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   try {
     const { username, password, next } = req.body;
     const user = await db.get('SELECT * FROM admin_users WHERE username = ?', [username]);
@@ -77,6 +89,24 @@ router.get('/logout', async (req, res) => {
 
 // ─── All routes below require auth ───────────────────────────────────────────
 router.use(requireAuth);
+
+// ─── خدمة ملفات المتقدمين — محمية بتسجيل الدخول ─────────────────────────────
+const UPLOADS_ROOT = process.env.UPLOADS_PATH || path.join(__dirname, '..', 'uploads');
+
+router.get('/files/:folder/:filename', (req, res) => {
+  const { folder, filename } = req.params;
+
+  // تحقق من المجلدات المسموح بها فقط
+  if (!['cv', 'id_images'].includes(folder)) return res.status(403).end();
+
+  // منع path traversal — السماح فقط بأحرف آمنة في اسم الملف
+  if (!filename || !/^[a-zA-Z0-9._-]+$/.test(filename)) return res.status(400).end();
+
+  const filePath = path.join(UPLOADS_ROOT, folder, filename);
+  res.sendFile(filePath, (err) => {
+    if (err && !res.headersSent) res.status(404).end();
+  });
+});
 
 // متغيرات مشتركة لجميع views
 const RYD = 'Asia/Riyadh';

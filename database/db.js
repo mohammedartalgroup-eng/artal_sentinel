@@ -283,7 +283,7 @@ async function initialize() {
         "INSERT INTO admin_users (username, full_name, password_hash) VALUES ('admin@artal.com', 'مدير النظام', ?)",
         [hash]
       );
-      console.log('[DB] Default admin created — email: admin@artal.com / password: admin123');
+      console.log('[DB] Default admin created — email: admin@artal.com (check .env or change via admin panel)');
     }
 
     // ─── ترحيل: إنشاء حساب مدير رئيسي وتحويل الحساب الأول إلى موظف
@@ -296,7 +296,7 @@ async function initialize() {
       );
       // تحويل الحساب الأول إلى موظف
       await conn.query("UPDATE admin_users SET role = 'employee' WHERE username = 'admin@artal.com'");
-      console.log('[DB] Migration: manager@artal.com (manager) created — password: Artal@2025');
+      console.log('[DB] Migration: manager@artal.com (manager) created — change password via admin panel');
       console.log('[DB] Migration: admin@artal.com demoted to employee');
     }
 

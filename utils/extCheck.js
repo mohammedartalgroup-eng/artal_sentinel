@@ -9,7 +9,7 @@ const db    = require('../database/db');
 
 const EXT_HOSTNAME = 'artalsys.com';
 const EXT_PATH     = '/api/employees/check-national-id';
-const EXT_SECRET   = 'artal@NID%2026';
+const EXT_SECRET   = process.env.EXT_API_SECRET || 'artal@NID%2026'; // يُفضَّل تعيينه في .env
 const TIMEOUT_MS   = 8000;
 
 /**

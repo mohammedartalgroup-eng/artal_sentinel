@@ -14,7 +14,9 @@
     "exceljs": "^4.4.0",
     "express": "^4.19.2",
     "express-mysql-session": "^3.0.0",
+    "express-rate-limit": "^8.3.2",
     "express-session": "^1.18.0",
+    "helmet": "^8.1.0",
     "multer": "^1.4.5-lts.1",
     "mysql2": "^3.9.7"
   },
