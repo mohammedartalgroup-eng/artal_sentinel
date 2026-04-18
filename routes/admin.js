@@ -159,7 +159,7 @@ router.get('/applicants', async (req, res) => {
   try {
     const {
       q = '', status = '', region = '', city = '', gender = '', english = '', qualification = '',
-      has_car = '', has_license = '',
+      has_car = '', has_license = '', ext_check = '',
       age_min = '', age_max = '', date_from = '', date_to = '',
       sort = 'created_at', order = 'desc', page = '1'
     } = req.query;
@@ -183,6 +183,9 @@ router.get('/applicants', async (req, res) => {
     if (qualification) { conditions.push('qualification = ?'); params.push(qualification); }
     if (has_car !== '')     { conditions.push('has_car = ?');     params.push(parseInt(has_car)); }
     if (has_license !== '') { conditions.push('has_license = ?'); params.push(parseInt(has_license)); }
+    if (ext_check === 'found')      { conditions.push('ext_check_done = 1 AND ext_found = 1'); }
+    else if (ext_check === 'not_found')  { conditions.push('ext_check_done = 1 AND (ext_found = 0 OR ext_found IS NULL)'); }
+    else if (ext_check === 'unchecked')  { conditions.push('ext_check_done = 0'); }
     if (age_min) { conditions.push('age >= ?'); params.push(parseInt(age_min)); }
     if (age_max) { conditions.push('age <= ?'); params.push(parseInt(age_max)); }
     if (date_from) { conditions.push('DATE(created_at) >= ?'); params.push(date_from); }
@@ -209,7 +212,7 @@ router.get('/applicants', async (req, res) => {
 
     res.render('applicants', {
       applicants, total, totalPages, pageNum,
-      filters: { q, status, region, city, gender, english, qualification, has_car, has_license, age_min, age_max, date_from, date_to, sort, order },
+      filters: { q, status, region, city, gender, english, qualification, has_car, has_license, ext_check, age_min, age_max, date_from, date_to, sort, order },
       STATUS_META, REGIONS, SA_REGIONS, adminUser: req.session.adminUser
     });
   } catch (err) {

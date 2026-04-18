@@ -148,6 +148,17 @@
             </select>
           </div>
 
+          <!-- Ext Check (النظام السابق) -->
+          <div>
+            <label class="block text-xs text-[#43474f] font-semibold mb-1">النظام السابق</label>
+            <select name="ext_check">
+              <option value="">الكل</option>
+              <option value="found"     <%= filters.ext_check === 'found'     ? 'selected' : '' %>>موجود</option>
+              <option value="not_found" <%= filters.ext_check === 'not_found' ? 'selected' : '' %>>غير موجود</option>
+              <option value="unchecked" <%= filters.ext_check === 'unchecked' ? 'selected' : '' %>>لم يُفحص</option>
+            </select>
+          </div>
+
           <!-- Age range -->
           <div>
             <label class="block text-xs text-[#43474f] font-semibold mb-1">العمر من</label>
