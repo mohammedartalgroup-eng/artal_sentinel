@@ -173,10 +173,9 @@ router.get('/dashboard', async (req, res) => {
       rejected:    rejected?.c    || 0,
     };
 
-    // ─── رسم بياني تجريبي: آخر 14 يوم × أهم المدن — للمدير فقط ──────────────
+    // ─── رسم بياني: آخر 14 يوم × أهم المدن ─────────────────────────────────
     let cityTrend = null;
-    if (req.session.adminUser === 'manager@artal.com') {
-      try {
+    try {
         const rows = await db.all(`
           SELECT DATE(created_at) AS day,
                  COALESCE(NULLIF(city, ''), 'غير محدد') AS city,
@@ -245,10 +244,9 @@ router.get('/dashboard', async (req, res) => {
           datasets: Object.entries(matrix).map(([city, data]) => ({ city, data })),
           totalInPeriod: rows.reduce((a, r) => a + r.count, 0),
         };
-      } catch (e) {
-        console.error('[cityTrend]', e.message);
-        cityTrend = null;
-      }
+    } catch (e) {
+      console.error('[cityTrend]', e.message);
+      cityTrend = null;
     }
 
     res.render('dashboard', {
