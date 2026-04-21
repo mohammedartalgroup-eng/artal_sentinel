@@ -173,8 +173,86 @@ router.get('/dashboard', async (req, res) => {
       rejected:    rejected?.c    || 0,
     };
 
+    // ─── رسم بياني تجريبي: آخر 14 يوم × أهم المدن — للمدير فقط ──────────────
+    let cityTrend = null;
+    if (req.session.adminUser === 'manager@artal.com') {
+      try {
+        const rows = await db.all(`
+          SELECT DATE(created_at) AS day,
+                 COALESCE(NULLIF(city, ''), 'غير محدد') AS city,
+                 COUNT(*) AS count
+          FROM applicants
+          WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 13 DAY)
+          GROUP BY DATE(created_at), city
+          ORDER BY day ASC
+        `);
+
+        // بناء قائمة آخر 14 يوم (YYYY-MM-DD بتوقيت الرياض)
+        const days = [];
+        const today = new Date();
+        for (let i = 13; i >= 0; i--) {
+          const d = new Date(today);
+          d.setDate(today.getDate() - i);
+          const yyyy = d.getFullYear();
+          const mm = String(d.getMonth() + 1).padStart(2, '0');
+          const dd = String(d.getDate()).padStart(2, '0');
+          days.push(`${yyyy}-${mm}-${dd}`);
+        }
+
+        // تجميع إجمالي كل مدينة لاختيار الأعلى
+        const cityTotals = {};
+        rows.forEach(r => {
+          cityTotals[r.city] = (cityTotals[r.city] || 0) + r.count;
+        });
+        const topCities = Object.entries(cityTotals)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(([c]) => c);
+        const topSet = new Set(topCities);
+
+        // مصفوفة: كل مدينة → مصفوفة بعدد المتقدمين لكل يوم
+        const matrix = {};
+        topCities.forEach(c => { matrix[c] = new Array(days.length).fill(0); });
+        matrix['أخرى'] = new Array(days.length).fill(0);
+
+        rows.forEach(r => {
+          // MySQL DATE() يعيد string أو Date — نوحّد
+          const dayKey = r.day instanceof Date
+            ? `${r.day.getFullYear()}-${String(r.day.getMonth()+1).padStart(2,'0')}-${String(r.day.getDate()).padStart(2,'0')}`
+            : String(r.day).slice(0, 10);
+          const idx = days.indexOf(dayKey);
+          if (idx === -1) return;
+          const bucket = topSet.has(r.city) ? r.city : 'أخرى';
+          matrix[bucket][idx] += r.count;
+        });
+
+        // إزالة "أخرى" إذا كانت صفر كلياً
+        const othersSum = matrix['أخرى'].reduce((a, b) => a + b, 0);
+        if (othersSum === 0) delete matrix['أخرى'];
+
+        // تسميات الأيام بالعربي (يوم + تاريخ مختصر)
+        const dayLabels = days.map(d => {
+          const dt = new Date(d + 'T00:00:00');
+          return dt.toLocaleDateString('ar-SA', {
+            timeZone: 'Asia/Riyadh', weekday: 'short', month: 'numeric', day: 'numeric'
+          });
+        });
+
+        cityTrend = {
+          days,
+          dayLabels,
+          cities: Object.keys(matrix),
+          datasets: Object.entries(matrix).map(([city, data]) => ({ city, data })),
+          totalInPeriod: rows.reduce((a, r) => a + r.count, 0),
+        };
+      } catch (e) {
+        console.error('[cityTrend]', e.message);
+        cityTrend = null;
+      }
+    }
+
     res.render('dashboard', {
-      stats, byCity, recent, trend,
+      stats, byCity, recent, trend, cityTrend,
       STATUS_META, adminUser: req.session.adminUser
     });
   } catch (err) {
