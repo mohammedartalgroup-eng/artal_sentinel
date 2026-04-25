@@ -367,33 +367,72 @@
               </div>
 
               <!-- Pagination -->
-              <% if (totalPages> 1) { %>
-                <div class="flex items-center justify-between px-6 py-4 border-t border-[#f2f4f6]">
+              <!-- Pagination -->
+                <div class="flex items-center justify-between px-6 py-4 border-t border-[#f2f4f6] flex-wrap gap-3">
+
+                  <!-- عرض X–Y من Z -->
+                  <% const _from = (pageNum - 1) * 20 + 1; const _to = _from + applicants.length - 1; %>
                   <span class="text-xs text-[#43474f]">
-                    صفحة <%= pageNum %> من <%= totalPages %>
+                    عرض <span class="font-semibold text-[#001736]"><%= _from %>–<%= _to %></span>
+                    من <span class="font-semibold text-[#001736]"><%= total %></span> متقدم
                   </span>
-                  <div class="flex items-center gap-2">
-                    <% if (pageNum> 1) { %>
+
+                  <% if (totalPages > 1) { %>
+                  <div class="flex items-center gap-1">
+
+                    <%/* ── زر السابق ── */%>
+                    <% if (pageNum > 1) { %>
                       <a href="?<%= new URLSearchParams({...filters, page: pageNum - 1}).toString() %>"
-                        class="px-3 py-1.5 rounded-lg bg-[#f2f4f6] text-sm hover:bg-[#eceef0] transition-colors">
-                        السابق
+                         class="flex items-center gap-0.5 px-3 h-9 rounded-lg bg-[#f2f4f6] hover:bg-[#e4e6e9] text-sm font-medium text-[#43474f] transition-colors select-none">
+                        <span class="material-symbols-outlined" style="font-size:18px">chevron_right</span>السابق
                       </a>
+                    <% } else { %>
+                      <span class="flex items-center gap-0.5 px-3 h-9 rounded-lg text-sm font-medium text-[#c4c6d0] select-none cursor-not-allowed">
+                        <span class="material-symbols-outlined" style="font-size:18px">chevron_right</span>السابق
+                      </span>
+                    <% } %>
+
+                    <%/* ── أرقام الصفحات مع النقاط ── */%>
+                    <%
+                      const _pSet = new Set([1, totalPages]);
+                      for (let _i = Math.max(1, pageNum-2); _i <= Math.min(totalPages, pageNum+2); _i++) _pSet.add(_i);
+                      const _pSorted = [..._pSet].sort((a,b) => a-b);
+                      const _pItems = [];
+                      for (let _i = 0; _i < _pSorted.length; _i++) {
+                        if (_i > 0) {
+                          const _gap = _pSorted[_i] - _pSorted[_i-1];
+                          if (_gap === 2) _pItems.push(_pSorted[_i] - 1); // صفحة واحدة مخفية → اعرضها مباشرة
+                          else if (_gap > 2) _pItems.push('…');           // أكثر من واحدة → نقاط
+                        }
+                        _pItems.push(_pSorted[_i]);
+                      }
+                    %>
+                    <% _pItems.forEach(_p => { %>
+                      <% if (_p === '…') { %>
+                        <span class="w-9 h-9 flex items-center justify-center text-[#9ca3af] text-sm select-none">…</span>
+                      <% } else { %>
+                        <a href="?<%= new URLSearchParams({...filters, page: _p}).toString() %>"
+                           class="w-9 h-9 rounded-lg text-sm font-semibold flex items-center justify-center transition-colors select-none <%= _p === pageNum ? 'bg-[#001736] text-white' : 'bg-[#f2f4f6] hover:bg-[#e4e6e9] text-[#191c1e]' %>">
+                          <%= _p %>
+                        </a>
                       <% } %>
-                        <% for (let p=Math.max(1, pageNum-2); p <=Math.min(totalPages, pageNum+2); p++) { %>
-                          <a href="?<%= new URLSearchParams({...filters, page: p}).toString() %>" class="w-9 h-9 rounded-lg text-sm font-medium flex items-center justify-center transition-colors
-                    <%= p === pageNum ? 'bg-[#001736] text-white' : 'bg-[#f2f4f6] hover:bg-[#eceef0]' %>">
-                            <%= p %>
-                          </a>
-                          <% } %>
-                            <% if (pageNum < totalPages) { %>
-                              <a href="?<%= new URLSearchParams({...filters, page: pageNum + 1}).toString() %>"
-                                class="px-3 py-1.5 rounded-lg bg-[#f2f4f6] text-sm hover:bg-[#eceef0] transition-colors">
-                                التالي
-                              </a>
-                              <% } %>
+                    <% }) %>
+
+                    <%/* ── زر التالي ── */%>
+                    <% if (pageNum < totalPages) { %>
+                      <a href="?<%= new URLSearchParams({...filters, page: pageNum + 1}).toString() %>"
+                         class="flex items-center gap-0.5 px-3 h-9 rounded-lg bg-[#f2f4f6] hover:bg-[#e4e6e9] text-sm font-medium text-[#43474f] transition-colors select-none">
+                        التالي<span class="material-symbols-outlined" style="font-size:18px">chevron_left</span>
+                      </a>
+                    <% } else { %>
+                      <span class="flex items-center gap-0.5 px-3 h-9 rounded-lg text-sm font-medium text-[#c4c6d0] select-none cursor-not-allowed">
+                        التالي<span class="material-symbols-outlined" style="font-size:18px">chevron_left</span>
+                      </span>
+                    <% } %>
+
                   </div>
+                  <% } %>
                 </div>
-                <% } %>
                   <% } %>
         </div>
 

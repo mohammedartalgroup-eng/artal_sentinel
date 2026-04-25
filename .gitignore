@@ -145,3 +145,5 @@ uploads/id_images/*
 !uploads/id_images/.gitkeep
 # ملف البيئة إن أُنشئ
 .env
+# سكريبتات التطوير المحلي — لا ترفع للسيرفر أبداً
+scripts/
