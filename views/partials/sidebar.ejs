@@ -1,4 +1,22 @@
-<aside class="fixed right-0 top-0 h-full w-64 bg-[#001736] flex flex-col z-40 shadow-2xl">
+<!-- ─── شريط علوي للجوال فقط ──────────────────────────────────────────────── -->
+<header class="fixed top-0 inset-x-0 h-14 bg-[#001736] lg:hidden flex items-center justify-between px-4 z-50 shadow-lg">
+  <div class="flex items-center gap-2">
+    <img src="/images/icon.png" alt="أرتال" class="h-7 w-auto object-contain">
+    <span class="text-white text-sm font-semibold">أرتال Sentinel</span>
+  </div>
+  <button onclick="openSidebar()"
+          class="w-10 h-10 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors">
+    <span class="material-symbols-outlined text-white" style="font-size:22px">menu</span>
+  </button>
+</header>
+
+<!-- ─── Overlay خلف السيدبار على الجوال ──────────────────────────────────── -->
+<div id="sidebar-overlay" onclick="closeSidebar()"
+     class="fixed inset-0 bg-black/50 z-30 hidden transition-opacity duration-300"></div>
+
+<!-- ─── السيدبار ─────────────────────────────────────────────────────────── -->
+<aside id="sidebar" class="fixed right-0 top-0 h-full w-64 bg-[#001736] flex flex-col z-40 shadow-2xl
+  translate-x-full lg:translate-x-0 transition-transform duration-300 ease-in-out">
   <!-- Brand -->
   <div class="px-5 py-5 border-b border-white/10">
     <div class="bg-white rounded-xl px-4 py-2.5 flex items-center justify-center shadow-md">
@@ -79,3 +97,22 @@
     </a>
   </div>
 </aside>
+
+<script>
+  function openSidebar() {
+    document.getElementById('sidebar').classList.remove('translate-x-full');
+    document.getElementById('sidebar-overlay').classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeSidebar() {
+    document.getElementById('sidebar').classList.add('translate-x-full');
+    document.getElementById('sidebar-overlay').classList.add('hidden');
+    document.body.style.overflow = '';
+  }
+  // إغلاق السيدبار عند الضغط على أي رابط (جوال)
+  document.querySelectorAll('#sidebar a').forEach(a => {
+    a.addEventListener('click', () => {
+      if (window.innerWidth < 1024) closeSidebar();
+    });
+  });
+</script>

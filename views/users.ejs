@@ -22,9 +22,9 @@
 <body class="text-[#191c1e]">
 <%- include('partials/sidebar', { currentPage: 'users' }) %>
 
-<div class="mr-64 min-h-screen">
+<div class="lg:mr-64 min-h-screen pt-14 lg:pt-0">
   <!-- Header -->
-  <header class="bg-white border-b border-[#eceef0] px-8 py-5 flex items-center justify-between sticky top-0 z-30">
+  <header class="bg-white border-b border-[#eceef0] px-4 lg:px-8 py-4 lg:py-5 flex items-center justify-between sticky top-14 lg:top-0 z-30">
     <div>
       <h1 class="text-xl font-bold text-[#001736]">إدارة المستخدمين</h1>
       <p class="text-xs text-[#43474f] mt-0.5">إجمالي الحسابات: <strong><%= users.length %></strong></p>
@@ -36,7 +36,7 @@
     </button>
   </header>
 
-  <main class="p-8 space-y-6">
+  <main class="p-4 lg:p-8 space-y-6">
 
     <!-- Alerts -->
     <% if (success === '1') { %>

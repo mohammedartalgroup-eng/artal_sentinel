@@ -45,9 +45,9 @@ const colorMap = {
 const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'gray' };
 %>
 
-<div class="mr-64 min-h-screen">
+<div class="lg:mr-64 min-h-screen pt-14 lg:pt-0">
   <!-- Top bar -->
-  <header class="bg-white border-b border-[#eceef0] px-8 py-4 flex items-center gap-4 sticky top-0 z-30">
+  <header class="bg-white border-b border-[#eceef0] px-4 lg:px-8 py-3 lg:py-4 flex items-center gap-4 sticky top-14 lg:top-0 z-30">
     <a href="/admin/applicants" class="text-[#43474f] hover:text-[#001736] transition-colors">
       <span class="material-symbols-outlined">arrow_forward</span>
     </a>
@@ -127,7 +127,7 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
     </div>
   </div>
 
-  <main class="p-8">
+  <main class="p-4 lg:p-8">
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
       <!-- LEFT: Info + Docs -->

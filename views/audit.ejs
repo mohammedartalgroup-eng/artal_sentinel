@@ -24,10 +24,10 @@
 <body class="text-[#191c1e]">
 <%- include('partials/sidebar', { currentPage: 'audit' }) %>
 
-<div class="mr-64 min-h-screen">
+<div class="lg:mr-64 min-h-screen pt-14 lg:pt-0">
 
   <!-- Top bar -->
-  <header class="bg-white border-b border-[#eceef0] px-8 py-5 flex items-center justify-between sticky top-0 z-30">
+  <header class="bg-white border-b border-[#eceef0] px-4 lg:px-8 py-4 lg:py-5 flex items-center justify-between sticky top-14 lg:top-0 z-30">
     <div class="flex items-center gap-3">
       <% if (filters.applicant_id) { %>
       <a href="/admin/applicants/<%= filters.applicant_id %>"
@@ -55,7 +55,7 @@
     </div>
   </header>
 
-  <main class="p-8 space-y-6">
+  <main class="p-4 lg:p-8 space-y-6">
 
     <!-- Filter Panel -->
     <form method="GET" action="/admin/audit">
