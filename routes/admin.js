@@ -205,7 +205,7 @@ router.get('/dashboard', async (req, res) => {
         });
         const topCities = Object.entries(cityTotals)
           .sort((a, b) => b[1] - a[1])
-          .slice(0, 5)
+          .slice(0, 8)
           .map(([c]) => c);
         const topSet = new Set(topCities);
 
