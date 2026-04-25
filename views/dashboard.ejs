@@ -67,6 +67,32 @@
       </div>
     </div>
 
+    <!-- Period Selector -->
+    <div class="bg-white rounded-2xl px-4 py-3 flex items-center gap-2 overflow-x-auto">
+      <span class="material-symbols-outlined text-[#43474f] text-base flex-shrink-0">calendar_month</span>
+      <span class="text-xs text-[#43474f] font-semibold flex-shrink-0 ml-1">الفترة:</span>
+      <% const periodOptions = [
+        { key: 'today',      label: 'اليوم' },
+        { key: 'yesterday',  label: 'أمس' },
+        { key: '7d',         label: 'آخر 7 أيام' },
+        { key: '30d',        label: 'آخر 30 يوم' },
+        { key: 'this_month', label: 'هذا الشهر' },
+        { key: 'last_month', label: 'الشهر الماضي' },
+        { key: '3m',         label: 'آخر 3 أشهر' },
+        { key: 'this_year',  label: 'هذا العام' },
+        { key: 'all',        label: 'كل الوقت' },
+      ]; %>
+      <% periodOptions.forEach(opt => { %>
+      <a href="?period=<%= opt.key %>"
+         class="text-xs px-3 py-1.5 rounded-full flex-shrink-0 font-medium transition-colors whitespace-nowrap
+                <%= activePeriod === opt.key
+                    ? 'bg-[#001736] text-white'
+                    : 'bg-[#f2f4f6] text-[#43474f] hover:bg-[#e4e7eb]' %>">
+        <%= opt.label %>
+      </a>
+      <% }) %>
+    </div>
+
     <!-- Status Breakdown + City Chart -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
@@ -125,15 +151,15 @@
       <div class="flex items-center justify-between mb-1">
         <div>
           <div class="flex items-center gap-2">
-            <h2 class="font-bold text-[#001736] text-base">تحليل المتقدمين × المدن — آخر 14 يوم</h2>
+            <h2 class="font-bold text-[#001736] text-base">تحليل المتقدمين × المدن — <%= periodLabel %></h2>
             <span class="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-semibold">تجريبي</span>
           </div>
-          <p class="text-xs text-[#43474f] mt-1">لقياس أثر الحملات الإعلانية على كل منطقة — إجمالي الفترة: <strong><%= cityTrend.totalInPeriod %></strong></p>
+          <p class="text-xs text-[#43474f] mt-1">لقياس أثر الحملات الإعلانية على كل منطقة — إجمالي الفترة: <strong><%= cityTrend.totalInPeriod %></strong><% if (['3m','this_year','all'].includes(activePeriod)) { %> <span class="text-[#8a8f98]">(الرسم يعرض آخر 14 يوم)</span><% } %></p>
         </div>
       </div>
 
       <% if (cityTrend.totalInPeriod === 0) { %>
-        <div class="text-[#43474f] text-sm text-center py-12">لا توجد طلبات خلال آخر 14 يوم</div>
+        <div class="text-[#43474f] text-sm text-center py-12">لا توجد طلبات خلال هذه الفترة</div>
       <% } else { %>
         <div class="mt-4" style="position:relative; height:360px;">
           <canvas id="cityTrendChart"></canvas>

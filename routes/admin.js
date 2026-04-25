@@ -129,26 +129,84 @@ router.use('/users', requireManager, usersRouter);
 // Root redirect
 router.get('/', (req, res) => res.redirect('/admin/dashboard'));
 
+// ─── Period meta helper ────────────────────────────────────────────────────────
+function getPeriodMeta(period) {
+  const now = new Date();
+  const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const todayStr = fmt(now);
+
+  switch (period) {
+    case 'today':
+      return { sql: 'AND DATE(created_at) = ?', params: [todayStr], chartEnd: todayStr, chartDays: 1, label: 'اليوم' };
+
+    case 'yesterday': {
+      const yd = new Date(now); yd.setDate(yd.getDate() - 1);
+      const s = fmt(yd);
+      return { sql: 'AND DATE(created_at) = ?', params: [s], chartEnd: s, chartDays: 1, label: 'أمس' };
+    }
+
+    case '7d': {
+      const s = new Date(now); s.setDate(s.getDate() - 6);
+      return { sql: 'AND DATE(created_at) >= ?', params: [fmt(s)], chartEnd: todayStr, chartDays: 7, label: 'آخر 7 أيام' };
+    }
+
+    case '30d': {
+      const s = new Date(now); s.setDate(s.getDate() - 29);
+      return { sql: 'AND DATE(created_at) >= ?', params: [fmt(s)], chartEnd: todayStr, chartDays: 30, label: 'آخر 30 يوم' };
+    }
+
+    case 'this_month': {
+      const s = new Date(now.getFullYear(), now.getMonth(), 1);
+      return { sql: 'AND DATE(created_at) >= ?', params: [fmt(s)], chartEnd: todayStr, chartDays: now.getDate(), label: 'هذا الشهر' };
+    }
+
+    case 'last_month': {
+      const fom  = new Date(now.getFullYear(), now.getMonth(), 1);
+      const folm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const lolm = new Date(now.getFullYear(), now.getMonth(), 0);
+      return { sql: 'AND DATE(created_at) >= ? AND DATE(created_at) < ?', params: [fmt(folm), fmt(fom)], chartEnd: fmt(lolm), chartDays: lolm.getDate(), label: 'الشهر الماضي' };
+    }
+
+    case '3m': {
+      const s = new Date(now); s.setMonth(s.getMonth() - 3);
+      return { sql: 'AND DATE(created_at) >= ?', params: [fmt(s)], chartEnd: todayStr, chartDays: 14, label: 'آخر 3 أشهر' };
+    }
+
+    case 'this_year': {
+      const s = new Date(now.getFullYear(), 0, 1);
+      return { sql: 'AND DATE(created_at) >= ?', params: [fmt(s)], chartEnd: todayStr, chartDays: 14, label: 'هذا العام' };
+    }
+
+    default: // 'all'
+      return { sql: '', params: [], chartEnd: todayStr, chartDays: 14, label: 'كل الوقت' };
+  }
+}
+
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 router.get('/dashboard', async (req, res) => {
   try {
+    const VALID_PERIODS = ['today','yesterday','7d','30d','this_month','last_month','3m','this_year','all'];
+    const period = VALID_PERIODS.includes(req.query.period) ? req.query.period : 'all';
+    const pMeta  = getPeriodMeta(period);
+    const p      = pMeta.params;
+
     const [
       total, pending, reviewed, shortlisted, interviewed, hired, on_hold, rejected,
       byCity, recent, trend
     ] = await Promise.all([
-      db.get("SELECT COUNT(*) as c FROM applicants"),
-      db.get("SELECT COUNT(*) as c FROM applicants WHERE status = 'pending'"),
-      db.get("SELECT COUNT(*) as c FROM applicants WHERE status = 'reviewed'"),
-      db.get("SELECT COUNT(*) as c FROM applicants WHERE status = 'shortlisted'"),
-      db.get("SELECT COUNT(*) as c FROM applicants WHERE status = 'interviewed'"),
-      db.get("SELECT COUNT(*) as c FROM applicants WHERE status = 'hired'"),
-      db.get("SELECT COUNT(*) as c FROM applicants WHERE status = 'on_hold'"),
-      db.get("SELECT COUNT(*) as c FROM applicants WHERE status = 'rejected'"),
+      db.get(`SELECT COUNT(*) as c FROM applicants WHERE 1=1 ${pMeta.sql}`, p),
+      db.get(`SELECT COUNT(*) as c FROM applicants WHERE status = 'pending' ${pMeta.sql}`, p),
+      db.get(`SELECT COUNT(*) as c FROM applicants WHERE status = 'reviewed' ${pMeta.sql}`, p),
+      db.get(`SELECT COUNT(*) as c FROM applicants WHERE status = 'shortlisted' ${pMeta.sql}`, p),
+      db.get(`SELECT COUNT(*) as c FROM applicants WHERE status = 'interviewed' ${pMeta.sql}`, p),
+      db.get(`SELECT COUNT(*) as c FROM applicants WHERE status = 'hired' ${pMeta.sql}`, p),
+      db.get(`SELECT COUNT(*) as c FROM applicants WHERE status = 'on_hold' ${pMeta.sql}`, p),
+      db.get(`SELECT COUNT(*) as c FROM applicants WHERE status = 'rejected' ${pMeta.sql}`, p),
       db.all(`
         SELECT city, COUNT(*) as count FROM applicants
-        WHERE city IS NOT NULL GROUP BY city ORDER BY count DESC LIMIT 8
-      `),
+        WHERE city IS NOT NULL ${pMeta.sql} GROUP BY city ORDER BY count DESC LIMIT 8
+      `, p),
       db.all(`
         SELECT id, full_name, city, status, created_at FROM applicants
         ORDER BY created_at DESC LIMIT 8
@@ -173,7 +231,7 @@ router.get('/dashboard', async (req, res) => {
       rejected:    rejected?.c    || 0,
     };
 
-    // ─── رسم بياني: آخر 14 يوم × أهم المدن ─────────────────────────────────
+    // ─── رسم بياني: المدن × الأيام ────────────────────────────────────────────
     let cityTrend = null;
     try {
         const rows = await db.all(`
@@ -181,17 +239,17 @@ router.get('/dashboard', async (req, res) => {
                  COALESCE(NULLIF(city, ''), 'غير محدد') AS city,
                  COUNT(*) AS count
           FROM applicants
-          WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 13 DAY)
+          WHERE 1=1 ${pMeta.sql}
           GROUP BY DATE(created_at), city
           ORDER BY day ASC
-        `);
+        `, p);
 
-        // بناء قائمة آخر 14 يوم (YYYY-MM-DD بتوقيت الرياض)
+        // بناء قائمة الأيام بناءً على الفترة المختارة
         const days = [];
-        const today = new Date();
-        for (let i = 13; i >= 0; i--) {
-          const d = new Date(today);
-          d.setDate(today.getDate() - i);
+        const chartEndDate = new Date(pMeta.chartEnd + 'T00:00:00');
+        for (let i = pMeta.chartDays - 1; i >= 0; i--) {
+          const d = new Date(chartEndDate);
+          d.setDate(chartEndDate.getDate() - i);
           const yyyy = d.getFullYear();
           const mm = String(d.getMonth() + 1).padStart(2, '0');
           const dd = String(d.getDate()).padStart(2, '0');
@@ -251,7 +309,8 @@ router.get('/dashboard', async (req, res) => {
 
     res.render('dashboard', {
       stats, byCity, recent, trend, cityTrend,
-      STATUS_META, adminUser: req.session.adminUser
+      STATUS_META, adminUser: req.session.adminUser,
+      activePeriod: period, periodLabel: pMeta.label,
     });
   } catch (err) {
     console.error('[Dashboard GET]', err.message);
