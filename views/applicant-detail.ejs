@@ -51,9 +51,9 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
     <a href="/admin/applicants" class="text-[#43474f] hover:text-[#001736] transition-colors">
       <span class="material-symbols-outlined">arrow_forward</span>
     </a>
-    <div class="flex-1">
-      <div class="flex items-center gap-3 flex-wrap">
-        <h1 class="text-lg font-bold text-[#001736]"><%= applicant.full_name %></h1>
+    <div class="flex-1 min-w-0">
+      <div class="flex items-center gap-2 flex-wrap">
+        <h1 class="text-base lg:text-lg font-bold text-[#001736] truncate"><%= applicant.full_name %></h1>
         <span class="px-2.5 py-1 rounded-full text-xs font-semibold <%= colorMap[sm.color] %>">
           <%= sm.label %>
         </span>
@@ -70,33 +70,33 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
         <%= fmtDateLong(applicant.created_at) %>
       </p>
     </div>
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-1.5 flex-shrink-0">
       <!-- Audit log button -->
       <a href="/admin/audit?applicant_id=<%= applicant.id %>"
-         class="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[#405f91] bg-[#f2f4f6] hover:bg-[#e8ecf4] text-sm font-medium transition-colors">
+         class="flex items-center gap-1.5 px-2.5 sm:px-4 py-2 rounded-xl text-[#405f91] bg-[#f2f4f6] hover:bg-[#e8ecf4] text-sm font-medium transition-colors">
         <span class="material-symbols-outlined text-base">manage_search</span>
-        سجل التدقيق
+        <span class="hidden sm:inline">سجل التدقيق</span>
       </a>
       <!-- Print button -->
       <button onclick="window.print()"
-              class="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[#405f91] bg-[#f2f4f6] hover:bg-[#e8ecf4] text-sm font-medium transition-colors">
+              class="flex items-center gap-1.5 px-2.5 sm:px-4 py-2 rounded-xl text-[#405f91] bg-[#f2f4f6] hover:bg-[#e8ecf4] text-sm font-medium transition-colors">
         <span class="material-symbols-outlined text-base">print</span>
-        طباعة
+        <span class="hidden sm:inline">طباعة</span>
       </button>
       <!-- Delete button — للمديرين فقط -->
       <% if (locals.adminRole === 'manager') { %>
       <button onclick="deleteApplicant()"
-              class="flex items-center gap-1.5 px-4 py-2 rounded-xl text-red-600 bg-red-50 hover:bg-red-100 text-sm font-medium transition-colors">
+              class="flex items-center gap-1.5 px-2.5 sm:px-4 py-2 rounded-xl text-red-600 bg-red-50 hover:bg-red-100 text-sm font-medium transition-colors">
         <span class="material-symbols-outlined text-base">delete</span>
-        حذف
+        <span class="hidden sm:inline">حذف</span>
       </button>
       <% } %>
     </div>
   </header>
 
   <!-- Status Pipeline -->
-  <div class="bg-white border-b border-[#eceef0] px-8 py-4">
-    <div class="flex items-center gap-2 flex-wrap">
+  <div class="bg-white border-b border-[#eceef0] px-4 lg:px-8 py-3 lg:py-4">
+    <div class="flex items-center gap-1.5 lg:gap-2 flex-wrap">
       <% const pipeline = ['pending','reviewed','shortlisted','interviewed','hired']; %>
       <% const pipelinePos = pipeline.indexOf(applicant.status); %>
       <% pipeline.forEach((step, i) => { %>
@@ -403,7 +403,7 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
                       class="w-full border border-[#e0e3e5] rounded-xl p-3 text-sm focus:outline-none focus:border-[#7594ca] focus:ring-1 focus:ring-[#7594ca]/30 resize-none transition-all"
                       onkeydown="if(event.ctrlKey && event.key==='Enter') addNote()"></textarea>
             <div class="flex items-center justify-between">
-              <span class="text-xs text-[#43474f]">Ctrl+Enter للإضافة السريعة</span>
+              <span class="text-xs text-[#43474f] hidden sm:block">Ctrl+Enter للإضافة السريعة</span>
               <button onclick="addNote()"
                       class="bg-[#001736] text-white text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-[#002b5b] transition-colors flex items-center gap-2">
                 <span class="material-symbols-outlined text-base">send</span>
@@ -459,8 +459,8 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
               </div>
               <!-- Content -->
               <div class="flex-1 min-w-0">
-                <div class="flex items-start justify-between gap-2">
-                  <div class="flex-1">
+                <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                  <div class="flex-1 min-w-0">
                     <% if (item._type === 'note') { %>
                     <span class="text-xs font-semibold <%= noteTypeColors[item.type] || 'bg-gray-100 text-gray-600' %> px-2 py-0.5 rounded-full">
                       <%= NOTE_TYPES[item.type]?.label || item.type %>
@@ -498,9 +498,9 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
                     </div>
                     <% } %>
                   </div>
-                  <div class="flex flex-col items-end gap-1 flex-shrink-0">
+                  <div class="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-2 sm:gap-1 flex-shrink-0">
                     <!-- التاريخ والمستخدم -->
-                    <div class="text-left">
+                    <div class="text-right sm:text-left">
                       <% if (item.user_name) { %>
                       <span class="block text-[10px] text-[#7594ca] font-medium whitespace-nowrap">
                         <span class="material-symbols-outlined text-[10px] align-middle" style="font-variation-settings:'FILL' 1">person</span>
