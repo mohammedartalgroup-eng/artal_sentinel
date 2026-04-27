@@ -114,6 +114,32 @@ app.get('/success', async (req, res) => {
   }
 });
 
+// ─── SEO: robots.txt ──────────────────────────────────────────────────────────
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain').send(
+`User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /uploads
+
+Sitemap: https://jobs.artalsecurity.com/sitemap.xml`
+  );
+});
+
+// ─── SEO: sitemap.xml ─────────────────────────────────────────────────────────
+app.get('/sitemap.xml', (req, res) => {
+  res.type('application/xml').send(
+`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://jobs.artalsecurity.com/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>`
+  );
+});
+
 // Root — serve apply page directly (no redirect, URL stays clean)
 app.get('/', async (req, res) => {
   try {
