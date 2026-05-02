@@ -342,7 +342,7 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
                 <strong><%= applicant.ext_job_status || '—' %></strong>
               </div>
             </div>
-            <a href="https://artalsys.com/public/admin/employees/<%= applicant.ext_employee_id %>/view"
+            <a href="https://artalsys.com/admin/employee-management/employees/<%= applicant.ext_employee_id %>/view"
                target="_blank" rel="noopener"
                class="flex items-center justify-center gap-1.5 w-full text-xs font-semibold
                       text-[#405f91] bg-[#eef2fa] hover:bg-[#dce6f7] px-3 py-2.5 rounded-xl transition-colors">
@@ -925,7 +925,7 @@ setTimeout(function pollExtCheck() {
                   <strong>${jobStatus}</strong>
                 </div>
               </div>
-              <a href="https://artalsys.com/public/admin/employees/${empId}/view"
+              <a href="https://artalsys.com/admin/employee-management/employees/${empId}/view"
                  target="_blank" rel="noopener"
                  class="flex items-center justify-center gap-1.5 w-full text-xs font-semibold
                         text-[#405f91] bg-[#eef2fa] hover:bg-[#dce6f7] px-3 py-2.5 rounded-xl transition-colors">
