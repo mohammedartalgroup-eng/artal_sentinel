@@ -337,8 +337,8 @@ router.get('/applicants', async (req, res) => {
     const params = [];
 
     if (q) {
-      conditions.push('(full_name LIKE ? OR id_number LIKE ?)');
-      params.push(`%${q}%`, `%${q}%`);
+      conditions.push('(full_name LIKE ? OR id_number LIKE ? OR phone LIKE ?)');
+      params.push(`%${q}%`, `%${q}%`, `%${q}%`);
     }
     if (status)        { conditions.push('status = ?');        params.push(status); }
     if (region)        { conditions.push('region = ?');        params.push(region); }
@@ -400,7 +400,7 @@ router.get('/applicants/export', async (req, res) => {
 
     const conditions = [];
     const params = [];
-    if (q) { conditions.push('(full_name LIKE ? OR id_number LIKE ?)'); params.push(`%${q}%`, `%${q}%`); }
+    if (q) { conditions.push('(full_name LIKE ? OR id_number LIKE ? OR phone LIKE ?)'); params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
     if (status)        { conditions.push('status = ?');        params.push(status); }
     if (region)        { conditions.push('region = ?');        params.push(region); }
     if (gender)        { conditions.push('gender = ?');        params.push(gender); }
