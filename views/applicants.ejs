@@ -63,7 +63,14 @@
             </strong> متقدم
           </p>
         </div>
-        <a href="/admin/applicants/export?<%= new URLSearchParams(filters).toString() %>"
+        <%
+          const _exportParams = new URLSearchParams();
+          for (const [k, v] of Object.entries(filters)) {
+            if (Array.isArray(v)) v.forEach(x => { if (x !== '' && x != null) _exportParams.append(k, x); });
+            else if (v !== '' && v != null) _exportParams.append(k, v);
+          }
+        %>
+        <a href="/admin/applicants/export?<%= _exportParams.toString() %>"
           class="bg-green-700 text-white text-sm font-medium px-5 py-2.5 rounded-xl flex items-center gap-2 hover:bg-green-800 transition-colors">
           <span class="material-symbols-outlined text-base">download</span>
           تصدير Excel
@@ -112,7 +119,7 @@
               <!-- Region -->
               <div>
                 <label class="block text-xs text-[#43474f] font-semibold mb-1">المنطقة</label>
-                <select name="region" id="region-filter" onchange="populateCities()">
+                <select name="region" id="region-filter">
                   <option value="">الكل</option>
                   <% REGIONS.forEach(r=> { %>
                     <option value="<%= r %>" <%=filters.region===r ? 'selected' : '' %>><%= r %>
@@ -121,12 +128,30 @@
                 </select>
               </div>
 
-              <!-- City (dynamic) -->
-              <div>
+              <!-- City (multi-select, dynamic) -->
+              <div class="relative" id="city-multi">
                 <label class="block text-xs text-[#43474f] font-semibold mb-1">المدينة</label>
-                <select name="city" id="city-filter">
-                  <option value="">الكل</option>
-                </select>
+                <button type="button" id="city-toggle"
+                  class="w-full bg-white border border-[#e0e3e5] rounded-xl px-3 py-2 text-sm text-right flex items-center justify-between hover:border-[#7594ca] transition-colors">
+                  <span id="city-label" class="truncate text-[#43474f]">الكل</span>
+                  <span class="material-symbols-outlined text-base text-[#43474f]">expand_more</span>
+                </button>
+                <select name="city" id="city-filter" multiple class="hidden"></select>
+                <div id="city-panel"
+                  class="hidden absolute z-40 mt-1 w-72 max-w-[90vw] bg-white border border-[#e0e3e5] rounded-xl shadow-lg right-0">
+                  <div class="p-2 border-b border-[#eceef0]">
+                    <input type="text" id="city-search" placeholder="ابحث عن مدينة..."
+                      class="!py-1.5 !text-sm">
+                  </div>
+                  <div id="city-options" class="max-h-56 overflow-y-auto py-1">
+                    <p class="text-xs text-[#43474f] text-center py-3" id="city-empty">اختر المنطقة أولاً</p>
+                  </div>
+                  <div class="p-2 border-t border-[#eceef0] flex items-center justify-between text-xs">
+                    <button type="button" id="city-clear" class="text-red-600 hover:underline">مسح الكل</button>
+                    <button type="button" id="city-close"
+                      class="bg-[#001736] text-white px-3 py-1 rounded-md hover:bg-[#002b5b]">تم</button>
+                  </div>
+                </div>
               </div>
 
               <!-- Gender -->
@@ -441,39 +466,112 @@
 
     <script>
       const SA_REGIONS_DATA = <%- JSON.stringify(SA_REGIONS) %>;
+      const PRE_SELECTED_CITIES = <%- JSON.stringify(Array.isArray(filters.city) ? filters.city : (filters.city ? [filters.city] : [])) %>;
 
-      function populateCities() {
-        const regionEl = document.getElementById('region-filter');
-        const cityEl = document.getElementById('city-filter');
-        const selectedRegion = regionEl.value;
+      const regionEl = document.getElementById('region-filter');
+      const citySelect = document.getElementById('city-filter');
+      const cityToggle = document.getElementById('city-toggle');
+      const cityPanel = document.getElementById('city-panel');
+      const cityOptions = document.getElementById('city-options');
+      const cityEmpty = document.getElementById('city-empty');
+      const cityLabel = document.getElementById('city-label');
+      const citySearch = document.getElementById('city-search');
+      const cityClear = document.getElementById('city-clear');
+      const cityClose = document.getElementById('city-close');
 
-        // Clear existing options
-        cityEl.innerHTML = '<option value="">الكل</option>';
+      function getCityListForRegion() {
+        const r = regionEl.value;
+        if (!r) return [];
+        const found = SA_REGIONS_DATA.find(x => x.name === r);
+        return found ? found.cities : [];
+      }
 
-        if (!selectedRegion) return;
+      function rebuildCityOptions(preselected) {
+        const cities = getCityListForRegion();
+        citySelect.innerHTML = '';
+        cityOptions.innerHTML = '';
 
-        const found = SA_REGIONS_DATA.find(r => r.name === selectedRegion);
-        if (!found) return;
+        if (!cities.length) {
+          cityEmpty.classList.remove('hidden');
+          cityOptions.appendChild(cityEmpty);
+          updateCityLabel();
+          return;
+        }
+        cityEmpty.classList.add('hidden');
 
-        found.cities.forEach(c => {
+        cities.forEach(c => {
           const opt = document.createElement('option');
           opt.value = c;
           opt.textContent = c;
-          cityEl.appendChild(opt);
+          if (preselected.includes(c)) opt.selected = true;
+          citySelect.appendChild(opt);
+
+          const row = document.createElement('label');
+          row.className = 'flex items-center gap-2 px-3 py-1.5 hover:bg-[#f2f4f6] cursor-pointer text-sm';
+          row.dataset.cityName = c;
+          row.innerHTML =
+            '<input type="checkbox" class="w-4 h-4 accent-[#001736]" ' +
+            (preselected.includes(c) ? 'checked' : '') + '>' +
+            '<span>' + c + '</span>';
+          const cb = row.querySelector('input');
+          cb.addEventListener('change', () => {
+            for (const o of citySelect.options) {
+              if (o.value === c) { o.selected = cb.checked; break; }
+            }
+            updateCityLabel();
+          });
+          cityOptions.appendChild(row);
         });
+        updateCityLabel();
       }
 
-      // On page load: if a region is already selected, populate cities and re-select the city
-      (function () {
-        const preCity = '<%= filters.city || "" %>';
-        populateCities();
-        if (preCity) {
-          const cityEl = document.getElementById('city-filter');
-          for (const opt of cityEl.options) {
-            if (opt.value === preCity) { opt.selected = true; break; }
-          }
+      function updateCityLabel() {
+        const selected = Array.from(citySelect.selectedOptions).map(o => o.value);
+        if (selected.length === 0) {
+          cityLabel.textContent = 'الكل';
+          cityLabel.classList.add('text-[#43474f]');
+        } else if (selected.length === 1) {
+          cityLabel.textContent = selected[0];
+          cityLabel.classList.remove('text-[#43474f]');
+        } else {
+          cityLabel.textContent = selected.length + ' مدن مختارة';
+          cityLabel.classList.remove('text-[#43474f]');
         }
-      })();
+      }
+
+      cityToggle.addEventListener('click', e => {
+        e.stopPropagation();
+        cityPanel.classList.toggle('hidden');
+        if (!cityPanel.classList.contains('hidden')) citySearch.focus();
+      });
+
+      document.addEventListener('click', e => {
+        if (!document.getElementById('city-multi').contains(e.target)) {
+          cityPanel.classList.add('hidden');
+        }
+      });
+
+      cityClose.addEventListener('click', () => cityPanel.classList.add('hidden'));
+
+      cityClear.addEventListener('click', () => {
+        for (const o of citySelect.options) o.selected = false;
+        cityOptions.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = false);
+        updateCityLabel();
+      });
+
+      citySearch.addEventListener('input', () => {
+        const term = citySearch.value.trim();
+        cityOptions.querySelectorAll('label[data-city-name]').forEach(row => {
+          row.style.display = !term || row.dataset.cityName.includes(term) ? '' : 'none';
+        });
+      });
+
+      regionEl.addEventListener('change', () => {
+        rebuildCityOptions([]);
+        citySearch.value = '';
+      });
+
+      rebuildCityOptions(PRE_SELECTED_CITIES);
     </script>
 </body>
 

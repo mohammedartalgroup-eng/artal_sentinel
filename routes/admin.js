@@ -320,14 +320,22 @@ router.get('/dashboard', async (req, res) => {
 
 // ─── Applicants List ──────────────────────────────────────────────────────────
 
+function parseCityList(raw) {
+  if (Array.isArray(raw)) return raw.map(v => String(v).trim()).filter(Boolean);
+  if (raw == null || raw === '') return [];
+  return String(raw).split(',').map(s => s.trim()).filter(Boolean);
+}
+
 router.get('/applicants', async (req, res) => {
   try {
     const {
-      q = '', status = '', region = '', city = '', gender = '', english = '', qualification = '',
+      q = '', status = '', region = '', gender = '', english = '', qualification = '',
       has_car = '', has_license = '', ext_check = '',
       age_min = '', age_max = '', date_from = '', date_to = '',
       sort = 'created_at', order = 'desc', page = '1'
     } = req.query;
+
+    const cities = parseCityList(req.query.city);
 
     const PAGE_SIZE = 20;
     const pageNum = Math.max(1, parseInt(page) || 1);
@@ -342,7 +350,10 @@ router.get('/applicants', async (req, res) => {
     }
     if (status)        { conditions.push('status = ?');        params.push(status); }
     if (region)        { conditions.push('region = ?');        params.push(region); }
-    if (city)          { conditions.push('city = ?');          params.push(city); }
+    if (cities.length) {
+      conditions.push(`city IN (${cities.map(() => '?').join(',')})`);
+      params.push(...cities);
+    }
     if (gender)        { conditions.push('gender = ?');        params.push(gender); }
     if (english !== '') { conditions.push('english = ?');      params.push(parseInt(english)); }
     if (qualification) { conditions.push('qualification = ?'); params.push(qualification); }
@@ -377,7 +388,7 @@ router.get('/applicants', async (req, res) => {
 
     res.render('applicants', {
       applicants, total, totalPages, pageNum,
-      filters: { q, status, region, city, gender, english, qualification, has_car, has_license, ext_check, age_min, age_max, date_from, date_to, sort, order },
+      filters: { q, status, region, city: cities, gender, english, qualification, has_car, has_license, ext_check, age_min, age_max, date_from, date_to, sort, order },
       STATUS_META, REGIONS, SA_REGIONS, adminUser: req.session.adminUser
     });
   } catch (err) {
@@ -398,11 +409,17 @@ router.get('/applicants/export', async (req, res) => {
       age_min = '', age_max = '', date_from = '', date_to = ''
     } = req.query;
 
+    const cities = parseCityList(req.query.city);
+
     const conditions = [];
     const params = [];
     if (q) { conditions.push('(full_name LIKE ? OR id_number LIKE ? OR phone LIKE ?)'); params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
     if (status)        { conditions.push('status = ?');        params.push(status); }
     if (region)        { conditions.push('region = ?');        params.push(region); }
+    if (cities.length) {
+      conditions.push(`city IN (${cities.map(() => '?').join(',')})`);
+      params.push(...cities);
+    }
     if (gender)        { conditions.push('gender = ?');        params.push(gender); }
     if (english !== '') { conditions.push('english = ?');      params.push(parseInt(english)); }
     if (qualification) { conditions.push('qualification = ?'); params.push(qualification); }
