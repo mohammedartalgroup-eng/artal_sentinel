@@ -77,6 +77,8 @@ router.post('/', (req, res) => {
       if (!qualification || !validQuals.includes(qualification)) errors.push('يرجى اختيار المؤهل العلمي');
       if (has_car !== 'yes' && has_car !== 'no')                errors.push('يرجى تحديد ما إذا كنت تمتلك سيارة');
       if (has_license !== 'yes' && has_license !== 'no')        errors.push('يرجى تحديد ما إذا كان لديك رخصة قيادة');
+      if (!req.files?.cv?.[0])                                  errors.push('السيرة الذاتية مطلوبة');
+      if (!req.files?.id_image?.[0])                            errors.push('صورة الهوية الوطنية مطلوبة');
 
       if (errors.length) {
         return res.status(400).send(`
