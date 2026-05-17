@@ -10,7 +10,8 @@ const pool = mysql.createPool({
   password: process.env.DB_PASS,
   database: process.env.DB_NAME,
   waitForConnections: true,
-  connectionLimit: 10,
+  connectionLimit: 20,
+  queueLimit: 0,
   charset: 'utf8mb4',
   timezone: '+00:00',
   decimalNumbers: true
@@ -244,6 +245,26 @@ async function initialize() {
     if (fnCols.length === 0) {
       await conn.query("ALTER TABLE admin_users ADD COLUMN full_name VARCHAR(100) DEFAULT NULL AFTER username");
       console.log('[DB] Migration: added column full_name to admin_users');
+    }
+
+    // ─── ترحيل: فهارس الأعمدة المضافة بالترحيل ──────────────────────────────
+    const idxChecks = [
+      ['applicants',  'idx_region',         'ADD INDEX idx_region (region)'],
+      ['applicants',  'idx_gender',         'ADD INDEX idx_gender (gender)'],
+      ['applicants',  'idx_qualification',  'ADD INDEX idx_qualification (qualification)'],
+      ['applicants',  'idx_status_created', 'ADD INDEX idx_status_created (status, created_at)'],
+      ['audit_log',   'idx_username',       'ADD INDEX idx_username (username)'],
+      ['audit_log',   'idx_target',         'ADD INDEX idx_target (target_type, target_id)'],
+    ];
+    for (const [table, name, ddl] of idxChecks) {
+      const [idxRows] = await conn.query(
+        'SELECT COUNT(*) as c FROM information_schema.STATISTICS WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?',
+        [table, name]
+      );
+      if (idxRows[0].c === 0) {
+        await conn.query(`ALTER TABLE ${table} ${ddl}`);
+        console.log(`[DB] Migration: added index ${name} on ${table}`);
+      }
     }
 
     // ─── ترحيل: تحويل اليوزرنيم الافتراضي إلى إيميل

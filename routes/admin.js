@@ -191,18 +191,19 @@ router.get('/dashboard', async (req, res) => {
     const pMeta  = getPeriodMeta(period);
     const p      = pMeta.params;
 
-    const [
-      total, pending, reviewed, shortlisted, interviewed, hired, on_hold, rejected,
-      byCity, recent, trend
-    ] = await Promise.all([
-      db.get(`SELECT COUNT(*) as c FROM applicants WHERE 1=1 ${pMeta.sql}`, p),
-      db.get(`SELECT COUNT(*) as c FROM applicants WHERE status = 'pending' ${pMeta.sql}`, p),
-      db.get(`SELECT COUNT(*) as c FROM applicants WHERE status = 'reviewed' ${pMeta.sql}`, p),
-      db.get(`SELECT COUNT(*) as c FROM applicants WHERE status = 'shortlisted' ${pMeta.sql}`, p),
-      db.get(`SELECT COUNT(*) as c FROM applicants WHERE status = 'interviewed' ${pMeta.sql}`, p),
-      db.get(`SELECT COUNT(*) as c FROM applicants WHERE status = 'hired' ${pMeta.sql}`, p),
-      db.get(`SELECT COUNT(*) as c FROM applicants WHERE status = 'on_hold' ${pMeta.sql}`, p),
-      db.get(`SELECT COUNT(*) as c FROM applicants WHERE status = 'rejected' ${pMeta.sql}`, p),
+    const [statsRow, byCity, recent, trend] = await Promise.all([
+      db.get(`
+        SELECT
+          COUNT(*)                           AS total,
+          SUM(status = 'pending')            AS pending,
+          SUM(status = 'reviewed')           AS reviewed,
+          SUM(status = 'shortlisted')        AS shortlisted,
+          SUM(status = 'interviewed')        AS interviewed,
+          SUM(status = 'hired')              AS hired,
+          SUM(status = 'on_hold')            AS on_hold,
+          SUM(status = 'rejected')           AS rejected
+        FROM applicants WHERE 1=1 ${pMeta.sql}
+      `, p),
       db.all(`
         SELECT city, COUNT(*) as count FROM applicants
         WHERE city IS NOT NULL ${pMeta.sql} GROUP BY city ORDER BY count DESC LIMIT 8
@@ -221,14 +222,14 @@ router.get('/dashboard', async (req, res) => {
     ]);
 
     const stats = {
-      total:       total?.c       || 0,
-      pending:     pending?.c     || 0,
-      reviewed:    reviewed?.c    || 0,
-      shortlisted: shortlisted?.c || 0,
-      interviewed: interviewed?.c || 0,
-      hired:       hired?.c       || 0,
-      on_hold:     on_hold?.c     || 0,
-      rejected:    rejected?.c    || 0,
+      total:       Number(statsRow?.total)       || 0,
+      pending:     Number(statsRow?.pending)     || 0,
+      reviewed:    Number(statsRow?.reviewed)    || 0,
+      shortlisted: Number(statsRow?.shortlisted) || 0,
+      interviewed: Number(statsRow?.interviewed) || 0,
+      hired:       Number(statsRow?.hired)       || 0,
+      on_hold:     Number(statsRow?.on_hold)     || 0,
+      rejected:    Number(statsRow?.rejected)    || 0,
     };
 
     // ─── رسم بياني: المدن × الأيام ────────────────────────────────────────────
@@ -364,8 +365,8 @@ router.get('/applicants', async (req, res) => {
     else if (ext_check === 'unchecked')  { conditions.push('ext_check_done = 0'); }
     if (age_min) { conditions.push('age >= ?'); params.push(parseInt(age_min)); }
     if (age_max) { conditions.push('age <= ?'); params.push(parseInt(age_max)); }
-    if (date_from) { conditions.push('DATE(created_at) >= ?'); params.push(date_from); }
-    if (date_to)   { conditions.push('DATE(created_at) <= ?'); params.push(date_to); }
+    if (date_from) { conditions.push('created_at >= ?'); params.push(date_from + ' 00:00:00'); }
+    if (date_to)   { conditions.push('created_at < DATE_ADD(?, INTERVAL 1 DAY)'); params.push(date_to); }
 
     const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
     const safeSort  = ['created_at', 'full_name', 'status', 'age', 'region', 'rating'].includes(sort) ? sort : 'created_at';
@@ -427,8 +428,8 @@ router.get('/applicants/export', async (req, res) => {
     if (has_license !== '') { conditions.push('has_license = ?'); params.push(parseInt(has_license)); }
     if (age_min) { conditions.push('age >= ?'); params.push(parseInt(age_min)); }
     if (age_max) { conditions.push('age <= ?'); params.push(parseInt(age_max)); }
-    if (date_from) { conditions.push('DATE(created_at) >= ?'); params.push(date_from); }
-    if (date_to)   { conditions.push('DATE(created_at) <= ?'); params.push(date_to); }
+    if (date_from) { conditions.push('created_at >= ?'); params.push(date_from + ' 00:00:00'); }
+    if (date_to)   { conditions.push('created_at < DATE_ADD(?, INTERVAL 1 DAY)'); params.push(date_to); }
     const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
 
     const rows = await db.all(`
@@ -796,8 +797,8 @@ router.get('/audit', async (req, res) => {
     const params     = [];
     if (user)          { conditions.push('a.username = ?');              params.push(user); }
     if (action)        { conditions.push('a.action = ?');                params.push(action); }
-    if (date_from)     { conditions.push('DATE(a.created_at) >= ?');     params.push(date_from); }
-    if (date_to)       { conditions.push('DATE(a.created_at) <= ?');     params.push(date_to); }
+    if (date_from)     { conditions.push('a.created_at >= ?');                         params.push(date_from + ' 00:00:00'); }
+    if (date_to)       { conditions.push('a.created_at < DATE_ADD(?, INTERVAL 1 DAY)'); params.push(date_to); }
     if (applicant_id)  { conditions.push('a.target_id = ?');             params.push(applicant_id); }
     const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
 
@@ -879,15 +880,19 @@ router.get('/performance', async (req, res) => {
           AS unique_applicants,
         MAX(CASE WHEN a.action NOT IN ('login','logout') THEN a.created_at END)
           AS last_action_at,
-        (SELECT MAX(al2.created_at) FROM audit_log al2
-         WHERE al2.user_id = u.id AND al2.action NOT IN ('login','logout'))
-          AS overall_last_action
+        ov.overall_last_action
       FROM admin_users u
       LEFT JOIN audit_log a
         ON a.user_id = u.id
-        AND DATE(a.created_at) >= ? AND DATE(a.created_at) <= ?
+        AND a.created_at >= ? AND a.created_at < DATE_ADD(?, INTERVAL 1 DAY)
+      LEFT JOIN (
+        SELECT user_id, MAX(created_at) AS overall_last_action
+        FROM audit_log
+        WHERE action NOT IN ('login','logout')
+        GROUP BY user_id
+      ) ov ON ov.user_id = u.id
       WHERE u.role IN ('employee', 'manager')
-      GROUP BY u.id
+      GROUP BY u.id, u.username, u.full_name, u.role, u.is_active, u.last_login, ov.overall_last_action
       ORDER BY total_actions DESC
     `, [fromDate, toDate]);
 
