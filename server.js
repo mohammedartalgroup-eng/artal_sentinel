@@ -121,6 +121,7 @@ app.get('/robots.txt', (req, res) => {
 Allow: /
 Disallow: /admin
 Disallow: /uploads
+Disallow: /success
 
 Sitemap: https://jobs.artalsecurity.com/sitemap.xml`
   );
@@ -128,11 +129,13 @@ Sitemap: https://jobs.artalsecurity.com/sitemap.xml`
 
 // ─── SEO: sitemap.xml ─────────────────────────────────────────────────────────
 app.get('/sitemap.xml', (req, res) => {
+  const today = new Date().toISOString().split('T')[0];
   res.type('application/xml').send(
 `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://jobs.artalsecurity.com/</loc>
+    <lastmod>${today}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
