@@ -18,7 +18,7 @@ const applyRouter   = require('./routes/apply');
 const adminRouter   = require('./routes/admin');
 const regionsRouter = require('./routes/regions');
 const jobsRouter    = require('./routes/jobs');
-const seoCities     = require('./data/seo-cities');
+const seoCities     = jobsRouter.CITIES;   // بيانات المدن مضمّنة داخل الراوتر (تُرفَع مع الكود)
 
 const app = express();
 const PORT = process.env.PORT || 3000;
