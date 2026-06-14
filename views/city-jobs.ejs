@@ -1,0 +1,256 @@
+<%
+  // تواريخ ديناميكية حتى يبقى إعلان الوظيفة "طازجاً" في نتائج جوجل للوظائف
+  const _today = new Date();
+  const datePosted  = _today.toISOString().split('T')[0];
+  const validThrough = new Date(_today.getTime() + 60 * 86400000).toISOString().split('T')[0];
+  const pageUrl = 'https://jobs.artalsecurity.com/jobs/' + city.slug;
+  const title = 'وظائف حارس أمن في ' + city.city + ' | أرتال للحراسات الأمنية';
+  const desc  = 'قدّم الآن على وظائف حارس أمن في ' + city.city + ' (' + city.region + ') لدى شركة أرتال للحراسات الأمنية المدنية الخاصة. راتب 4,000–7,000 ريال، تأمين طبي وتدريب معتمد. التقديم إلكتروني ومجاني.';
+  // قنوات التواصل — لإشارة الكيان (sameAs) والتذييل المرئي
+  const socialLinks = [
+    { name: 'LinkedIn',     url: 'https://www.linkedin.com/company/artalgroup/' },
+    { name: 'Instagram',    url: 'https://www.instagram.com/artal_group.sa/' },
+    { name: 'X (تويتر)',    url: 'https://twitter.com/ArtalGroupSA' },
+    { name: 'YouTube',      url: 'https://www.youtube.com/@ArtalGroup' },
+    { name: 'Telegram',     url: 'https://t.me/artalgroup1' },
+    { name: 'Snapchat',     url: 'https://t.snapchat.com/O9T1Eyj9' },
+  ];
+  const sameAs = ['https://artalsecurity.com', 'https://jobs.artalsecurity.com', ...socialLinks.map(s => s.url)];
+%><!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+  <title><%= title %></title>
+  <meta name="description" content="<%= desc %>">
+  <meta name="keywords" content="وظائف حارس أمن <%= city.city %>, وظائف حراسة أمنية <%= city.city %>, توظيف حراسات <%= city.city %>, شركة حراسات أمنية <%= city.city %>, وظائف أمن <%= city.region %>, راتب حارس أمن <%= city.city %>, تقديم وظائف حراسة <%= city.city %>, أرتال للحراسة الأمنية">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="<%= pageUrl %>">
+
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="<%= pageUrl %>">
+  <meta property="og:title" content="<%= title %>">
+  <meta property="og:description" content="<%= desc %>">
+  <meta property="og:locale" content="ar_SA">
+  <meta property="og:site_name" content="أرتال للحراسات الأمنية">
+  <meta property="og:image" content="https://jobs.artalsecurity.com/images/icon.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="<%= title %>">
+  <meta name="twitter:description" content="<%= desc %>">
+  <meta name="twitter:image" content="https://jobs.artalsecurity.com/images/icon.png">
+  <link rel="icon" type="image/png" href="/images/icon.png">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "JobPosting",
+        "title": "حارس أمن — <%= city.city %>",
+        "description": "تبحث شركة أرتال للحراسات الأمنية المدنية الخاصة عن كفاءات وطنية للعمل كحراس أمن في مدينة <%= city.city %> ضمن <%= city.region %>. <%= city.blurb %> يُشترط أن يكون المتقدم سعودي الجنسية، عمره 21 سنة فأكبر، لائقاً صحياً وحسن السيرة والسلوك. نوفّر راتباً تنافسياً وتأميناً طبياً وتدريباً معتمداً. التقديم مجاني وإلكتروني بالكامل.",
+        "identifier": {
+          "@type": "PropertyValue",
+          "name": "أرتال للحراسات الأمنية المدنية الخاصة",
+          "value": "artal-security-guard-<%= city.slug %>"
+        },
+        "hiringOrganization": {
+          "@type": "Organization",
+          "@id": "https://artalsecurity.com/#organization",
+          "name": "أرتال للحراسات الأمنية المدنية الخاصة",
+          "sameAs": <%- JSON.stringify(sameAs) %>,
+          "logo": "https://jobs.artalsecurity.com/images/icon.png"
+        },
+        "jobLocation": {
+          "@type": "Place",
+          "address": {
+            "@type": "PostalAddress",
+            "addressLocality": "<%= city.city %>",
+            "addressRegion": "<%= city.region %>",
+            "addressCountry": "SA"
+          }
+        },
+        "baseSalary": {
+          "@type": "MonetaryAmount",
+          "currency": "SAR",
+          "value": { "@type": "QuantitativeValue", "minValue": 4000, "maxValue": 7000, "unitText": "MONTH" }
+        },
+        "employmentType": "FULL_TIME",
+        "directApply": true,
+        "datePosted": "<%= datePosted %>",
+        "validThrough": "<%= validThrough %>",
+        "applicantLocationRequirements": { "@type": "Country", "name": "SA" }
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "الرئيسية", "item": "https://jobs.artalsecurity.com/" },
+          { "@type": "ListItem", "position": 2, "name": "وظائف حارس أمن في <%= city.city %>", "item": "<%= pageUrl %>" }
+        ]
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          { "@type": "Question", "name": "كم راتب حارس الأمن في <%= city.city %>؟",
+            "acceptedAnswer": { "@type": "Answer", "text": "يتراوح راتب حارس الأمن لدى أرتال في <%= city.city %> بين 4,000 و7,000 ريال شهرياً حسب الموقع وطبيعة العمل، مع بدلات وتأمين طبي." } },
+          { "@type": "Question", "name": "هل التقديم على وظائف الحراسة في <%= city.city %> مجاني؟",
+            "acceptedAnswer": { "@type": "Answer", "text": "نعم، التقديم إلكتروني ومجاني تماماً عبر موقع أرتال، ولا توجد أي رسوم على المتقدمين." } },
+          { "@type": "Question", "name": "ما شروط القبول كحارس أمن في <%= city.city %>؟",
+            "acceptedAnswer": { "@type": "Answer", "text": "أن يكون المتقدم سعودي الجنسية، عمره 21 سنة فأكبر، لائقاً صحياً، حسن السيرة والسلوك. الخبرة السابقة ميزة وليست شرطاً." } }
+        ]
+      }
+    ]
+  }
+  </script>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = { theme: { extend: {
+      colors: { primary:"#001736", "primary-container":"#002b5b", background:"#f8f9fb" },
+      fontFamily: { headline:["Manrope","sans-serif"], body:["Inter","sans-serif"] }
+    }}}
+  </script>
+  <style>
+    body { background:#f8f9fb; font-family:'Inter',sans-serif; color:#191c1e; }
+    h1,h2,h3 { font-family:'Manrope',sans-serif; }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <header class="bg-primary text-white">
+    <div class="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+      <a href="/" class="flex items-center gap-3">
+        <img src="/images/icon.png" alt="أرتال للحراسات الأمنية" class="h-10 w-auto">
+        <span class="font-bold">أرتال للحراسات الأمنية</span>
+      </a>
+      <a href="/" class="bg-white text-primary text-sm font-bold px-5 py-2 rounded-lg hover:bg-slate-100 transition">قدّم الآن</a>
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <section class="bg-primary text-white">
+    <div class="max-w-5xl mx-auto px-6 pb-16 pt-8 text-center">
+      <nav class="text-xs text-slate-300 mb-6" aria-label="breadcrumb">
+        <a href="/" class="hover:text-white">الرئيسية</a>
+        <span class="mx-2">/</span>
+        <span>وظائف حارس أمن في <%= city.city %></span>
+      </nav>
+      <h1 class="text-3xl md:text-5xl font-extrabold mb-5 leading-tight">
+        وظائف حارس أمن في <%= city.city %>
+      </h1>
+      <p class="text-slate-200 text-lg max-w-2xl mx-auto leading-relaxed">
+        تعلن شركة أرتال للحراسات الأمنية المدنية الخاصة عن حاجتها لحراس أمن في <%= city.city %> ضمن <%= city.region %>.
+        راتب 4,000–7,000 ريال، تأمين طبي وتدريب معتمد.
+      </p>
+      <a href="/" class="inline-block mt-8 bg-white text-primary font-bold px-8 py-3.5 rounded-xl shadow-lg hover:bg-slate-100 transition">
+        قدّم على الوظيفة الآن
+      </a>
+    </div>
+  </section>
+
+  <main class="max-w-3xl mx-auto px-6 py-14 space-y-12">
+
+    <!-- مقدمة المدينة -->
+    <section>
+      <h2 class="text-2xl font-bold text-primary mb-4">عن الوظائف في <%= city.city %></h2>
+      <p class="leading-loose text-slate-700">
+        <%= city.blurb %>
+        توفّر شركة أرتال فرص عمل ثابتة كحارس أمن في <%= city.city %> وما حولها، ضمن بيئة عمل احترافية ومسارات تطوير وظيفي واضحة.
+        نبحث عن كفاءات وطنية ملتزمة للانضمام إلى فريقنا في تقديم حلول الحراسة الأمنية للمنشآت التجارية والسكنية والصناعية والحكومية.
+      </p>
+    </section>
+
+    <!-- المزايا -->
+    <section>
+      <h2 class="text-2xl font-bold text-primary mb-4">مزايا العمل في أرتال</h2>
+      <ul class="grid sm:grid-cols-2 gap-3 text-slate-700">
+        <li class="bg-white border border-slate-200 rounded-xl p-4">💰 راتب تنافسي يتراوح بين 4,000 و7,000 ريال</li>
+        <li class="bg-white border border-slate-200 rounded-xl p-4">🏥 تأمين طبي للموظف</li>
+        <li class="bg-white border border-slate-200 rounded-xl p-4">🎓 تدريب معتمد قبل المباشرة</li>
+        <li class="bg-white border border-slate-200 rounded-xl p-4">📈 فرص ترقّي واستقرار وظيفي</li>
+        <li class="bg-white border border-slate-200 rounded-xl p-4">🛡️ بيئة عمل نظامية وآمنة</li>
+        <li class="bg-white border border-slate-200 rounded-xl p-4">🗓️ مواقع عمل متعددة في <%= city.city %></li>
+      </ul>
+    </section>
+
+    <!-- الشروط -->
+    <section>
+      <h2 class="text-2xl font-bold text-primary mb-4">شروط القبول</h2>
+      <ul class="space-y-2 text-slate-700 leading-loose list-disc pr-5">
+        <li>أن يكون المتقدم <strong>سعودي الجنسية</strong>.</li>
+        <li>العمر <strong>21 سنة فأكبر</strong>.</li>
+        <li>اللياقة الصحية والبدنية.</li>
+        <li>حسن السيرة والسلوك وخلوّه من السوابق.</li>
+        <li>يجيد القراءة والكتابة. <span class="text-slate-500">(الخبرة السابقة ميزة وليست شرطاً)</span></li>
+      </ul>
+    </section>
+
+    <!-- خطوات التقديم -->
+    <section>
+      <h2 class="text-2xl font-bold text-primary mb-4">خطوات التقديم في <%= city.city %></h2>
+      <ol class="space-y-3 text-slate-700">
+        <li class="bg-white border border-slate-200 rounded-xl p-4"><strong>1.</strong> عبّئ نموذج التقديم الإلكتروني (أقل من دقيقة).</li>
+        <li class="bg-white border border-slate-200 rounded-xl p-4"><strong>2.</strong> أرفق صورة الهوية الوطنية والسيرة الذاتية.</li>
+        <li class="bg-white border border-slate-200 rounded-xl p-4"><strong>3.</strong> تتم مراجعة طلبك والتواصل معك في حال القبول المبدئي.</li>
+        <li class="bg-white border border-slate-200 rounded-xl p-4"><strong>4.</strong> اجتياز التدريب ثم المباشرة في العمل.</li>
+      </ol>
+      <div class="text-center mt-8">
+        <a href="/" class="inline-block bg-primary text-white font-bold px-8 py-3.5 rounded-xl shadow-lg hover:bg-primary-container transition">
+          ابدأ التقديم على وظيفة حارس أمن في <%= city.city %>
+        </a>
+      </div>
+    </section>
+
+    <!-- الأسئلة الشائعة -->
+    <section>
+      <h2 class="text-2xl font-bold text-primary mb-4">الأسئلة الشائعة</h2>
+      <div class="space-y-3">
+        <details class="bg-white border border-slate-200 rounded-xl p-4">
+          <summary class="font-semibold cursor-pointer text-primary">كم راتب حارس الأمن في <%= city.city %>؟</summary>
+          <p class="mt-2 text-slate-600 leading-loose">يتراوح راتب حارس الأمن لدى أرتال في <%= city.city %> بين 4,000 و7,000 ريال شهرياً حسب الموقع وطبيعة العمل، مع بدلات وتأمين طبي.</p>
+        </details>
+        <details class="bg-white border border-slate-200 rounded-xl p-4">
+          <summary class="font-semibold cursor-pointer text-primary">هل التقديم على وظائف الحراسة في <%= city.city %> مجاني؟</summary>
+          <p class="mt-2 text-slate-600 leading-loose">نعم، التقديم إلكتروني ومجاني تماماً عبر موقع أرتال، ولا توجد أي رسوم على المتقدمين.</p>
+        </details>
+        <details class="bg-white border border-slate-200 rounded-xl p-4">
+          <summary class="font-semibold cursor-pointer text-primary">ما شروط القبول كحارس أمن في <%= city.city %>؟</summary>
+          <p class="mt-2 text-slate-600 leading-loose">أن يكون المتقدم سعودي الجنسية، عمره 21 سنة فأكبر، لائقاً صحياً، حسن السيرة والسلوك. الخبرة السابقة ميزة وليست شرطاً.</p>
+        </details>
+      </div>
+    </section>
+
+    <!-- مدن أخرى -->
+    <section>
+      <h2 class="text-2xl font-bold text-primary mb-4">وظائف حراسة أمنية في مدن أخرى</h2>
+      <div class="flex flex-wrap gap-2">
+        <% cities.filter(c => c.slug !== city.slug).forEach(c => { %>
+          <a href="/jobs/<%= c.slug %>" class="text-sm bg-white border border-slate-200 hover:border-primary hover:text-primary rounded-full px-4 py-2 transition">وظائف حارس أمن <%= c.city %></a>
+        <% }) %>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer + سحابة الكلمات المفتاحية -->
+  <footer class="bg-primary text-white pt-12 pb-8">
+    <div class="max-w-5xl mx-auto px-6">
+      <p class="font-bold mb-5 text-center">روابط سريعة — وظائف الحراسة الأمنية في السعودية</p>
+      <div class="flex flex-wrap justify-center gap-2 mb-8">
+        <% cities.forEach(c => { %>
+          <a href="/jobs/<%= c.slug %>" class="text-xs bg-white/10 hover:bg-white/20 rounded-full px-3 py-1.5 transition">وظائف حارس أمن <%= c.city %></a>
+        <% }) %>
+        <a href="/" class="text-xs bg-white/10 hover:bg-white/20 rounded-full px-3 py-1.5 transition">تقديم وظائف حراسة أمنية</a>
+        <a href="/" class="text-xs bg-white/10 hover:bg-white/20 rounded-full px-3 py-1.5 transition">توظيف حراسات أمنية مدنية</a>
+        <a href="/" class="text-xs bg-white/10 hover:bg-white/20 rounded-full px-3 py-1.5 transition">شركة حراسات أمنية توظيف</a>
+        <a href="/" class="text-xs bg-white/10 hover:bg-white/20 rounded-full px-3 py-1.5 transition">راتب حارس أمن في السعودية</a>
+      </div>
+      <div class="flex flex-wrap justify-center gap-3 mb-8">
+        <% socialLinks.forEach(s => { %>
+          <a href="<%= s.url %>" target="_blank" rel="noopener" class="bg-white/10 hover:bg-white/20 rounded-full px-4 py-2 text-sm transition"><%= s.name %></a>
+        <% }) %>
+      </div>
+      <p class="text-center text-slate-300 text-sm border-t border-white/10 pt-6">© 2026 شركة أرتال للحراسات الأمنية المدنية الخاصة. جميع الحقوق محفوظة.</p>
+    </div>
+  </footer>
+</body>
+</html>

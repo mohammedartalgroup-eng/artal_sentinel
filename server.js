@@ -17,6 +17,8 @@ require('./database/db');
 const applyRouter   = require('./routes/apply');
 const adminRouter   = require('./routes/admin');
 const regionsRouter = require('./routes/regions');
+const jobsRouter    = require('./routes/jobs');
+const seoCities     = require('./data/seo-cities');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -93,6 +95,7 @@ app.use(session({
 app.use('/apply',  applyRouter);
 app.use('/admin',  adminRouter);
 app.use('/data',   regionsRouter);   // بيانات المناطق — مضمّنة في الكود لا تحتاج ملف
+app.use('/jobs',   jobsRouter);      // صفحات هبوط المدن لمحركات البحث (SEO)
 
 // Static fallback (for any other assets in public/)
 app.use(express.static(path.join(__dirname, 'public')));
@@ -130,6 +133,13 @@ Sitemap: https://jobs.artalsecurity.com/sitemap.xml`
 // ─── SEO: sitemap.xml ─────────────────────────────────────────────────────────
 app.get('/sitemap.xml', (req, res) => {
   const today = new Date().toISOString().split('T')[0];
+  const cityUrls = seoCities.map(c =>
+`  <url>
+    <loc>https://jobs.artalsecurity.com/jobs/${c.slug}</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>`).join('\n');
   res.type('application/xml').send(
 `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -139,6 +149,7 @@ app.get('/sitemap.xml', (req, res) => {
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
+${cityUrls}
 </urlset>`
   );
 });
