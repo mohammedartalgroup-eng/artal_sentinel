@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const db = require('../database/db');
 const upload = require('../middleware/upload');
-const path = require('path');
 const { checkExternal } = require('../utils/extCheck');
 
 // GET /apply — public application form
@@ -29,10 +28,10 @@ router.get('/', async (req, res) => {
         </html>
       `);
     }
-    res.sendFile(path.join(__dirname, '..', 'public', 'apply', 'index.html'));
+    res.render('apply');
   } catch (err) {
     console.error('[Apply GET]', err.message);
-    res.sendFile(path.join(__dirname, '..', 'public', 'apply', 'index.html'));
+    res.render('apply');
   }
 });
 

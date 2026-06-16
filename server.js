@@ -183,7 +183,7 @@ app.get('/', async (req, res) => {
   } catch (err) {
     console.error('[Root GET]', err.message);
   }
-  res.sendFile(path.join(__dirname, 'public', 'apply', 'index.html'));
+  res.render('apply');
 });
 
 // 404

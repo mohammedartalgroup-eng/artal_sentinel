@@ -1,4 +1,12 @@
-<!DOCTYPE html>
+<%
+  // تواريخ ديناميكية حتى يبقى إعلان الوظيفة "طازجاً" في نتائج Google for Jobs ولا "ينتهي".
+  // نفس نمط views/city-jobs.ejs — التقديم متاح دائماً، فلا ينبغي أن ينقضي الإعلان بتاريخ ثابت.
+  // datePosted يُثبَّت على أول الشهر الحالي (يتجدّد شهرياً كإعلان "محدّث" طبيعي، لا "اليوم" عند كل زحف).
+  // مكوّنات UTC مقصودة: new Date(y,m,1).toISOString() قد يرجع آخر يوم في الشهر السابق بفارق توقيت السعودية.
+  const _today = new Date();
+  const datePosted   = `${_today.getUTCFullYear()}-${String(_today.getUTCMonth() + 1).padStart(2, '0')}-01`;
+  const validThrough = new Date(_today.getTime() + 60 * 86400000).toISOString().split('T')[0];
+%><!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
   <meta charset="utf-8"/>
@@ -133,8 +141,8 @@
         },
         "employmentType": "FULL_TIME",
         "directApply": true,
-        "datePosted": "2026-05-25",
-        "validThrough": "2026-12-31",
+        "datePosted": "<%= datePosted %>",
+        "validThrough": "<%= validThrough %>",
         "applicantLocationRequirements": {
           "@type": "Country",
           "name": "SA"

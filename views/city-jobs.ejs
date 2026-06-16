@@ -1,7 +1,8 @@
 <%
-  // تواريخ ديناميكية حتى يبقى إعلان الوظيفة "طازجاً" في نتائج جوجل للوظائف
+  // تواريخ ديناميكية حتى يبقى إعلان الوظيفة "طازجاً" في نتائج جوجل للوظائف.
+  // datePosted يُثبَّت على أول الشهر الحالي (يتجدّد شهرياً، لا "اليوم" عند كل زحف). مكوّنات UTC مقصودة.
   const _today = new Date();
-  const datePosted  = _today.toISOString().split('T')[0];
+  const datePosted  = `${_today.getUTCFullYear()}-${String(_today.getUTCMonth() + 1).padStart(2, '0')}-01`;
   const validThrough = new Date(_today.getTime() + 60 * 86400000).toISOString().split('T')[0];
   const pageUrl = 'https://jobs.artalsecurity.com/jobs/' + city.slug;
   const title = 'وظائف حارس أمن في ' + city.city + ' | أرتال للحراسات الأمنية';
