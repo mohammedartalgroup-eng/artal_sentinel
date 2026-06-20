@@ -6,7 +6,7 @@
   const validThrough = new Date(_today.getTime() + 60 * 86400000).toISOString().split('T')[0];
   const pageUrl = 'https://jobs.artalsecurity.com/jobs/' + city.slug;
   const title = 'وظائف حارس أمن في ' + city.city + ' | أرتال للحراسات الأمنية';
-  const desc  = 'قدّم الآن على وظائف حارس أمن في ' + city.city + ' (' + city.region + ') لدى شركة أرتال للحراسات الأمنية المدنية الخاصة. راتب 4,000–7,000 ريال، تأمين طبي وتدريب معتمد. التقديم إلكتروني ومجاني.';
+  const desc  = 'وظائف حارس أمن في ' + city.city + ' لدى شركة أرتال للحراسات الأمنية: تأمين ' + city.sites.slice(0, 3).join('، ') + '. راتب 4,000–7,000 ريال، تأمين طبي وتدريب معتمد. التقديم مجاني وإلكتروني.';
   // قنوات التواصل — لإشارة الكيان (sameAs) والتذييل المرئي
   const socialLinks = [
     { name: 'LinkedIn',     url: 'https://www.linkedin.com/company/artalgroup/' },
@@ -48,7 +48,7 @@
       {
         "@type": "JobPosting",
         "title": "حارس أمن — <%= city.city %>",
-        "description": "تبحث شركة أرتال للحراسات الأمنية المدنية الخاصة عن كفاءات وطنية للعمل كحراس أمن في مدينة <%= city.city %> ضمن <%= city.region %>. <%= city.blurb %> يُشترط أن يكون المتقدم سعودي الجنسية، عمره 21 سنة فأكبر، لائقاً صحياً وحسن السيرة والسلوك. نوفّر راتباً تنافسياً وتأميناً طبياً وتدريباً معتمداً. التقديم مجاني وإلكتروني بالكامل.",
+        "description": "تبحث شركة أرتال للحراسات الأمنية المدنية الخاصة عن كفاءات وطنية للعمل كحراس أمن في مدينة <%= city.city %> ضمن <%= city.region %>. <%= city.intro %> تشمل مواقع العمل <%= city.sites.join('، ') %>. يُشترط أن يكون المتقدم سعودي الجنسية، عمره 21 سنة فأكبر، لائقاً صحياً وحسن السيرة والسلوك. نوفّر راتباً تنافسياً وتأميناً طبياً وتدريباً معتمداً. التقديم مجاني وإلكتروني بالكامل.",
         "identifier": {
           "@type": "PropertyValue",
           "name": "أرتال للحراسات الأمنية المدنية الخاصة",
@@ -96,7 +96,11 @@
           { "@type": "Question", "name": "هل التقديم على وظائف الحراسة في <%= city.city %> مجاني؟",
             "acceptedAnswer": { "@type": "Answer", "text": "نعم، التقديم إلكتروني ومجاني تماماً عبر موقع أرتال، ولا توجد أي رسوم على المتقدمين." } },
           { "@type": "Question", "name": "ما شروط القبول كحارس أمن في <%= city.city %>؟",
-            "acceptedAnswer": { "@type": "Answer", "text": "أن يكون المتقدم سعودي الجنسية، عمره 21 سنة فأكبر، لائقاً صحياً، حسن السيرة والسلوك. الخبرة السابقة ميزة وليست شرطاً." } }
+            "acceptedAnswer": { "@type": "Answer", "text": "أن يكون المتقدم سعودي الجنسية، عمره 21 سنة فأكبر, لائقاً صحياً، حسن السيرة والسلوك. الخبرة السابقة ميزة وليست شرطاً." } },
+          { "@type": "Question", "name": "هل يوجد توظيف فوري لحراس الأمن في <%= city.city %>؟",
+            "acceptedAnswer": { "@type": "Answer", "text": "نعم، نستقبل طلبات التوظيف بشكل مستمر في <%= city.city %> وتتم مراجعتها أولاً بأول، مع إمكانية المباشرة السريعة بعد اجتياز التدريب حسب احتياج المواقع مثل <%= city.sites[0] %>." } },
+          { "@type": "Question", "name": "هل تتطلب وظيفة حارس الأمن في <%= city.city %> خبرة سابقة؟",
+            "acceptedAnswer": { "@type": "Answer", "text": "الخبرة السابقة ميزة وليست شرطاً؛ نوفّر تدريباً معتمداً قبل المباشرة يؤهّلك للعمل حتى لو كانت هذه وظيفتك الأولى." } }
         ]
       }
     ]
@@ -155,10 +159,38 @@
     <section>
       <h2 class="text-2xl font-bold text-primary mb-4">عن الوظائف في <%= city.city %></h2>
       <p class="leading-loose text-slate-700">
-        <%= city.blurb %>
+        <%= city.intro %>
         توفّر شركة أرتال فرص عمل ثابتة كحارس أمن في <%= city.city %> وما حولها، ضمن بيئة عمل احترافية ومسارات تطوير وظيفي واضحة.
         نبحث عن كفاءات وطنية ملتزمة للانضمام إلى فريقنا في تقديم حلول الحراسة الأمنية للمنشآت التجارية والسكنية والصناعية والحكومية.
       </p>
+    </section>
+
+    <!-- أنواع المواقع التي نؤمّنها في المدينة -->
+    <section>
+      <h2 class="text-2xl font-bold text-primary mb-4">أين يعمل حارس الأمن في <%= city.city %>؟</h2>
+      <p class="leading-loose text-slate-700 mb-4">
+        تتنوّع مواقع العمل في <%= city.city %> حسب طبيعة المنشأة، ومن أبرز ما نؤمّنه:
+      </p>
+      <ul class="grid sm:grid-cols-2 gap-3 text-slate-700">
+        <% city.sites.forEach(s => { %>
+          <li class="bg-white border border-slate-200 rounded-xl p-4 flex items-center gap-3">
+            <span class="text-primary">🛡️</span><span><%= s %></span>
+          </li>
+        <% }) %>
+      </ul>
+    </section>
+
+    <!-- أحياء/مواقع العمل داخل المدينة -->
+    <section>
+      <h2 class="text-2xl font-bold text-primary mb-4">نخدم جميع أحياء <%= city.city %></h2>
+      <p class="leading-loose text-slate-700 mb-4">
+        تشمل فرص العمل كحارس أمن مختلف أحياء ومواقع <%= city.city %>، ومنها:
+      </p>
+      <div class="flex flex-wrap gap-2">
+        <% city.districts.forEach(d => { %>
+          <span class="text-sm bg-white border border-slate-200 rounded-full px-4 py-2 text-slate-700"><%= d %></span>
+        <% }) %>
+      </div>
     </section>
 
     <!-- المزايا -->
@@ -217,6 +249,14 @@
         <details class="bg-white border border-slate-200 rounded-xl p-4">
           <summary class="font-semibold cursor-pointer text-primary">ما شروط القبول كحارس أمن في <%= city.city %>؟</summary>
           <p class="mt-2 text-slate-600 leading-loose">أن يكون المتقدم سعودي الجنسية، عمره 21 سنة فأكبر، لائقاً صحياً، حسن السيرة والسلوك. الخبرة السابقة ميزة وليست شرطاً.</p>
+        </details>
+        <details class="bg-white border border-slate-200 rounded-xl p-4">
+          <summary class="font-semibold cursor-pointer text-primary">هل يوجد توظيف فوري لحراس الأمن في <%= city.city %>؟</summary>
+          <p class="mt-2 text-slate-600 leading-loose">نعم، نستقبل طلبات التوظيف بشكل مستمر في <%= city.city %> وتتم مراجعتها أولاً بأول، مع إمكانية المباشرة السريعة بعد اجتياز التدريب حسب احتياج المواقع مثل <%= city.sites[0] %>.</p>
+        </details>
+        <details class="bg-white border border-slate-200 rounded-xl p-4">
+          <summary class="font-semibold cursor-pointer text-primary">هل تتطلب الوظيفة في <%= city.city %> خبرة سابقة؟</summary>
+          <p class="mt-2 text-slate-600 leading-loose">الخبرة السابقة ميزة وليست شرطاً؛ نوفّر تدريباً معتمداً قبل المباشرة يؤهّلك للعمل حتى لو كانت هذه وظيفتك الأولى.</p>
         </details>
       </div>
     </section>
