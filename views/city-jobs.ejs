@@ -16,7 +16,11 @@
     { name: 'Telegram',     url: 'https://t.me/artalgroup1' },
     { name: 'Snapchat',     url: 'https://t.snapchat.com/O9T1Eyj9' },
   ];
-  const sameAs = ['https://artalsecurity.com', 'https://jobs.artalsecurity.com', ...socialLinks.map(s => s.url)];
+  const appLinks = [
+    'https://play.google.com/store/apps/details?id=com.intshar.artalapp',
+    'https://apps.apple.com/us/app/artal/id6740813953',
+  ];
+  const sameAs = ['https://artalsecurity.com', 'https://jobs.artalsecurity.com', ...socialLinks.map(s => s.url), ...appLinks];
 %><!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
@@ -289,6 +293,14 @@
         <% socialLinks.forEach(s => { %>
           <a href="<%= s.url %>" target="_blank" rel="noopener" class="bg-white/10 hover:bg-white/20 rounded-full px-4 py-2 text-sm transition"><%= s.name %></a>
         <% }) %>
+      </div>
+      <!-- تطبيق الموظفين (للحراس والكوادر بعد القبول) -->
+      <div class="text-center mb-8">
+        <p class="text-sm text-slate-300 mb-3">تطبيق أرتال للموظفين — للحراس والكوادر</p>
+        <div class="flex flex-wrap justify-center gap-3">
+          <a href="<%= appLinks[0] %>" target="_blank" rel="noopener" class="bg-white/10 hover:bg-white/20 rounded-lg px-4 py-2 text-sm transition">📱 تطبيق أندرويد</a>
+          <a href="<%= appLinks[1] %>" target="_blank" rel="noopener" class="bg-white/10 hover:bg-white/20 rounded-lg px-4 py-2 text-sm transition">🍏 تطبيق آيفون</a>
+        </div>
       </div>
       <p class="text-center text-slate-300 text-sm border-t border-white/10 pt-6">© 2026 شركة أرتال للحراسات الأمنية المدنية الخاصة. جميع الحقوق محفوظة.</p>
     </div>
