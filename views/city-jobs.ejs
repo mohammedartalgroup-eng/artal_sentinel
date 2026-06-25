@@ -6,7 +6,7 @@
   const validThrough = new Date(_today.getTime() + 60 * 86400000).toISOString().split('T')[0];
   const pageUrl = 'https://jobs.artalsecurity.com/jobs/' + city.slug;
   const title = 'وظائف حارس أمن في ' + city.city + ' | أرتال للحراسات الأمنية';
-  const desc  = 'وظائف حارس أمن في ' + city.city + ' لدى شركة أرتال للحراسات الأمنية: تأمين ' + city.sites.slice(0, 3).join('، ') + '. راتب 4,000–7,000 ريال، تأمين طبي وتدريب معتمد. التقديم مجاني وإلكتروني.';
+  const desc  = 'وظائف حارس أمن في ' + city.city + ' لدى شركة أرتال للحراسات الأمنية: تأمين ' + city.sites.slice(0, 3).join('، ') + '. رواتب تنافسية، جداول عمل مرنة وتدريب معتمد. التقديم مجاني وإلكتروني.';
   // قنوات التواصل — لإشارة الكيان (sameAs) والتذييل المرئي
   const socialLinks = [
     { name: 'LinkedIn',     url: 'https://www.linkedin.com/company/artalgroup/' },
@@ -52,7 +52,7 @@
       {
         "@type": "JobPosting",
         "title": "حارس أمن — <%= city.city %>",
-        "description": "تبحث شركة أرتال للحراسات الأمنية المدنية الخاصة عن كفاءات وطنية للعمل كحراس أمن في مدينة <%= city.city %> ضمن <%= city.region %>. <%= city.intro %> تشمل مواقع العمل <%= city.sites.join('، ') %>. يُشترط أن يكون المتقدم سعودي الجنسية، عمره 21 سنة فأكبر، لائقاً صحياً وحسن السيرة والسلوك. نوفّر راتباً تنافسياً وتأميناً طبياً وتدريباً معتمداً. التقديم مجاني وإلكتروني بالكامل.",
+        "description": "تبحث شركة أرتال للحراسات الأمنية المدنية الخاصة عن كفاءات وطنية للعمل كحراس أمن في مدينة <%= city.city %> ضمن <%= city.region %>. <%= city.intro %> تشمل مواقع العمل <%= city.sites.join('، ') %>. يُشترط أن يكون المتقدم سعودي الجنسية، عمره 21 سنة فأكبر، لائقاً صحياً وحسن السيرة والسلوك. نوفّر رواتب تنافسية وجداول عمل مرنة وتدريباً معتمداً. التقديم مجاني وإلكتروني بالكامل.",
         "identifier": {
           "@type": "PropertyValue",
           "name": "أرتال للحراسات الأمنية المدنية الخاصة",
@@ -74,11 +74,6 @@
             "addressCountry": "SA"
           }
         },
-        "baseSalary": {
-          "@type": "MonetaryAmount",
-          "currency": "SAR",
-          "value": { "@type": "QuantitativeValue", "minValue": 4000, "maxValue": 7000, "unitText": "MONTH" }
-        },
         "employmentType": "FULL_TIME",
         "directApply": true,
         "datePosted": "<%= datePosted %>",
@@ -96,7 +91,7 @@
         "@type": "FAQPage",
         "mainEntity": [
           { "@type": "Question", "name": "كم راتب حارس الأمن في <%= city.city %>؟",
-            "acceptedAnswer": { "@type": "Answer", "text": "يتراوح راتب حارس الأمن لدى أرتال في <%= city.city %> بين 4,000 و7,000 ريال شهرياً حسب الموقع وطبيعة العمل، مع بدلات وتأمين طبي." } },
+            "acceptedAnswer": { "@type": "Answer", "text": "رواتب تنافسية حسب الموقع وطبيعة العمل، مع بدلات وجداول عمل مرنة." } },
           { "@type": "Question", "name": "هل التقديم على وظائف الحراسة في <%= city.city %> مجاني؟",
             "acceptedAnswer": { "@type": "Answer", "text": "نعم، التقديم إلكتروني ومجاني تماماً عبر موقع أرتال، ولا توجد أي رسوم على المتقدمين." } },
           { "@type": "Question", "name": "ما شروط القبول كحارس أمن في <%= city.city %>؟",
@@ -149,7 +144,7 @@
       </h1>
       <p class="text-slate-200 text-lg max-w-2xl mx-auto leading-relaxed">
         تعلن شركة أرتال للحراسات الأمنية المدنية الخاصة عن حاجتها لحراس أمن في <%= city.city %> ضمن <%= city.region %>.
-        راتب 4,000–7,000 ريال، تأمين طبي وتدريب معتمد.
+        رواتب تنافسية، جداول عمل مرنة وتدريب معتمد.
       </p>
       <a href="/" class="inline-block mt-8 bg-white text-primary font-bold px-8 py-3.5 rounded-xl shadow-lg hover:bg-slate-100 transition">
         قدّم على الوظيفة الآن
@@ -201,8 +196,8 @@
     <section>
       <h2 class="text-2xl font-bold text-primary mb-4">مزايا العمل في أرتال</h2>
       <ul class="grid sm:grid-cols-2 gap-3 text-slate-700">
-        <li class="bg-white border border-slate-200 rounded-xl p-4">💰 راتب تنافسي يتراوح بين 4,000 و7,000 ريال</li>
-        <li class="bg-white border border-slate-200 rounded-xl p-4">🏥 تأمين طبي للموظف</li>
+        <li class="bg-white border border-slate-200 rounded-xl p-4">💰 رواتب تنافسية</li>
+        <li class="bg-white border border-slate-200 rounded-xl p-4">🕒 جداول عمل مرنة</li>
         <li class="bg-white border border-slate-200 rounded-xl p-4">🎓 تدريب معتمد قبل المباشرة</li>
         <li class="bg-white border border-slate-200 rounded-xl p-4">📈 فرص ترقّي واستقرار وظيفي</li>
         <li class="bg-white border border-slate-200 rounded-xl p-4">🛡️ بيئة عمل نظامية وآمنة</li>
@@ -244,7 +239,7 @@
       <div class="space-y-3">
         <details class="bg-white border border-slate-200 rounded-xl p-4">
           <summary class="font-semibold cursor-pointer text-primary">كم راتب حارس الأمن في <%= city.city %>؟</summary>
-          <p class="mt-2 text-slate-600 leading-loose">يتراوح راتب حارس الأمن لدى أرتال في <%= city.city %> بين 4,000 و7,000 ريال شهرياً حسب الموقع وطبيعة العمل، مع بدلات وتأمين طبي.</p>
+          <p class="mt-2 text-slate-600 leading-loose">رواتب تنافسية حسب الموقع وطبيعة العمل، مع بدلات وجداول عمل مرنة.</p>
         </details>
         <details class="bg-white border border-slate-200 rounded-xl p-4">
           <summary class="font-semibold cursor-pointer text-primary">هل التقديم على وظائف الحراسة في <%= city.city %> مجاني؟</summary>
