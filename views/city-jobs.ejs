@@ -52,7 +52,7 @@
       {
         "@type": "JobPosting",
         "title": "حارس أمن — <%= city.city %>",
-        "description": "تبحث شركة أرتال للحراسات الأمنية المدنية الخاصة عن كفاءات وطنية للعمل كحراس أمن في مدينة <%= city.city %> ضمن <%= city.region %>. <%= city.intro %> تشمل مواقع العمل <%= city.sites.join('، ') %>. يُشترط أن يكون المتقدم سعودي الجنسية، عمره 21 سنة فأكبر، لائقاً صحياً وحسن السيرة والسلوك. نوفّر رواتب تنافسية وجداول عمل مرنة وتدريباً معتمداً. التقديم مجاني وإلكتروني بالكامل.",
+        "description": "تبحث شركة أرتال للحراسات الأمنية المدنية الخاصة عن كفاءات وطنية للعمل كحراس أمن في مدينة <%= city.city %> ضمن <%= city.region %>. <%= city.intro %> تشمل مواقع العمل <%= city.sites.join('، ') %>. يُشترط أن يكون المتقدم سعودي الجنسية، لائقاً صحياً وحسن السيرة والسلوك. نوفّر رواتب تنافسية وجداول عمل مرنة وتدريباً معتمداً. التقديم مجاني وإلكتروني بالكامل.",
         "identifier": {
           "@type": "PropertyValue",
           "name": "أرتال للحراسات الأمنية المدنية الخاصة",
@@ -95,7 +95,7 @@
           { "@type": "Question", "name": "هل التقديم على وظائف الحراسة في <%= city.city %> مجاني؟",
             "acceptedAnswer": { "@type": "Answer", "text": "نعم، التقديم إلكتروني ومجاني تماماً عبر موقع أرتال، ولا توجد أي رسوم على المتقدمين." } },
           { "@type": "Question", "name": "ما شروط القبول كحارس أمن في <%= city.city %>؟",
-            "acceptedAnswer": { "@type": "Answer", "text": "أن يكون المتقدم سعودي الجنسية، عمره 21 سنة فأكبر, لائقاً صحياً، حسن السيرة والسلوك. الخبرة السابقة ميزة وليست شرطاً." } },
+            "acceptedAnswer": { "@type": "Answer", "text": "أن يكون المتقدم سعودي الجنسية، لائقاً صحياً، حسن السيرة والسلوك. الخبرة السابقة ميزة وليست شرطاً." } },
           { "@type": "Question", "name": "هل يوجد توظيف فوري لحراس الأمن في <%= city.city %>؟",
             "acceptedAnswer": { "@type": "Answer", "text": "نعم، نستقبل طلبات التوظيف بشكل مستمر في <%= city.city %> وتتم مراجعتها أولاً بأول، مع إمكانية المباشرة السريعة بعد اجتياز التدريب حسب احتياج المواقع مثل <%= city.sites[0] %>." } },
           { "@type": "Question", "name": "هل تتطلب وظيفة حارس الأمن في <%= city.city %> خبرة سابقة؟",
@@ -210,7 +210,6 @@
       <h2 class="text-2xl font-bold text-primary mb-4">شروط القبول</h2>
       <ul class="space-y-2 text-slate-700 leading-loose list-disc pr-5">
         <li>أن يكون المتقدم <strong>سعودي الجنسية</strong>.</li>
-        <li>العمر <strong>21 سنة فأكبر</strong>.</li>
         <li>اللياقة الصحية والبدنية.</li>
         <li>حسن السيرة والسلوك وخلوّه من السوابق.</li>
         <li>يجيد القراءة والكتابة. <span class="text-slate-500">(الخبرة السابقة ميزة وليست شرطاً)</span></li>
@@ -247,7 +246,7 @@
         </details>
         <details class="bg-white border border-slate-200 rounded-xl p-4">
           <summary class="font-semibold cursor-pointer text-primary">ما شروط القبول كحارس أمن في <%= city.city %>؟</summary>
-          <p class="mt-2 text-slate-600 leading-loose">أن يكون المتقدم سعودي الجنسية، عمره 21 سنة فأكبر، لائقاً صحياً، حسن السيرة والسلوك. الخبرة السابقة ميزة وليست شرطاً.</p>
+          <p class="mt-2 text-slate-600 leading-loose">أن يكون المتقدم سعودي الجنسية، لائقاً صحياً، حسن السيرة والسلوك. الخبرة السابقة ميزة وليست شرطاً.</p>
         </details>
         <details class="bg-white border border-slate-200 rounded-xl p-4">
           <summary class="font-semibold cursor-pointer text-primary">هل يوجد توظيف فوري لحراس الأمن في <%= city.city %>؟</summary>
