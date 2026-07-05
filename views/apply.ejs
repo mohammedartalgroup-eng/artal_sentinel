@@ -344,11 +344,11 @@
               العمر <span class="text-error">*</span>
             </label>
             <div class="input-wrap" id="wrap-age">
-              <input id="f-age" name="age" min="21" max="99"
+              <input id="f-age" name="age" min="23" max="99"
                      class="w-full bg-surface-container-low border-0 rounded-lg px-4 py-3.5 focus:ring-2 focus:ring-primary/20 transition-all"
-                     placeholder="السنة (21 فأكبر)" type="number" inputmode="numeric"/>
+                     placeholder="السنة (23 فأكبر)" type="number" inputmode="numeric"/>
             </div>
-            <p class="err-msg" id="err-age">العمر مطلوب ويجب أن يكون 21 سنة فأكبر</p>
+            <p class="err-msg" id="err-age">العمر مطلوب ويجب أن يكون 23 سنة فأكبر</p>
           </div>
 
           <!-- Region (full width) -->
@@ -965,7 +965,7 @@ document.getElementById('applyForm').addEventListener('submit', function (e) {
     clearError('phone');
   }
 
-  // ── العمر (إلزامي، أكبر من 20)
+  // ── العمر (إلزامي، أكبر من 22)
   const ageVal = document.getElementById('f-age').value;
   const ageNum = parseInt(ageVal);
   if (!ageVal || isNaN(ageNum)) {
@@ -976,8 +976,8 @@ document.getElementById('applyForm').addEventListener('submit', function (e) {
     showError('age', 'العمر غير صحيح — يرجى إدخال عمرك وليس سنة ميلادك');
     if (!firstError) firstError = 'f-age';
     valid = false;
-  } else if (ageNum <= 20) {
-    showError('age', 'العمر يجب أن يكون 21 سنة فأكبر');
+  } else if (ageNum <= 22) {
+    showError('age', 'العمر يجب أن يكون 23 سنة فأكبر');
     if (!firstError) firstError = 'f-age';
     valid = false;
   } else {

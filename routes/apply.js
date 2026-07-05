@@ -66,7 +66,7 @@ router.post('/', (req, res) => {
       const ageInt = parseInt(age);
       if (!age || isNaN(ageInt))         errors.push('يرجى إدخال العمر');
       else if (ageInt >= 100)            errors.push('العمر غير صحيح — يرجى إدخال عمرك وليس سنة ميلادك');
-      else if (ageInt <= 20)             errors.push('العمر يجب أن يكون 21 سنة فأكبر');
+      else if (ageInt <= 22)             errors.push('العمر يجب أن يكون 23 سنة فأكبر');
       if (!region || !region.trim())                            errors.push('المنطقة الإدارية مطلوبة');
       if (!city || !city.trim())                                errors.push('المدينة أو المحافظة مطلوبة');
       if (!neighborhood || !neighborhood.trim())                errors.push('اسم الحي مطلوب');
