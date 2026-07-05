@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "build:css": "tailwindcss -i assets/tailwind.css -o public/css/tailwind.css --minify"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -21,7 +22,10 @@
     "mysql2": "^3.9.7"
   },
   "devDependencies": {
-    "nodemon": "^3.1.0"
+    "@tailwindcss/container-queries": "^0.1.1",
+    "@tailwindcss/forms": "^0.5.11",
+    "nodemon": "^3.1.0",
+    "tailwindcss": "^3.4.19"
   },
   "overrides": {
     "uuid": "^11.1.1"
