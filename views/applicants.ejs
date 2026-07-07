@@ -306,6 +306,9 @@
                             onclick="location.href='/admin/applicants/<%= a.id %>'">
                             <td class="px-5 py-3.5 font-medium text-[#001736]">
                               <%= a.full_name %>
+                              <% if (a.repeatCount && a.repeatCount > 1) { %>
+                              <span class="inline-flex items-center gap-0.5 text-[10px] bg-amber-100 text-amber-700 rounded-full px-1.5 py-0.5 align-middle font-semibold" title="سجّل <%= a.repeatCount %> مرات بنفس رقم الهوية">🔁 ×<%= a.repeatCount %></span>
+                              <% } %>
                             </td>
                             <td class="px-4 py-3.5 text-[#43474f] font-mono text-xs">
                               <%= a.id_number %>

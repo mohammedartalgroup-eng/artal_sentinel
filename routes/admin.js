@@ -391,6 +391,18 @@ router.get('/applicants', async (req, res) => {
     const total = Number(countRow?.c) || 0;
     const totalPages = Math.ceil(total / PAGE_SIZE);
 
+    // كشف المكرّرين: مَن سجّل بنفس رقم الهوية أكثر من مرة (شارة في القائمة)
+    const repeatMap = {};
+    const idNums = [...new Set(applicants.map(a => a.id_number).filter(Boolean))];
+    if (idNums.length) {
+      const rows = await db.all(
+        `SELECT id_number, COUNT(*) AS cnt FROM applicants WHERE id_number IN (${idNums.map(() => '?').join(',')}) GROUP BY id_number HAVING cnt > 1`,
+        idNums
+      );
+      rows.forEach(r => { repeatMap[r.id_number] = Number(r.cnt); });
+    }
+    applicants.forEach(a => { a.repeatCount = repeatMap[a.id_number] || 1; });
+
     res.render('applicants', {
       applicants, total, totalPages, pageNum,
       filters: { q, status, region, city: cities, gender, english, qualification, has_car, has_license, ext_check, age_min, age_max, date_from, date_to, sort, order },
@@ -512,13 +524,17 @@ router.get('/applicants/:id', async (req, res) => {
       checkExternal(applicant.id, applicant.id_number).catch(() => {});
     }
 
-    const [notes, activity] = await Promise.all([
+    const [notes, activity, priorApps] = await Promise.all([
       db.all('SELECT * FROM applicant_notes WHERE applicant_id = ? ORDER BY created_at DESC', [applicant.id]),
       db.all('SELECT * FROM applicant_activity WHERE applicant_id = ? ORDER BY created_at DESC', [applicant.id]),
+      // تقديمات سابقة/أخرى بنفس رقم الهوية (نظرة كاملة للمرشّح) — لا تشمل هذا الطلب
+      applicant.id_number
+        ? db.all('SELECT id, status, rating, source, created_at FROM applicants WHERE id_number = ? AND id != ? ORDER BY created_at DESC', [applicant.id_number, applicant.id])
+        : Promise.resolve([]),
     ]);
 
     res.render('applicant-detail', {
-      applicant, notes, activity,
+      applicant, notes, activity, priorApps,
       STATUS_META, NOTE_TYPES, adminUser: req.session.adminUser
     });
   } catch (err) {

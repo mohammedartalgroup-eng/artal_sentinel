@@ -95,25 +95,8 @@ router.post('/', (req, res) => {
         `);
       }
 
-      // Check duplicate ID
-      const existing = await db.get(
-        'SELECT id FROM applicants WHERE id_number = ?',
-        [id_number.trim()]
-      );
-      if (existing) {
-        return res.status(409).send(`
-          <!DOCTYPE html><html dir="rtl" lang="ar">
-          <head><meta charset="utf-8"><script src="https://cdn.tailwindcss.com"></script></head>
-          <body class="p-8 bg-amber-50">
-            <div class="max-w-md mx-auto bg-white p-6 rounded-xl shadow text-center">
-              <div class="text-4xl mb-4">⚠️</div>
-              <h2 class="font-bold text-lg mb-2">تم تسجيل طلبك مسبقاً</h2>
-              <p class="text-slate-500 mb-6">رقم الهوية المدخل موجود بالفعل في قاعدة بياناتنا.</p>
-              <a href="/apply" class="bg-blue-900 text-white px-6 py-3 rounded-lg">العودة</a>
-            </div>
-          </body></html>
-        `);
-      }
+      // إعادة التقديم مسموحة: كل طلب يُسجَّل كصفّ جديد؛ لوحة الإدارة تربط
+      // التقديمات المتعددة بنفس رقم الهوية وتعرض سجلّها (نظرة كاملة للمرشّح).
 
       const cvFile = req.files?.cv?.[0];
       const idFile = req.files?.id_image?.[0];

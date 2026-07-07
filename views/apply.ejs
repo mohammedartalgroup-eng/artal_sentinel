@@ -933,6 +933,16 @@ document.getElementById('f-neighborhood')?.addEventListener('input', () => clear
 setupNumericOnly('f-id_number');
 setupNumericOnly('f-phone');
 
+// ─── إصلاح: إعادة تعيين زر الإرسال إذا استُعيدت الصفحة من ذاكرة المتصفح (زر الرجوع)
+//     (كان الزر يبقى "يدور/معطّلاً" بعد الرجوع من صفحة نتيجة الإرسال)
+(function () {
+  var _btn = document.getElementById('submitBtn');
+  var _orig = _btn ? _btn.innerHTML : '';
+  window.addEventListener('pageshow', function (e) {
+    if (e.persisted && _btn) { _btn.disabled = false; _btn.innerHTML = _orig; }
+  });
+})();
+
 // ─── التحقق عند الإرسال ─────────────────────────────────────────────────────
 document.getElementById('applyForm').addEventListener('submit', function (e) {
   e.preventDefault(); // نمنع الإرسال حتى نتحقق

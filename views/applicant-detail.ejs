@@ -130,6 +130,35 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
   </div>
 
   <main class="p-4 lg:p-8">
+
+    <!-- تقديمات سابقة بنفس رقم الهوية (نظرة على تاريخ المرشّح) -->
+    <% if (typeof priorApps !== 'undefined' && priorApps && priorApps.length) { %>
+    <%
+      const _badgeColor = { blue:'bg-blue-100 text-blue-700', yellow:'bg-yellow-100 text-yellow-700', purple:'bg-purple-100 text-purple-700', orange:'bg-orange-100 text-orange-700', green:'bg-green-100 text-green-700', gray:'bg-gray-100 text-gray-600', red:'bg-red-100 text-red-700' };
+      const _fmtDate = (v) => { const d = new Date(v); return isNaN(d) ? v : d.toLocaleDateString('ar-SA', { timeZone:'Asia/Riyadh', year:'numeric', month:'short', day:'numeric' }); };
+    %>
+    <div class="mb-6 bg-amber-50 border border-amber-200 rounded-2xl p-5">
+      <div class="flex items-center gap-2 mb-3">
+        <span class="material-symbols-outlined text-amber-600">history</span>
+        <h2 class="font-bold text-[#001736] text-sm">سجّل هذا الشخص من قبل — <%= priorApps.length %> تقديم سابق بنفس رقم الهوية</h2>
+      </div>
+      <div class="grid sm:grid-cols-2 gap-2">
+        <% priorApps.forEach(pa => { const psm = STATUS_META[pa.status] || { label: pa.status, color: 'gray' }; %>
+        <a href="/admin/applicants/<%= pa.id %>" class="flex items-center justify-between gap-3 bg-white border border-amber-100 rounded-xl px-4 py-2.5 hover:border-amber-300 transition">
+          <span class="text-sm text-[#43474f] flex items-center gap-1">
+            <span class="material-symbols-outlined text-sm">calendar_month</span><%= _fmtDate(pa.created_at) %>
+          </span>
+          <span class="flex items-center gap-2">
+            <span class="text-xs px-2 py-0.5 rounded-full font-semibold <%= _badgeColor[psm.color] || _badgeColor.gray %>"><%= psm.label %></span>
+            <span class="material-symbols-outlined text-sm text-amber-500">open_in_new</span>
+          </span>
+        </a>
+        <% }) %>
+      </div>
+      <p class="text-xs text-amber-700 mt-3">تقديمات أخرى بنفس رقم الهوية — لاطّلاعك على تاريخ المرشّح مع الشركة.</p>
+    </div>
+    <% } %>
+
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
       <!-- LEFT: Info + Docs -->

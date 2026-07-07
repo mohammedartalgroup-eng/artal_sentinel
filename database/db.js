@@ -180,6 +180,20 @@ async function initialize() {
       console.log('[DB] Migration: added source/referrer/landing_page columns');
     }
 
+    // ─── ترحيل: السماح بإعادة التقديم — تحويل قيد الهوية الفريد إلى فهرس عادي
+    //     ⚠️ لا يحذف أي بيانات؛ يزيل قيد الفرادة فقط ويُبقي فهرساً للبحث السريع.
+    try {
+      const [uqIdx] = await conn.query("SHOW INDEX FROM applicants WHERE Column_name = 'id_number' AND Non_unique = 0");
+      if (uqIdx.length) {
+        await conn.query(`ALTER TABLE applicants DROP INDEX \`${uqIdx[0].Key_name}\``);
+        const [normIdx] = await conn.query("SHOW INDEX FROM applicants WHERE Column_name = 'id_number' AND Non_unique = 1");
+        if (!normIdx.length) await conn.query("ALTER TABLE applicants ADD INDEX idx_id_number (id_number)");
+        console.log('[DB] Migration: id_number UNIQUE → normal index (allow re-applications)');
+      }
+    } catch (e) {
+      console.error('[DB] Migration (id_number index):', e.message);
+    }
+
     // ─── audit_log
     await conn.query(`
       CREATE TABLE IF NOT EXISTS audit_log (
