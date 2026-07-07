@@ -183,6 +183,21 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
                 <% } %>
               </div>
             </div>
+            <% if (applicant.source) { %>
+            <div class="flex items-start gap-3">
+              <span class="material-symbols-outlined text-[#43474f] text-lg mt-0.5">travel_explore</span>
+              <div class="min-w-0">
+                <div class="text-xs text-[#43474f] font-semibold uppercase tracking-wider">مصدر التقديم</div>
+                <div class="mt-0.5 font-medium"><%= applicant.source %></div>
+                <% if (applicant.landing_page) { %>
+                <div class="text-xs text-[#7594ca] mt-0.5 break-all" dir="ltr">صفحة الدخول: <%= applicant.landing_page %></div>
+                <% } %>
+                <% if (applicant.referrer) { %>
+                <div class="text-xs text-[#43474f] mt-0.5 break-all" dir="ltr" title="<%= applicant.referrer %>">من: <%= applicant.referrer.length > 70 ? applicant.referrer.slice(0,70) + '…' : applicant.referrer %></div>
+                <% } %>
+              </div>
+            </div>
+            <% } %>
             <%
               const QUAL_LABELS = { none:'بدون مؤهل', primary:'ابتدائي', middle:'متوسط', high_school:'ثانوي', university:'جامعي' };
             %>

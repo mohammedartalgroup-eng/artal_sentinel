@@ -56,7 +56,7 @@ router.post('/', (req, res) => {
     }
 
     try {
-      const { full_name, id_number, phone, age, gender, region, city, neighborhood, has_car, has_license, english, qualification, specialization } = req.body;
+      const { full_name, id_number, phone, age, gender, region, city, neighborhood, has_car, has_license, english, qualification, specialization, source, referrer, landing_page } = req.body;
 
       // Basic validation
       const errors = [];
@@ -121,8 +121,9 @@ router.post('/', (req, res) => {
       const result = await db.run(
         `INSERT INTO applicants
           (full_name, id_number, phone, age, gender, region, city, neighborhood,
-           has_car, has_license, english, qualification, specialization, cv_path, id_image_path)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           has_car, has_license, english, qualification, specialization, cv_path, id_image_path,
+           source, referrer, landing_page)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           full_name.trim(),
           id_number.trim(),
@@ -139,6 +140,9 @@ router.post('/', (req, res) => {
           specialization ? specialization.trim() : null,
           cvFile ? cvFile.filename : null,
           idFile ? idFile.filename : null,
+          source ? String(source).trim().slice(0, 60) : null,
+          referrer ? String(referrer).trim().slice(0, 255) : null,
+          landing_page ? String(landing_page).trim().slice(0, 255) : null,
         ]
       );
 

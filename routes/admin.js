@@ -191,7 +191,7 @@ router.get('/dashboard', async (req, res) => {
     const pMeta  = getPeriodMeta(period);
     const p      = pMeta.params;
 
-    const [statsRow, byCity, recent, trend] = await Promise.all([
+    const [statsRow, byCity, recent, trend, bySource] = await Promise.all([
       db.get(`
         SELECT
           COUNT(*)                           AS total,
@@ -219,6 +219,10 @@ router.get('/dashboard', async (req, res) => {
         GROUP BY DATE(created_at)
         ORDER BY day ASC
       `),
+      db.all(`
+        SELECT COALESCE(NULLIF(source, ''), 'غير معروف') AS source, COUNT(*) as count
+        FROM applicants WHERE 1=1 ${pMeta.sql} GROUP BY source ORDER BY count DESC LIMIT 12
+      `, p),
     ]);
 
     const stats = {
@@ -309,7 +313,7 @@ router.get('/dashboard', async (req, res) => {
     }
 
     res.render('dashboard', {
-      stats, byCity, recent, trend, cityTrend,
+      stats, byCity, recent, trend, cityTrend, bySource,
       STATUS_META, adminUser: req.session.adminUser,
       activePeriod: period, periodLabel: pMeta.label,
     });

@@ -147,6 +147,30 @@
       </div>
     </div>
 
+    <!-- By Source (مصادر المتقدمين — من أين جاؤوا فعلياً) -->
+    <div class="bg-white rounded-2xl p-6">
+      <h2 class="font-bold text-[#001736] mb-1 text-base">مصادر المتقدمين — <%= periodLabel %></h2>
+      <p class="text-xs text-[#43474f] mb-5">من أين جاء المتقدّمون فعلياً (تتبّع أول زيارة — أدقّ من Search Console)</p>
+      <% if (typeof bySource === 'undefined' || !bySource || bySource.length === 0) { %>
+        <div class="text-[#43474f] text-sm text-center py-8">لا توجد بيانات مصدر بعد — ستظهر مع المتقدّمين الجدد</div>
+      <% } else { %>
+        <% const maxSrc = bySource[0] ? bySource[0].count : 1; %>
+        <% const srcTotal = bySource.reduce((a, s) => a + Number(s.count), 0) || 1; %>
+        <div class="space-y-3">
+          <% bySource.forEach(s => { %>
+          <div class="flex items-center gap-3">
+            <span class="text-xs text-[#43474f] w-28 flex-shrink-0 truncate"><%= s.source %></span>
+            <div class="flex-1 bg-[#f2f4f6] rounded-full h-2">
+              <div class="bg-[#001736] h-2 rounded-full" style="width:<%= Math.round((s.count / maxSrc) * 100) %>%"></div>
+            </div>
+            <span class="text-sm font-bold text-[#001736] w-10 text-center flex-shrink-0"><%= s.count %></span>
+            <span class="text-xs text-[#43474f] w-12 text-center flex-shrink-0"><%= Math.round((s.count / srcTotal) * 100) %>%</span>
+          </div>
+          <% }) %>
+        </div>
+      <% } %>
+    </div>
+
     <!-- ─── Manager-only: City × Day Stacked Chart (آخر 14 يوم) ──────────── -->
     <% if (typeof cityTrend !== 'undefined' && cityTrend) { %>
     <div class="bg-white rounded-2xl p-6">

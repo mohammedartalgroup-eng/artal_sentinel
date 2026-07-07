@@ -170,6 +170,16 @@ async function initialize() {
       console.log('[DB] Migration: added column neighborhood');
     }
 
+    // ─── ترحيل: أعمدة مصدر الزيارة (من أين جاء المتقدم)
+    const [srcCols] = await conn.query("SHOW COLUMNS FROM applicants LIKE 'source'");
+    if (srcCols.length === 0) {
+      await conn.query("ALTER TABLE applicants ADD COLUMN source VARCHAR(60) DEFAULT NULL");
+      await conn.query("ALTER TABLE applicants ADD COLUMN referrer VARCHAR(255) DEFAULT NULL");
+      await conn.query("ALTER TABLE applicants ADD COLUMN landing_page VARCHAR(255) DEFAULT NULL");
+      await conn.query("ALTER TABLE applicants ADD INDEX idx_source (source)");
+      console.log('[DB] Migration: added source/referrer/landing_page columns');
+    }
+
     // ─── audit_log
     await conn.query(`
       CREATE TABLE IF NOT EXISTS audit_log (

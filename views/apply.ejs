@@ -284,6 +284,11 @@
       <form class="p-8 md:p-12 space-y-8" method="POST" action="/apply"
             enctype="multipart/form-data" id="applyForm" novalidate>
 
+        <!-- حقول مصدر الزيارة (تُملأ تلقائياً عبر /js/attribution.js) -->
+        <input type="hidden" name="source" id="f-source">
+        <input type="hidden" name="referrer" id="f-referrer">
+        <input type="hidden" name="landing_page" id="f-landing">
+
         <!-- Personal Info Grid -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
 
@@ -1091,5 +1096,6 @@ const style = document.createElement('style');
 style.textContent = '@keyframes spin { to { transform: rotate(360deg); } }';
 document.head.appendChild(style);
 </script>
+  <script src="/js/attribution.js"></script>
 </body>
 </html>
