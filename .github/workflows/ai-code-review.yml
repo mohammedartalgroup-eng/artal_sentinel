@@ -1,0 +1,51 @@
+name: AI Code Review
+
+on:
+  push:
+    branches:
+      - '**'
+
+jobs:
+  ai-review:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate Git Diff
+        id: diff
+        run: |
+          BEFORE="${{ github.event.before }}"
+          AFTER="${{ github.sha }}"
+
+          # أول Push للمستودع
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            git show "$AFTER" > diff.txt
+          else
+            git diff "$BEFORE" "$AFTER" > diff.txt
+          fi
+
+      - name: Send To AI Reviewer
+        run: |
+          DIFF=$(jq -Rs . < diff.txt)
+
+          curl -X POST "https://codereview.alrabeei.cloud/review" \
+            -H "Authorization: Bearer ${{ secrets.AI_REVIEW_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"repository_name\":\"${{ github.repository }}\",
+              \"repository_url\":\"${{ github.server_url }}/${{ github.repository }}\",
+              \"branch_name\":\"${{ github.ref_name }}\",
+              \"commit_sha\":\"${{ github.sha }}\",
+              \"author\":\"${{ github.actor }}\",
+              \"changed_files\":[],
+              \"pr_title\":\"Push Review\",
+              \"pr_description\":\"Automatic review on every push\",
+              \"diff\":$DIFF
+            }"
+
+      - name: Finished
+        run: echo "AI Review completed."
