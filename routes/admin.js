@@ -335,7 +335,7 @@ router.get('/applicants', async (req, res) => {
   try {
     const {
       q = '', status = '', region = '', gender = '', english = '', qualification = '',
-      has_car = '', has_license = '', ext_check = '',
+      has_car = '', has_license = '', ext_check = '', source = '',
       age_min = '', age_max = '', date_from = '', date_to = '',
       sort = 'created_at', order = 'desc', page = '1'
     } = req.query;
@@ -367,6 +367,9 @@ router.get('/applicants', async (req, res) => {
     if (ext_check === 'found')      { conditions.push('ext_check_done = 1 AND ext_found = 1'); }
     else if (ext_check === 'not_found')  { conditions.push('ext_check_done = 1 AND (ext_found = 0 OR ext_found IS NULL)'); }
     else if (ext_check === 'unchecked')  { conditions.push('ext_check_done = 0'); }
+    // فلترة بالمصدر (مُفهرس idx_source → سريع). 'غير معروف' = بلا مصدر مسجّل
+    if (source === 'غير معروف')  { conditions.push("(source IS NULL OR source = '')"); }
+    else if (source)             { conditions.push('source = ?'); params.push(source); }
     if (age_min) { conditions.push('age >= ?'); params.push(parseInt(age_min)); }
     if (age_max) { conditions.push('age <= ?'); params.push(parseInt(age_max)); }
     if (date_from) { conditions.push('created_at >= ?'); params.push(date_from + ' 00:00:00'); }
@@ -405,7 +408,7 @@ router.get('/applicants', async (req, res) => {
 
     res.render('applicants', {
       applicants, total, totalPages, pageNum,
-      filters: { q, status, region, city: cities, gender, english, qualification, has_car, has_license, ext_check, age_min, age_max, date_from, date_to, sort, order },
+      filters: { q, status, region, city: cities, gender, english, qualification, has_car, has_license, ext_check, source, age_min, age_max, date_from, date_to, sort, order },
       STATUS_META, REGIONS, SA_REGIONS, adminUser: req.session.adminUser
     });
   } catch (err) {

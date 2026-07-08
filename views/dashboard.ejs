@@ -158,14 +158,16 @@
         <% const srcTotal = bySource.reduce((a, s) => a + Number(s.count), 0) || 1; %>
         <div class="space-y-3">
           <% bySource.forEach(s => { %>
-          <div class="flex items-center gap-3">
-            <span class="text-xs text-[#43474f] w-28 flex-shrink-0 truncate"><%= s.source %></span>
-            <div class="flex-1 bg-[#f2f4f6] rounded-full h-2">
+          <a href="/admin/applicants?source=<%= encodeURIComponent(s.source) %>"
+             class="flex items-center gap-3 -mx-2 px-2 py-1 rounded-lg hover:bg-[#f2f4f6] transition group"
+             title="عرض المتقدّمين من: <%= s.source %>">
+            <span class="text-xs text-[#43474f] group-hover:text-[#001736] w-28 flex-shrink-0 truncate"><%= s.source %></span>
+            <div class="flex-1 bg-[#f2f4f6] rounded-full h-2 group-hover:bg-[#e6e8ea]">
               <div class="bg-[#001736] h-2 rounded-full" style="width:<%= Math.round((s.count / maxSrc) * 100) %>%"></div>
             </div>
             <span class="text-sm font-bold text-[#001736] w-10 text-center flex-shrink-0"><%= s.count %></span>
             <span class="text-xs text-[#43474f] w-12 text-center flex-shrink-0"><%= Math.round((s.count / srcTotal) * 100) %>%</span>
-          </div>
+          </a>
           <% }) %>
         </div>
       <% } %>
