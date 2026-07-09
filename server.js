@@ -183,7 +183,7 @@ app.get('/', async (req, res) => {
   } catch (err) {
     console.error('[Root GET]', err.message);
   }
-  res.render('apply');
+  res.render('apply', { cities: seoCities });
 });
 
 // 404
