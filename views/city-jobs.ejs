@@ -175,7 +175,8 @@
       </ul>
     </section>
 
-    <!-- أحياء/مواقع العمل داخل المدينة -->
+    <!-- أحياء/مواقع العمل داخل المدينة (اختياري — يظهر عند توفّر أحياء) -->
+    <% if (city.districts && city.districts.length) { %>
     <section>
       <h2 class="text-2xl font-bold text-primary mb-4">نخدم جميع أحياء <%= city.city %></h2>
       <p class="leading-loose text-slate-700 mb-4">
@@ -187,6 +188,7 @@
         <% }) %>
       </div>
     </section>
+    <% } %>
 
     <!-- المزايا -->
     <section>

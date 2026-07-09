@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require('../database/db');
 const upload = require('../middleware/upload');
 const { checkExternal } = require('../utils/extCheck');
+const jobsCities = require('./jobs').CITIES;   // لسحابة روابط المدن في التذييل
 
 // GET /apply — public application form
 router.get('/', async (req, res) => {
@@ -28,10 +29,10 @@ router.get('/', async (req, res) => {
         </html>
       `);
     }
-    res.render('apply');
+    res.render('apply', { cities: jobsCities });
   } catch (err) {
     console.error('[Apply GET]', err.message);
-    res.render('apply');
+    res.render('apply', { cities: jobsCities });
   }
 });
 

@@ -670,23 +670,9 @@
       <h2 class="text-2xl font-bold text-primary mb-4">وظائف الحراسة الأمنية حسب المدينة</h2>
       <p class="leading-loose text-on-surface-variant mb-4">اختر مدينتك للاطّلاع على تفاصيل وظائف حارس الأمن المتاحة فيها:</p>
       <div class="flex flex-wrap gap-2">
-        <a href="/jobs/riyadh" class="text-sm bg-surface-container-lowest border border-outline-variant/40 hover:border-primary hover:text-primary rounded-full px-4 py-2 transition">وظائف حارس أمن الرياض</a>
-        <a href="/jobs/jeddah" class="text-sm bg-surface-container-lowest border border-outline-variant/40 hover:border-primary hover:text-primary rounded-full px-4 py-2 transition">وظائف حارس أمن جدة</a>
-        <a href="/jobs/makkah" class="text-sm bg-surface-container-lowest border border-outline-variant/40 hover:border-primary hover:text-primary rounded-full px-4 py-2 transition">وظائف حارس أمن مكة المكرمة</a>
-        <a href="/jobs/madinah" class="text-sm bg-surface-container-lowest border border-outline-variant/40 hover:border-primary hover:text-primary rounded-full px-4 py-2 transition">وظائف حارس أمن المدينة المنورة</a>
-        <a href="/jobs/dammam" class="text-sm bg-surface-container-lowest border border-outline-variant/40 hover:border-primary hover:text-primary rounded-full px-4 py-2 transition">وظائف حارس أمن الدمام</a>
-        <a href="/jobs/khobar" class="text-sm bg-surface-container-lowest border border-outline-variant/40 hover:border-primary hover:text-primary rounded-full px-4 py-2 transition">وظائف حارس أمن الخبر</a>
-        <a href="/jobs/jubail" class="text-sm bg-surface-container-lowest border border-outline-variant/40 hover:border-primary hover:text-primary rounded-full px-4 py-2 transition">وظائف حارس أمن الجبيل</a>
-        <a href="/jobs/ahsa" class="text-sm bg-surface-container-lowest border border-outline-variant/40 hover:border-primary hover:text-primary rounded-full px-4 py-2 transition">وظائف حارس أمن الأحساء</a>
-        <a href="/jobs/taif" class="text-sm bg-surface-container-lowest border border-outline-variant/40 hover:border-primary hover:text-primary rounded-full px-4 py-2 transition">وظائف حارس أمن الطائف</a>
-        <a href="/jobs/buraidah" class="text-sm bg-surface-container-lowest border border-outline-variant/40 hover:border-primary hover:text-primary rounded-full px-4 py-2 transition">وظائف حارس أمن بريدة</a>
-        <a href="/jobs/tabuk" class="text-sm bg-surface-container-lowest border border-outline-variant/40 hover:border-primary hover:text-primary rounded-full px-4 py-2 transition">وظائف حارس أمن تبوك</a>
-        <a href="/jobs/abha" class="text-sm bg-surface-container-lowest border border-outline-variant/40 hover:border-primary hover:text-primary rounded-full px-4 py-2 transition">وظائف حارس أمن أبها</a>
-        <a href="/jobs/khamis-mushait" class="text-sm bg-surface-container-lowest border border-outline-variant/40 hover:border-primary hover:text-primary rounded-full px-4 py-2 transition">وظائف حارس أمن خميس مشيط</a>
-        <a href="/jobs/hail" class="text-sm bg-surface-container-lowest border border-outline-variant/40 hover:border-primary hover:text-primary rounded-full px-4 py-2 transition">وظائف حارس أمن حائل</a>
-        <a href="/jobs/najran" class="text-sm bg-surface-container-lowest border border-outline-variant/40 hover:border-primary hover:text-primary rounded-full px-4 py-2 transition">وظائف حارس أمن نجران</a>
-        <a href="/jobs/jazan" class="text-sm bg-surface-container-lowest border border-outline-variant/40 hover:border-primary hover:text-primary rounded-full px-4 py-2 transition">وظائف حارس أمن جازان</a>
-        <a href="/jobs/yanbu" class="text-sm bg-surface-container-lowest border border-outline-variant/40 hover:border-primary hover:text-primary rounded-full px-4 py-2 transition">وظائف حارس أمن ينبع</a>
+        <% (typeof cities !== 'undefined' && cities ? cities : []).forEach(function (c) { %>
+        <a href="/jobs/<%= c.slug %>" class="text-sm bg-surface-container-lowest border border-outline-variant/40 hover:border-primary hover:text-primary rounded-full px-4 py-2 transition">وظائف حارس أمن <%= c.city %></a>
+        <% }); %>
       </div>
     </div>
 
@@ -745,29 +731,9 @@
     <!-- سحابة الكلمات المفتاحية — روابط داخلية لصفحات المدن -->
     <p class="font-bold mb-5 text-center">روابط سريعة — وظائف الحراسة الأمنية في السعودية</p>
     <div class="flex flex-wrap justify-center gap-2 mb-8">
-      <a href="/jobs/riyadh" class="text-xs bg-white/10 hover:bg-white/20 rounded-full px-3 py-1.5 transition">وظائف حراسة الرياض</a>
-      <a href="/jobs/jeddah" class="text-xs bg-white/10 hover:bg-white/20 rounded-full px-3 py-1.5 transition">وظائف حراسة جدة</a>
-      <a href="/jobs/makkah" class="text-xs bg-white/10 hover:bg-white/20 rounded-full px-3 py-1.5 transition">وظائف حراسة مكة</a>
-      <a href="/jobs/madinah" class="text-xs bg-white/10 hover:bg-white/20 rounded-full px-3 py-1.5 transition">وظائف حراسة المدينة</a>
-      <a href="/jobs/dammam" class="text-xs bg-white/10 hover:bg-white/20 rounded-full px-3 py-1.5 transition">وظائف حراسة الدمام</a>
-      <a href="/jobs/khobar" class="text-xs bg-white/10 hover:bg-white/20 rounded-full px-3 py-1.5 transition">وظائف حراسة الخبر</a>
-      <a href="/jobs/jubail" class="text-xs bg-white/10 hover:bg-white/20 rounded-full px-3 py-1.5 transition">وظائف حراسة الجبيل</a>
-      <a href="/jobs/ahsa" class="text-xs bg-white/10 hover:bg-white/20 rounded-full px-3 py-1.5 transition">وظائف حراسة الأحساء</a>
-      <a href="/jobs/taif" class="text-xs bg-white/10 hover:bg-white/20 rounded-full px-3 py-1.5 transition">وظائف حراسة الطائف</a>
-      <a href="/jobs/buraidah" class="text-xs bg-white/10 hover:bg-white/20 rounded-full px-3 py-1.5 transition">وظائف حراسة بريدة</a>
-      <a href="/jobs/tabuk" class="text-xs bg-white/10 hover:bg-white/20 rounded-full px-3 py-1.5 transition">وظائف حراسة تبوك</a>
-      <a href="/jobs/abha" class="text-xs bg-white/10 hover:bg-white/20 rounded-full px-3 py-1.5 transition">وظائف حراسة أبها</a>
-      <a href="/jobs/khamis-mushait" class="text-xs bg-white/10 hover:bg-white/20 rounded-full px-3 py-1.5 transition">وظائف حراسة خميس مشيط</a>
-      <a href="/jobs/hail" class="text-xs bg-white/10 hover:bg-white/20 rounded-full px-3 py-1.5 transition">وظائف حراسة حائل</a>
-      <a href="/jobs/najran" class="text-xs bg-white/10 hover:bg-white/20 rounded-full px-3 py-1.5 transition">وظائف حراسة نجران</a>
-      <a href="/jobs/jazan" class="text-xs bg-white/10 hover:bg-white/20 rounded-full px-3 py-1.5 transition">وظائف حراسة جازان</a>
-      <a href="/jobs/yanbu" class="text-xs bg-white/10 hover:bg-white/20 rounded-full px-3 py-1.5 transition">وظائف حراسة ينبع</a>
-      <a href="/jobs/qatif" class="text-xs bg-white/10 hover:bg-white/20 rounded-full px-3 py-1.5 transition">وظائف حراسة القطيف</a>
-      <a href="/jobs/hafar-albatin" class="text-xs bg-white/10 hover:bg-white/20 rounded-full px-3 py-1.5 transition">وظائف حراسة حفر الباطن</a>
-      <a href="/jobs/unaizah" class="text-xs bg-white/10 hover:bg-white/20 rounded-full px-3 py-1.5 transition">وظائف حراسة عنيزة</a>
-      <a href="/jobs/sakaka" class="text-xs bg-white/10 hover:bg-white/20 rounded-full px-3 py-1.5 transition">وظائف حراسة سكاكا</a>
-      <a href="/jobs/arar" class="text-xs bg-white/10 hover:bg-white/20 rounded-full px-3 py-1.5 transition">وظائف حراسة عرعر</a>
-      <a href="/jobs/baha" class="text-xs bg-white/10 hover:bg-white/20 rounded-full px-3 py-1.5 transition">وظائف حراسة الباحة</a>
+      <% (typeof cities !== 'undefined' && cities ? cities : []).forEach(function (c) { %>
+      <a href="/jobs/<%= c.slug %>" class="text-xs bg-white/10 hover:bg-white/20 rounded-full px-3 py-1.5 transition">وظائف حراسة <%= c.city %></a>
+      <% }); %>
     </div>
     <!-- روابط التواصل الاجتماعي -->
     <div class="flex flex-wrap justify-center gap-3 mb-8">
