@@ -17,7 +17,8 @@ jobs:
       - name: Build diff and send to AI Code Reviewer
         env:
           REVIEWER_URL: https://codereview.alrabeei.cloud/review
-          APP_API_TOKEN: ${{ secrets.APP_API_TOKEN }}
+          # اسم السرّ في المستودع هو AI_REVIEW_TOKEN (قيمته = APP_API_TOKEN على الخادم):
+          AI_REVIEW_TOKEN: ${{ secrets.AI_REVIEW_TOKEN }}
           # تُمرَّر عبر env (لا داخل السكربت) لتفادي مشاكل الاقتباس/الحقن:
           EVENT_NAME: ${{ github.event_name }}
           BASE_REF: ${{ github.base_ref }}
@@ -76,7 +77,7 @@ jobs:
           #    نطبع رمز HTTP + الرد، ونُفشل الخطوة عند أي خطأ (401/422/5xx)
           #    حتى لا يبقى الأكشن "أخضر" بينما الطلب مرفوض.
           HTTP=$(curl -sS -o resp.json -w '%{http_code}' -X POST "$REVIEWER_URL" \
-            -H "Authorization: Bearer $APP_API_TOKEN" \
+            -H "Authorization: Bearer $AI_REVIEW_TOKEN" \
             -H "Content-Type: application/json" \
             --data @body.json)
           echo "HTTP $HTTP"; cat resp.json; echo
