@@ -2,50 +2,78 @@ name: AI Code Review
 
 on:
   push:
-    branches:
-      - '**'
+    branches: ["**"]
+  pull_request:
+    types: [opened, synchronize, reopened]
 
 jobs:
   ai-review:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0   # نحتاج التاريخ لحساب الـ diff
 
-      - name: Generate Git Diff
-        id: diff
+      - name: Build diff and send to AI Code Reviewer
+        env:
+          REVIEWER_URL: https://codereview.alrabeei.cloud/review
+          APP_API_TOKEN: ${{ secrets.APP_API_TOKEN }}
+          # تُمرَّر عبر env (لا داخل السكربت) لتفادي مشاكل الاقتباس/الحقن:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          EVENT_BEFORE: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          REPO: ${{ github.repository }}
+          SERVER_URL: ${{ github.server_url }}
+          REF_NAME: ${{ github.ref_name }}
+          ACTOR: ${{ github.actor }}
         run: |
-          BEFORE="${{ github.event.before }}"
-          AFTER="${{ github.sha }}"
+          set -euo pipefail
 
-          # أول Push للمستودع
-          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
-            git show "$AFTER" > diff.txt
+          # 1) نطاق الـ diff + الوصف حسب نوع الحدث
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            git fetch --no-tags --depth=100 origin "$BASE_REF" || true
+            RANGE="origin/$BASE_REF...HEAD"
+            TITLE="$PR_TITLE"; BODY="$PR_BODY"
           else
-            git diff "$BEFORE" "$AFTER" > diff.txt
+            if [ -z "$EVENT_BEFORE" ] || [ "$EVENT_BEFORE" = "0000000000000000000000000000000000000000" ]; then
+              RANGE="HEAD~1 HEAD"                 # أول push / لا يوجد sha سابق
+            else
+              RANGE="$EVENT_BEFORE $HEAD_SHA"
+            fi
+            TITLE="Push Review"; BODY="Automatic review on every push"
           fi
 
-      - name: Send To AI Reviewer
-        run: |
-          DIFF=$(jq -Rs . < diff.txt)
+          # 2) أنشئ diff.txt + قائمة الملفات (مع بدائل آمنة)
+          git diff $RANGE > diff.txt 2>/dev/null || git show --format= "$HEAD_SHA" > diff.txt
+          FILES=$(git diff --name-only $RANGE 2>/dev/null | jq -R -s -c 'split("\n") | map(select(length>0))' || echo '[]')
 
-          curl -X POST "https://codereview.alrabeei.cloud/review" \
-            -H "Authorization: Bearer ${{ secrets.AI_REVIEW_TOKEN }}" \
+          # حدّ أمان لحجم الرفع (الخادم أصلًا ينظّف ويقصّ عند 60000 حرف):
+          head -c 1000000 diff.txt > diff.tmp && mv diff.tmp diff.txt
+
+          MSG=$(git log -1 --pretty=%B "$HEAD_SHA")
+
+          # 3) ابنِ الجسم في ملف بـ jq (يحلّ "Argument list too long")
+          jq -n \
+            --arg repo   "$REPO" \
+            --arg url    "$SERVER_URL/$REPO" \
+            --arg branch "$REF_NAME" \
+            --arg sha    "$HEAD_SHA" \
+            --arg author "$ACTOR" \
+            --arg title  "$TITLE" \
+            --arg body   "$BODY" \
+            --arg msg    "$MSG" \
+            --argjson files "$FILES" \
+            --rawfile diff diff.txt \
+            '{repository_name:$repo, repository_url:$url, branch_name:$branch,
+              commit_sha:$sha, author:$author, pr_title:$title,
+              pr_description:$body, commit_message:$msg,
+              changed_files:$files, diff:$diff}' > body.json
+
+          # 4) أرسل (curl يقرأ الجسم من الملف، لا من سطر الأوامر)
+          curl -sS -X POST "$REVIEWER_URL" \
+            -H "Authorization: Bearer $APP_API_TOKEN" \
             -H "Content-Type: application/json" \
-            -d "{
-              \"repository_name\":\"${{ github.repository }}\",
-              \"repository_url\":\"${{ github.server_url }}/${{ github.repository }}\",
-              \"branch_name\":\"${{ github.ref_name }}\",
-              \"commit_sha\":\"${{ github.sha }}\",
-              \"author\":\"${{ github.actor }}\",
-              \"changed_files\":[],
-              \"pr_title\":\"Push Review\",
-              \"pr_description\":\"Automatic review on every push\",
-              \"diff\":$DIFF
-            }"
-
-      - name: Finished
-        run: echo "AI Review completed."
+            --data @body.json
