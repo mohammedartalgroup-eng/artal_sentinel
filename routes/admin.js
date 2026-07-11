@@ -12,7 +12,7 @@ const { checkExternal } = require('../utils/extCheck');
 
 // ─── Rate Limiter — تسجيل الدخول فقط ─────────────────────────────────────────
 const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,   // 15 دقيقة
+  windowMs: 15 * 60 * 1000,   // 15 دقيقة minutes
   max: 20,                     // 20 محاولة كحد أقصى
   skipSuccessfulRequests: true, // لا تحسب المحاولات الناجحة
   message: { error: 'تم تجاوز عدد المحاولات المسموح بها، حاول مرة أخرى بعد 15 دقيقة' },
