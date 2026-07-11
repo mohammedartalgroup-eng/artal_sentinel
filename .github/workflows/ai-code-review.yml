@@ -72,8 +72,15 @@ jobs:
               pr_description:$body, commit_message:$msg,
               changed_files:$files, diff:$diff}' > body.json
 
-          # 4) أرسل (curl يقرأ الجسم من الملف، لا من سطر الأوامر)
-          curl -sS -X POST "$REVIEWER_URL" \
+          # 4) أرسل (curl يقرأ الجسم من الملف، لا من سطر الأوامر).
+          #    نطبع رمز HTTP + الرد، ونُفشل الخطوة عند أي خطأ (401/422/5xx)
+          #    حتى لا يبقى الأكشن "أخضر" بينما الطلب مرفوض.
+          HTTP=$(curl -sS -o resp.json -w '%{http_code}' -X POST "$REVIEWER_URL" \
             -H "Authorization: Bearer $APP_API_TOKEN" \
             -H "Content-Type: application/json" \
-            --data @body.json
+            --data @body.json)
+          echo "HTTP $HTTP"; cat resp.json; echo
+          if [ "$HTTP" -lt 200 ] || [ "$HTTP" -ge 300 ]; then
+            echo "::error::Reviewer returned HTTP $HTTP (تحقّق من سرّ APP_API_TOKEN)"
+            exit 1
+          fi
