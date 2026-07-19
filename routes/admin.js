@@ -595,6 +595,51 @@ router.post('/applicants/:id/status', async (req, res) => {
   }
 });
 
+// ─── Bulk Update Status ───────────────────────────────────────────────────────
+
+router.post('/applicants/bulk-status', async (req, res) => {
+  try {
+    const { status } = req.body;
+    if (!STATUS_META[status]) return res.status(400).json({ error: 'حالة غير صالحة' });
+
+    const ids = [...new Set(
+      (Array.isArray(req.body.ids) ? req.body.ids : [])
+        .map(v => parseInt(v))
+        .filter(n => Number.isInteger(n) && n > 0)
+    )];
+    if (!ids.length) return res.status(400).json({ error: 'لم يتم تحديد أي متقدم' });
+    if (ids.length > 500) return res.status(400).json({ error: 'الحد الأقصى 500 متقدم في المرة الواحدة' });
+
+    const placeholders = ids.map(() => '?').join(',');
+    const rows = await db.all(
+      `SELECT id, full_name, status FROM applicants WHERE id IN (${placeholders})`,
+      ids
+    );
+    if (!rows.length) return res.status(404).json({ error: 'لا يوجد متقدمون مطابقون' });
+
+    // نحدّث فقط مَن حالته مختلفة — نتجنّب سجلات نشاط فارغة
+    const changed = rows.filter(r => r.status !== status);
+    if (!changed.length) return res.json({ ok: true, updated: 0, status, label: STATUS_META[status].label });
+
+    const changedIds = changed.map(r => r.id);
+    await db.run(
+      `UPDATE applicants SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN (${changedIds.map(() => '?').join(',')})`,
+      [status, ...changedIds]
+    );
+
+    await Promise.all(changed.flatMap(r => [
+      db.logActivity(r.id, 'تغيير الحالة', STATUS_META[r.status]?.label, STATUS_META[status]?.label, req.session.adminName || null),
+      db.audit(req.session.adminId, req.session.adminUser, 'status_change', 'applicant', r.id,
+        r.full_name, `${STATUS_META[r.status]?.label} ← ${STATUS_META[status]?.label} (تغيير جماعي)`, req.ip),
+    ]));
+
+    res.json({ ok: true, updated: changed.length, skipped: rows.length - changed.length, status, label: STATUS_META[status].label });
+  } catch (err) {
+    console.error('[Bulk Status POST]', err.message);
+    res.status(500).json({ error: 'خطأ في التحديث الجماعي' });
+  }
+});
+
 // ─── Update Rating ────────────────────────────────────────────────────────────
 
 router.post('/applicants/:id/rating', async (req, res) => {

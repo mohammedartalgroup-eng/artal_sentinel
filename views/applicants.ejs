@@ -293,6 +293,10 @@
                 <table class="w-full text-sm">
                   <thead class="bg-[#f8f9fb] border-b border-[#eceef0]">
                     <tr class="text-[#43474f] text-xs">
+                      <th class="px-4 py-4 w-10">
+                        <input type="checkbox" id="bulk-select-all" title="تحديد كل النتائج الظاهرة"
+                          class="w-4 h-4 accent-[#001736] align-middle cursor-pointer">
+                      </th>
                       <th class="text-right px-5 py-4 font-semibold">الاسم</th>
                       <th class="text-right px-4 py-4 font-semibold">الهوية</th>
                       <th class="text-right px-4 py-4 font-semibold">الجوال</th>
@@ -314,6 +318,10 @@
                         <% const sm=STATUS_META[a.status] || { label: a.status, color: 'gray' }; %>
                           <tr class="hover:bg-[#f8f9fb] transition-colors cursor-pointer"
                             onclick="location.href='/admin/applicants/<%= a.id %>'">
+                            <td class="px-4 py-3.5" onclick="event.stopPropagation()">
+                              <input type="checkbox" class="bulk-row w-4 h-4 accent-[#001736] align-middle cursor-pointer"
+                                value="<%= a.id %>" data-name="<%= a.full_name %>">
+                            </td>
                             <td class="px-5 py-3.5 font-medium text-[#001736]">
                               <%= a.full_name %>
                               <% if (a.repeatCount && a.repeatCount > 1) { %>
@@ -476,6 +484,33 @@
                   <% } %>
         </div>
 
+        <!-- شريط الإجراءات الجماعية -->
+        <div id="bulk-bar"
+          class="hidden fixed bottom-0 left-0 right-0 lg:right-64 z-40 bg-[#001736] text-white px-4 lg:px-8 py-3 shadow-[0_-4px_16px_rgba(0,0,0,0.15)]">
+          <div class="flex items-center gap-3 flex-wrap">
+            <span class="text-sm font-semibold whitespace-nowrap">
+              تم تحديد <span id="bulk-count">0</span> متقدم
+            </span>
+            <button type="button" id="bulk-clear"
+              class="text-xs text-[#c4d3ee] hover:text-white underline whitespace-nowrap">إلغاء التحديد</button>
+
+            <div class="flex-1"></div>
+
+            <select id="bulk-status" class="!w-auto !text-[#191c1e] min-w-[10rem]">
+              <option value="">— اختر الحالة الجديدة —</option>
+              <% Object.entries(STATUS_META).forEach(([k, v]) => { %>
+                <option value="<%= k %>"><%= v.label %></option>
+              <% }) %>
+            </select>
+
+            <button type="button" id="bulk-apply" disabled
+              class="bg-white text-[#001736] text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-[#e4e6e9] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 whitespace-nowrap">
+              <span class="material-symbols-outlined text-base">published_with_changes</span>
+              تطبيق
+            </button>
+          </div>
+        </div>
+
       </main>
     </div>
 
@@ -587,6 +622,75 @@
       });
 
       rebuildCityOptions(PRE_SELECTED_CITIES);
+
+      // ─── التحديد الجماعي وتغيير الحالة ──────────────────────────────────────
+      (function () {
+        const rows      = Array.from(document.querySelectorAll('.bulk-row'));
+        if (!rows.length) return;
+
+        const selectAll = document.getElementById('bulk-select-all');
+        const bar       = document.getElementById('bulk-bar');
+        const countEl   = document.getElementById('bulk-count');
+        const statusEl  = document.getElementById('bulk-status');
+        const applyBtn  = document.getElementById('bulk-apply');
+        const clearBtn  = document.getElementById('bulk-clear');
+
+        const selected = () => rows.filter(cb => cb.checked);
+
+        function sync() {
+          const n = selected().length;
+          countEl.textContent = n;
+          bar.classList.toggle('hidden', n === 0);
+          // مساحة أسفل الصفحة حتى لا يغطي الشريط آخر صف
+          document.body.style.paddingBottom = n ? '5rem' : '';
+          selectAll.checked = n === rows.length;
+          selectAll.indeterminate = n > 0 && n < rows.length;
+          applyBtn.disabled = n === 0 || !statusEl.value;
+        }
+
+        selectAll.addEventListener('change', () => {
+          rows.forEach(cb => { cb.checked = selectAll.checked; });
+          sync();
+        });
+        rows.forEach(cb => cb.addEventListener('change', sync));
+        statusEl.addEventListener('change', sync);
+
+        clearBtn.addEventListener('click', () => {
+          rows.forEach(cb => { cb.checked = false; });
+          selectAll.checked = false;
+          sync();
+        });
+
+        applyBtn.addEventListener('click', async () => {
+          const picked = selected();
+          const status = statusEl.value;
+          if (!picked.length || !status) return;
+
+          const label = statusEl.options[statusEl.selectedIndex].text;
+          if (!confirm('تغيير حالة ' + picked.length + ' متقدم إلى «' + label + '»؟')) return;
+
+          applyBtn.disabled = true;
+          const original = applyBtn.innerHTML;
+          applyBtn.textContent = 'جارٍ التحديث…';
+
+          try {
+            const res = await fetch('/admin/applicants/bulk-status', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ids: picked.map(cb => cb.value), status }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'فشل التحديث');
+            location.reload();
+          } catch (err) {
+            alert(err.message || 'حدث خطأ أثناء التحديث');
+            applyBtn.innerHTML = original;
+            sync();
+          }
+        });
+
+        sync();
+      })();
     </script>
 </body>
 
