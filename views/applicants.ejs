@@ -63,6 +63,9 @@
             إجمالي النتائج: <strong>
               <%= total %>
             </strong> متقدم
+            <span id="bulk-count-inline" class="hidden text-[#405f91] font-semibold">
+              · محدد: <span id="bulk-count-inline-n">0</span>
+            </span>
           </p>
         </div>
         <%
@@ -293,9 +296,10 @@
                 <table class="w-full text-sm">
                   <thead class="bg-[#f8f9fb] border-b border-[#eceef0]">
                     <tr class="text-[#43474f] text-xs">
-                      <th class="px-4 py-4 w-10">
+                      <th class="px-4 py-4 whitespace-nowrap">
                         <input type="checkbox" id="bulk-select-all" title="تحديد كل النتائج الظاهرة"
                           class="w-4 h-4 accent-[#001736] align-middle cursor-pointer">
+                        <span id="bulk-count-head" class="hidden text-[10px] text-[#405f91] font-semibold align-middle mr-1"></span>
                       </th>
                       <th class="text-right px-5 py-4 font-semibold">الاسم</th>
                       <th class="text-right px-4 py-4 font-semibold">الهوية</th>
@@ -634,12 +638,22 @@
         const statusEl  = document.getElementById('bulk-status');
         const applyBtn  = document.getElementById('bulk-apply');
         const clearBtn  = document.getElementById('bulk-clear');
+        const headEl    = document.getElementById('bulk-count-head');
+        const inlineEl  = document.getElementById('bulk-count-inline');
+        const inlineNEl = document.getElementById('bulk-count-inline-n');
 
         const selected = () => rows.filter(cb => cb.checked);
 
         function sync() {
           const n = selected().length;
           countEl.textContent = n;
+
+          // عدّاد صغير في رأس الجدول وفي شريط العنوان العلوي
+          headEl.textContent = n ? n + '/' + rows.length : '';
+          headEl.classList.toggle('hidden', n === 0);
+          inlineNEl.textContent = n;
+          inlineEl.classList.toggle('hidden', n === 0);
+
           bar.classList.toggle('hidden', n === 0);
           // مساحة أسفل الصفحة حتى لا يغطي الشريط آخر صف
           document.body.style.paddingBottom = n ? '5rem' : '';
