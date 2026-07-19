@@ -284,6 +284,35 @@
           </div>
         </form>
 
+        <!-- شريط الإجراءات الجماعية (داخل تدفق الصفحة — فوق الجدول مباشرة) -->
+        <div id="bulk-bar"
+          style="display:none; background:#001736; color:#fff; border-radius:1rem; padding:0.75rem 1rem;
+                 align-items:center; gap:0.75rem; flex-wrap:wrap;">
+          <span style="font-size:0.875rem; font-weight:600; white-space:nowrap">
+            تم تحديد <span id="bulk-count">0</span> متقدم
+          </span>
+          <button type="button" id="bulk-clear"
+            style="font-size:0.75rem; color:#c4d3ee; text-decoration:underline; background:none; border:none; cursor:pointer; white-space:nowrap">
+            إلغاء التحديد
+          </button>
+
+          <span style="flex:1 1 auto"></span>
+
+          <select id="bulk-status"
+            style="width:auto; min-width:11rem; color:#191c1e; background:#fff; border:1px solid #e0e3e5; border-radius:0.75rem; padding:0.5rem 0.75rem; font-size:0.875rem">
+            <option value="">— اختر الحالة الجديدة —</option>
+            <% Object.entries(STATUS_META).forEach(([k, v]) => { %>
+              <option value="<%= k %>"><%= v.label %></option>
+            <% }) %>
+          </select>
+
+          <button type="button" id="bulk-apply" disabled
+            style="background:#fff; color:#001736; font-size:0.875rem; font-weight:600; padding:0.6rem 1.25rem;
+                   border:none; border-radius:0.75rem; cursor:pointer; white-space:nowrap">
+            تطبيق تغيير الحالة
+          </button>
+        </div>
+
         <!-- Table -->
         <div class="bg-white rounded-2xl overflow-hidden">
           <% if (applicants.length===0) { %>
@@ -488,33 +517,6 @@
                   <% } %>
         </div>
 
-        <!-- شريط الإجراءات الجماعية -->
-        <div id="bulk-bar"
-          class="hidden fixed bottom-0 left-0 right-0 lg:right-64 z-40 bg-[#001736] text-white px-4 lg:px-8 py-3 shadow-[0_-4px_16px_rgba(0,0,0,0.15)]">
-          <div class="flex items-center gap-3 flex-wrap">
-            <span class="text-sm font-semibold whitespace-nowrap">
-              تم تحديد <span id="bulk-count">0</span> متقدم
-            </span>
-            <button type="button" id="bulk-clear"
-              class="text-xs text-[#c4d3ee] hover:text-white underline whitespace-nowrap">إلغاء التحديد</button>
-
-            <div class="flex-1"></div>
-
-            <select id="bulk-status" class="!w-auto !text-[#191c1e] min-w-[10rem]">
-              <option value="">— اختر الحالة الجديدة —</option>
-              <% Object.entries(STATUS_META).forEach(([k, v]) => { %>
-                <option value="<%= k %>"><%= v.label %></option>
-              <% }) %>
-            </select>
-
-            <button type="button" id="bulk-apply" disabled
-              class="bg-white text-[#001736] text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-[#e4e6e9] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 whitespace-nowrap">
-              <span class="material-symbols-outlined text-base">published_with_changes</span>
-              تطبيق
-            </button>
-          </div>
-        </div>
-
       </main>
     </div>
 
@@ -654,12 +656,13 @@
           inlineNEl.textContent = n;
           inlineEl.classList.toggle('hidden', n === 0);
 
-          bar.classList.toggle('hidden', n === 0);
-          // مساحة أسفل الصفحة حتى لا يغطي الشريط آخر صف
-          document.body.style.paddingBottom = n ? '5rem' : '';
+          bar.style.display = n ? 'flex' : 'none';
           selectAll.checked = n === rows.length;
           selectAll.indeterminate = n > 0 && n < rows.length;
+
           applyBtn.disabled = n === 0 || !statusEl.value;
+          applyBtn.style.opacity = applyBtn.disabled ? '0.4' : '1';
+          applyBtn.style.cursor  = applyBtn.disabled ? 'not-allowed' : 'pointer';
         }
 
         selectAll.addEventListener('change', () => {
