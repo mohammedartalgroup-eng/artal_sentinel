@@ -409,7 +409,7 @@ router.get('/applicants', async (req, res) => {
     res.render('applicants', {
       applicants, total, totalPages, pageNum,
       filters: { q, status, region, city: cities, gender, english, qualification, has_car, has_license, ext_check, source, age_min, age_max, date_from, date_to, sort, order },
-      STATUS_META, REGIONS, SA_REGIONS, adminUser: req.session.adminUser
+      STATUS_META, NOTE_TYPES, REGIONS, SA_REGIONS, adminUser: req.session.adminUser
     });
   } catch (err) {
     console.error('[Applicants GET]', err.message);
@@ -602,6 +602,12 @@ router.post('/applicants/bulk-status', async (req, res) => {
     const { status } = req.body;
     if (!STATUS_META[status]) return res.status(400).json({ error: 'حالة غير صالحة' });
 
+    // الملاحظة إجبارية — تُسجَّل لكل متقدم كأن المستخدم دخل ملفه وأضافها
+    const note = typeof req.body.note === 'string' ? req.body.note.trim() : '';
+    if (!note) return res.status(400).json({ error: 'الملاحظة مطلوبة' });
+    if (note.length > 2000) return res.status(400).json({ error: 'الملاحظة طويلة جداً (الحد 2000 حرف)' });
+    const noteType = NOTE_TYPES[req.body.note_type] ? req.body.note_type : 'note';
+
     const ids = [...new Set(
       (Array.isArray(req.body.ids) ? req.body.ids : [])
         .map(v => parseInt(v))
@@ -617,23 +623,40 @@ router.post('/applicants/bulk-status', async (req, res) => {
     );
     if (!rows.length) return res.status(404).json({ error: 'لا يوجد متقدمون مطابقون' });
 
-    // نحدّث فقط مَن حالته مختلفة — نتجنّب سجلات نشاط فارغة
-    const changed = rows.filter(r => r.status !== status);
-    if (!changed.length) return res.json({ ok: true, updated: 0, status, label: STATUS_META[status].label });
-
-    const changedIds = changed.map(r => r.id);
+    // 1) الملاحظة أولاً — لكل متقدم محدَّد، حتى مَن لم تتغيّر حالته
     await db.run(
-      `UPDATE applicants SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN (${changedIds.map(() => '?').join(',')})`,
-      [status, ...changedIds]
+      `INSERT INTO applicant_notes (applicant_id, content, type, user_name) VALUES ${rows.map(() => '(?, ?, ?, ?)').join(', ')}`,
+      rows.flatMap(r => [r.id, note, noteType, req.session.adminName || null])
     );
+    await db.run(
+      `UPDATE applicants SET updated_at = CURRENT_TIMESTAMP WHERE id IN (${rows.map(() => '?').join(',')})`,
+      rows.map(r => r.id)
+    );
+    await Promise.all(rows.map(r =>
+      db.audit(req.session.adminId, req.session.adminUser, 'note_add', 'applicant', r.id,
+        r.full_name, `${NOTE_TYPES[noteType].label}: ${note.substring(0, 80)}`, req.ip)
+    ));
 
-    await Promise.all(changed.flatMap(r => [
-      db.logActivity(r.id, 'تغيير الحالة', STATUS_META[r.status]?.label, STATUS_META[status]?.label, req.session.adminName || null),
-      db.audit(req.session.adminId, req.session.adminUser, 'status_change', 'applicant', r.id,
-        r.full_name, `${STATUS_META[r.status]?.label} ← ${STATUS_META[status]?.label} (تغيير جماعي)`, req.ip),
-    ]));
+    // 2) الحالة — فقط لمَن حالته مختلفة، تفادياً لسجلات نشاط فارغة
+    const changed = rows.filter(r => r.status !== status);
+    if (changed.length) {
+      const changedIds = changed.map(r => r.id);
+      await db.run(
+        `UPDATE applicants SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN (${changedIds.map(() => '?').join(',')})`,
+        [status, ...changedIds]
+      );
 
-    res.json({ ok: true, updated: changed.length, skipped: rows.length - changed.length, status, label: STATUS_META[status].label });
+      await Promise.all(changed.flatMap(r => [
+        db.logActivity(r.id, 'تغيير الحالة', STATUS_META[r.status]?.label, STATUS_META[status]?.label, req.session.adminName || null),
+        db.audit(req.session.adminId, req.session.adminUser, 'status_change', 'applicant', r.id,
+          r.full_name, `${STATUS_META[r.status]?.label} ← ${STATUS_META[status]?.label} (تغيير جماعي)`, req.ip),
+      ]));
+    }
+
+    res.json({
+      ok: true, updated: changed.length, noted: rows.length,
+      skipped: rows.length - changed.length, status, label: STATUS_META[status].label
+    });
   } catch (err) {
     console.error('[Bulk Status POST]', err.message);
     res.status(500).json({ error: 'خطأ في التحديث الجماعي' });

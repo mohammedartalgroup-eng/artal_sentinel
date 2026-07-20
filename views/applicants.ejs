@@ -48,6 +48,14 @@
     input:focus {
       border-color: #7594ca;
     }
+
+    #bulk-modal::backdrop {
+      background: rgba(0, 0, 0, 0.5);
+    }
+
+    #bulk-modal textarea:focus {
+      border-color: #7594ca;
+    }
   </style>
 </head>
 
@@ -312,6 +320,55 @@
             تطبيق تغيير الحالة
           </button>
         </div>
+
+        <!-- ديالوج الملاحظة الإجبارية قبل التغيير الجماعي -->
+        <dialog id="bulk-modal"
+          style="border:none; border-radius:1rem; width:100%; max-width:34rem; padding:1.5rem;
+                 box-shadow:0 20px 40px rgba(0,0,0,0.25); color:#191c1e;">
+          <div dir="rtl">
+            <h3 style="font-size:1.05rem; font-weight:700; color:#001736; margin-bottom:0.35rem">
+              إضافة ملاحظة وتغيير الحالة
+            </h3>
+            <p style="font-size:0.8rem; color:#43474f; margin-bottom:1rem">
+              ستُضاف الملاحظة لملف <strong id="bulk-modal-count">0</strong> متقدم،
+              وتتغيّر حالتهم إلى «<strong id="bulk-modal-status">—</strong>».
+            </p>
+
+            <label style="display:block; font-size:0.78rem; font-weight:600; color:#43474f; margin-bottom:0.35rem">
+              نوع الملاحظة
+            </label>
+            <select id="bulk-note-type"
+              style="width:100%; color:#191c1e; background:#fff; border:1px solid #e0e3e5; border-radius:0.75rem; padding:0.5rem 0.75rem; font-size:0.875rem; margin-bottom:0.9rem">
+              <% Object.entries(NOTE_TYPES).forEach(([k, v]) => { %>
+                <option value="<%= k %>"><%= v.label %></option>
+              <% }) %>
+            </select>
+
+            <label style="display:block; font-size:0.78rem; font-weight:600; color:#43474f; margin-bottom:0.35rem">
+              الملاحظة <span style="color:#ba1a1a">*</span>
+            </label>
+            <textarea id="bulk-note" rows="4" maxlength="2000"
+              placeholder="مثال: تم استبعاده — الموقع الجغرافي غير مناسب للوظيفة المطلوبة"
+              style="width:100%; border:1px solid #e0e3e5; border-radius:0.75rem; padding:0.6rem 0.75rem;
+                     font-size:0.875rem; font-family:inherit; resize:vertical; outline:none"></textarea>
+            <p id="bulk-note-error" style="display:none; color:#ba1a1a; font-size:0.75rem; margin-top:0.35rem">
+              الملاحظة إجبارية — الرجاء كتابتها قبل المتابعة.
+            </p>
+
+            <div style="display:flex; gap:0.6rem; justify-content:flex-start; margin-top:1.25rem">
+              <button type="button" id="bulk-modal-confirm"
+                style="background:#001736; color:#fff; font-size:0.875rem; font-weight:600; padding:0.6rem 1.4rem;
+                       border:none; border-radius:0.75rem; cursor:pointer">
+                تأكيد وتطبيق
+              </button>
+              <button type="button" id="bulk-modal-cancel"
+                style="background:#f2f4f6; color:#43474f; font-size:0.875rem; font-weight:600; padding:0.6rem 1.4rem;
+                       border:none; border-radius:0.75rem; cursor:pointer">
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </dialog>
 
         <!-- Table -->
         <div class="bg-white rounded-2xl overflow-hidden">
@@ -678,32 +735,82 @@
           sync();
         });
 
-        applyBtn.addEventListener('click', async () => {
+        // ── ديالوج الملاحظة الإجبارية ──
+        const modal      = document.getElementById('bulk-modal');
+        const noteEl     = document.getElementById('bulk-note');
+        const noteTypeEl = document.getElementById('bulk-note-type');
+        const noteErrEl  = document.getElementById('bulk-note-error');
+        const mCountEl   = document.getElementById('bulk-modal-count');
+        const mStatusEl  = document.getElementById('bulk-modal-status');
+        const confirmBtn = document.getElementById('bulk-modal-confirm');
+        const cancelBtn  = document.getElementById('bulk-modal-cancel');
+
+        function openModal() {
+          noteErrEl.style.display = 'none';
+          noteEl.style.borderColor = '#e0e3e5';
+          mCountEl.textContent  = selected().length;
+          mStatusEl.textContent = statusEl.options[statusEl.selectedIndex].text;
+          // <dialog> يُرسم في الـ top layer — لا يتأثر بأي overflow أو z-index
+          if (typeof modal.showModal === 'function') modal.showModal();
+          else modal.setAttribute('open', '');   // احتياط لمتصفح قديم
+          noteEl.focus();
+        }
+
+        function closeModal() {
+          if (typeof modal.close === 'function' && modal.open) modal.close();
+          else modal.removeAttribute('open');
+        }
+
+        applyBtn.addEventListener('click', () => {
+          if (!selected().length || !statusEl.value) return;
+          openModal();
+        });
+
+        cancelBtn.addEventListener('click', closeModal);
+
+        confirmBtn.addEventListener('click', async () => {
+          const note = noteEl.value.trim();
+          if (!note) {
+            noteErrEl.style.display = 'block';
+            noteEl.style.borderColor = '#ba1a1a';
+            noteEl.focus();
+            return;
+          }
+
           const picked = selected();
           const status = statusEl.value;
-          if (!picked.length || !status) return;
+          if (!picked.length || !status) return closeModal();
 
-          const label = statusEl.options[statusEl.selectedIndex].text;
-          if (!confirm('تغيير حالة ' + picked.length + ' متقدم إلى «' + label + '»؟')) return;
-
-          applyBtn.disabled = true;
-          const original = applyBtn.innerHTML;
-          applyBtn.textContent = 'جارٍ التحديث…';
+          confirmBtn.disabled = true;
+          confirmBtn.style.opacity = '0.6';
+          const originalText = confirmBtn.textContent;
+          confirmBtn.textContent = 'جارٍ التحديث…';
 
           try {
             const res = await fetch('/admin/applicants/bulk-status', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ ids: picked.map(cb => cb.value), status }),
+              body: JSON.stringify({
+                ids: picked.map(cb => cb.value),
+                status,
+                note,
+                note_type: noteTypeEl.value,
+              }),
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'فشل التحديث');
             location.reload();
           } catch (err) {
             alert(err.message || 'حدث خطأ أثناء التحديث');
-            applyBtn.innerHTML = original;
-            sync();
+            confirmBtn.disabled = false;
+            confirmBtn.style.opacity = '1';
+            confirmBtn.textContent = originalText;
           }
+        });
+
+        // منع الإغلاق بمفتاح Esc أثناء التنفيذ
+        modal.addEventListener('cancel', e => {
+          if (confirmBtn.disabled) e.preventDefault();
         });
 
         sync();
