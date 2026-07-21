@@ -282,11 +282,20 @@ const CITIES = [
 //  بالترتيب ويعرّضنا لبلاغات "وظيفة غير موجودة" في Google Jobs.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// المدن التي تُفتح فيها وظائف إشرافية — الكبرى (المعرَّفة بأحياء في CITIES)
-const SUPERVISOR_CITIES = CITIES.filter(c => c.districts && c.districts.length).map(c => c.slug);
-// وظائف الإدارة — مقار المناطق الرئيسية فقط
+// مواقع صناعية واستراتيجية في المنطقة الشرقية: عمليات أمنية ضخمة (مصافٍ، موانئ،
+// مقار شركات، حقول) لكن لا "أحياء" معرَّفة لها، فلا يلتقطها معيار الأحياء أدناه.
+const INDUSTRIAL_HUBS = ['dhahran', 'jubail-industrial', 'ras-tanura', 'abqaiq', 'khafji'];
+
+// المدن التي تُفتح فيها وظائف إشرافية — الكبرى (المعرَّفة بأحياء) + المواقع الصناعية
+const SUPERVISOR_CITIES = [...new Set([
+  ...CITIES.filter(c => c.districts && c.districts.length).map(c => c.slug),
+  ...INDUSTRIAL_HUBS,
+])];
+
+// وظائف الإدارة — مقار المناطق الرئيسية + مراكز الشرقية الصناعية والمحافظات الكبرى
 const MANAGER_CITIES = ['riyadh', 'jeddah', 'makkah', 'madinah', 'dammam', 'khobar',
-                        'jubail', 'ahsa', 'taif', 'buraidah', 'tabuk', 'abha'];
+                        'jubail', 'ahsa', 'taif', 'buraidah', 'tabuk', 'abha',
+                        ...INDUSTRIAL_HUBS, 'qatif', 'hafar-albatin'];
 
 const ROLES = {
   guard: {
