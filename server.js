@@ -140,6 +140,14 @@ app.get('/sitemap.xml', (req, res) => {
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>`).join('\n');
+  // صفحات مشرف/مدير أمن — في المدن الكبرى فقط
+  const roleUrls = (jobsRouter.ROLE_PAGES || []).map(p =>
+`  <url>
+    <loc>https://jobs.artalsecurity.com${p.url}</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>`).join('\n');
   res.type('application/xml').send(
 `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -150,6 +158,7 @@ app.get('/sitemap.xml', (req, res) => {
     <priority>1.0</priority>
   </url>
 ${cityUrls}
+${roleUrls}
 </urlset>`
   );
 });

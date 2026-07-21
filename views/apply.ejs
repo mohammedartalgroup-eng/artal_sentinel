@@ -1,10 +1,14 @@
 <%
   // تواريخ ديناميكية حتى يبقى إعلان الوظيفة "طازجاً" في نتائج Google for Jobs ولا "ينتهي".
   // نفس نمط views/city-jobs.ejs — التقديم متاح دائماً، فلا ينبغي أن ينقضي الإعلان بتاريخ ثابت.
-  // datePosted يُثبَّت على أول الشهر الحالي (يتجدّد شهرياً كإعلان "محدّث" طبيعي، لا "اليوم" عند كل زحف).
+  // datePosted نصف شهري: يُثبَّت على 1 أو 16 من الشهر الحالي — أقصى عمر للإعلان 15 يوماً
+  // (بدل 30 سابقاً)، دون أن يصير "اليوم" عند كل زحف.
   // مكوّنات UTC مقصودة: new Date(y,m,1).toISOString() قد يرجع آخر يوم في الشهر السابق بفارق توقيت السعودية.
   const _today = new Date();
-  const datePosted   = `${_today.getUTCFullYear()}-${String(_today.getUTCMonth() + 1).padStart(2, '0')}-01`;
+  const _y = _today.getUTCFullYear();
+  const _m = String(_today.getUTCMonth() + 1).padStart(2, '0');
+  const _d = _today.getUTCDate() >= 16 ? '16' : '01';
+  const datePosted   = `${_y}-${_m}-${_d}`;
   const validThrough = new Date(_today.getTime() + 60 * 86400000).toISOString().split('T')[0];
 %><!DOCTYPE html>
 <html dir="rtl" lang="ar">

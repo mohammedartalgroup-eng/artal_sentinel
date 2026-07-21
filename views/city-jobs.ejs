@@ -1,12 +1,18 @@
 <%
   // تواريخ ديناميكية حتى يبقى إعلان الوظيفة "طازجاً" في نتائج جوجل للوظائف.
-  // datePosted يُثبَّت على أول الشهر الحالي (يتجدّد شهرياً، لا "اليوم" عند كل زحف). مكوّنات UTC مقصودة.
+  // datePosted نصف شهري: يُثبَّت على 1 أو 16 من الشهر الحالي — أقصى عمر للإعلان 15 يوماً
+  // (بدل 30 سابقاً)، دون أن يصير "اليوم" عند كل زحف. مكوّنات UTC مقصودة.
   const _today = new Date();
-  const datePosted  = `${_today.getUTCFullYear()}-${String(_today.getUTCMonth() + 1).padStart(2, '0')}-01`;
+  const _y  = _today.getUTCFullYear();
+  const _m  = String(_today.getUTCMonth() + 1).padStart(2, '0');
+  const _d  = _today.getUTCDate() >= 16 ? '16' : '01';
+  const datePosted  = `${_y}-${_m}-${_d}`;
   const validThrough = new Date(_today.getTime() + 60 * 86400000).toISOString().split('T')[0];
-  const pageUrl = 'https://jobs.artalsecurity.com/jobs/' + city.slug;
-  const title = 'وظائف حارس أمن في ' + city.city + ' | أرتال للحراسات الأمنية';
-  const desc  = 'وظائف حارس أمن في ' + city.city + ' لدى شركة أرتال للحراسات الأمنية: تأمين ' + city.sites.slice(0, 3).join('، ') + '. رواتب تنافسية، جداول عمل مرنة وتدريب معتمد. التقديم مجاني وإلكتروني.';
+  const roleSeg = role.urlSegment ? '/' + role.urlSegment : '';
+  const pageUrl = 'https://jobs.artalsecurity.com/jobs/' + city.slug + roleSeg;
+  const title = 'وظائف ' + role.title + ' في ' + city.city + ' | أرتال للحراسات الأمنية';
+  const desc  = 'وظائف ' + role.title + ' في ' + city.city + ' لدى شركة أرتال للحراسات الأمنية: تأمين ' + city.sites.slice(0, 3).join('، ') + '. رواتب تنافسية، جداول عمل مرنة وتدريب معتمد. التقديم مجاني وإلكتروني.';
+  const roleIntro = role.roleIntro(city);
   // قنوات التواصل — لإشارة الكيان (sameAs) والتذييل المرئي
   const socialLinks = [
     { name: 'LinkedIn',     url: 'https://www.linkedin.com/company/artalgroup/' },
@@ -28,7 +34,7 @@
   <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
   <title><%= title %></title>
   <meta name="description" content="<%= desc %>">
-  <meta name="keywords" content="وظائف حارس أمن <%= city.city %>, وظائف حراسة أمنية <%= city.city %>, توظيف حراسات <%= city.city %>, شركة حراسات أمنية <%= city.city %>, وظائف أمن <%= city.region %>, راتب حارس أمن <%= city.city %>, تقديم وظائف حراسة <%= city.city %>, أرتال للحراسة الأمنية">
+  <meta name="keywords" content="وظائف <%= role.title %> <%= city.city %>, وظائف <%= role.title %> في <%= city.city %>, توظيف <%= role.plural %> <%= city.city %>, شركة حراسات أمنية <%= city.city %>, وظائف أمن <%= city.region %>, راتب <%= role.title %> <%= city.city %>, تقديم وظائف حراسة <%= city.city %>, أرتال للحراسة الأمنية">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="<%= pageUrl %>">
 
@@ -51,12 +57,12 @@
     "@graph": [
       {
         "@type": "JobPosting",
-        "title": "حارس أمن — <%= city.city %>",
-        "description": "تبحث شركة أرتال للحراسات الأمنية المدنية الخاصة عن كفاءات وطنية للعمل كحراس أمن في مدينة <%= city.city %> ضمن <%= city.region %>. <%= city.intro %> تشمل مواقع العمل <%= city.sites.join('، ') %>. يُشترط أن يكون المتقدم سعودي الجنسية، لائقاً صحياً وحسن السيرة والسلوك. نوفّر رواتب تنافسية وجداول عمل مرنة وتدريباً معتمداً. التقديم مجاني وإلكتروني بالكامل.",
+        "title": "<%= role.title %> — <%= city.city %>",
+        "description": "تبحث شركة أرتال للحراسات الأمنية المدنية الخاصة عن كفاءات وطنية للعمل كـ<%= role.plural %> في مدينة <%= city.city %> ضمن <%= city.region %>. <%= roleIntro %> تشمل مواقع العمل <%= city.sites.join('، ') %>. المهام: <%= role.duties.join('؛ ') %>. <%= role.faqRequirements %> نوفّر رواتب تنافسية وجداول عمل مرنة وتدريباً معتمداً. التقديم مجاني وإلكتروني بالكامل.",
         "identifier": {
           "@type": "PropertyValue",
           "name": "أرتال للحراسات الأمنية المدنية الخاصة",
-          "value": "artal-security-guard-<%= city.slug %>"
+          "value": "artal-security-<%= role.slug %>-<%= city.slug %>"
         },
         "hiringOrganization": {
           "@type": "Organization",
@@ -74,7 +80,7 @@
             "addressCountry": "SA"
           }
         },
-        "employmentType": "FULL_TIME",
+        "employmentType": "<%= role.employmentType %>",
         "directApply": true,
         "datePosted": "<%= datePosted %>",
         "validThrough": "<%= validThrough %>",
@@ -84,22 +90,22 @@
         "@type": "BreadcrumbList",
         "itemListElement": [
           { "@type": "ListItem", "position": 1, "name": "الرئيسية", "item": "https://jobs.artalsecurity.com/" },
-          { "@type": "ListItem", "position": 2, "name": "وظائف حارس أمن في <%= city.city %>", "item": "<%= pageUrl %>" }
+          { "@type": "ListItem", "position": 2, "name": "وظائف <%= role.title %> في <%= city.city %>", "item": "<%= pageUrl %>" }
         ]
       },
       {
         "@type": "FAQPage",
         "mainEntity": [
-          { "@type": "Question", "name": "كم راتب حارس الأمن في <%= city.city %>؟",
-            "acceptedAnswer": { "@type": "Answer", "text": "رواتب تنافسية حسب الموقع وطبيعة العمل، مع بدلات وجداول عمل مرنة." } },
+          { "@type": "Question", "name": "كم راتب <%= role.title %> في <%= city.city %>؟",
+            "acceptedAnswer": { "@type": "Answer", "text": "<%= role.faqSalary %>" } },
           { "@type": "Question", "name": "هل التقديم على وظائف الحراسة في <%= city.city %> مجاني؟",
             "acceptedAnswer": { "@type": "Answer", "text": "نعم، التقديم إلكتروني ومجاني تماماً عبر موقع أرتال، ولا توجد أي رسوم على المتقدمين." } },
-          { "@type": "Question", "name": "ما شروط القبول كحارس أمن في <%= city.city %>؟",
-            "acceptedAnswer": { "@type": "Answer", "text": "أن يكون المتقدم سعودي الجنسية، لائقاً صحياً، حسن السيرة والسلوك. الخبرة السابقة ميزة وليست شرطاً." } },
-          { "@type": "Question", "name": "هل يوجد توظيف فوري لحراس الأمن في <%= city.city %>؟",
-            "acceptedAnswer": { "@type": "Answer", "text": "نعم، نستقبل طلبات التوظيف بشكل مستمر في <%= city.city %> وتتم مراجعتها أولاً بأول، مع إمكانية المباشرة السريعة بعد اجتياز التدريب حسب احتياج المواقع مثل <%= city.sites[0] %>." } },
-          { "@type": "Question", "name": "هل تتطلب وظيفة حارس الأمن في <%= city.city %> خبرة سابقة؟",
-            "acceptedAnswer": { "@type": "Answer", "text": "الخبرة السابقة ميزة وليست شرطاً؛ نوفّر تدريباً معتمداً قبل المباشرة يؤهّلك للعمل حتى لو كانت هذه وظيفتك الأولى." } }
+          { "@type": "Question", "name": "ما شروط القبول كـ<%= role.title %> في <%= city.city %>؟",
+            "acceptedAnswer": { "@type": "Answer", "text": "<%= role.faqRequirements %>" } },
+          { "@type": "Question", "name": "هل يوجد توظيف فوري لوظائف <%= role.title %> في <%= city.city %>؟",
+            "acceptedAnswer": { "@type": "Answer", "text": "نعم، نستقبل طلبات التوظيف بشكل مستمر في <%= city.city %> وتتم مراجعتها أولاً بأول، مع إمكانية المباشرة السريعة حسب احتياج المواقع مثل <%= city.sites[0] %>." } },
+          { "@type": "Question", "name": "هل تتطلب وظيفة <%= role.title %> في <%= city.city %> خبرة سابقة؟",
+            "acceptedAnswer": { "@type": "Answer", "text": "<%= role.faqExperience %>" } }
         ]
       }
     ]
@@ -133,13 +139,17 @@
       <nav class="text-xs text-slate-300 mb-6" aria-label="breadcrumb">
         <a href="/" class="hover:text-white">الرئيسية</a>
         <span class="mx-2">/</span>
-        <span>وظائف حارس أمن في <%= city.city %></span>
+        <% if (role.urlSegment) { %>
+          <a href="/jobs/<%= city.slug %>" class="hover:text-white">وظائف <%= city.city %></a>
+          <span class="mx-2">/</span>
+        <% } %>
+        <span>وظائف <%= role.title %> في <%= city.city %></span>
       </nav>
       <h1 class="text-3xl md:text-5xl font-extrabold mb-5 leading-tight">
-        وظائف حارس أمن في <%= city.city %>
+        وظائف <%= role.title %> في <%= city.city %>
       </h1>
       <p class="text-slate-200 text-lg max-w-2xl mx-auto leading-relaxed">
-        تعلن شركة أرتال للحراسات الأمنية المدنية الخاصة عن حاجتها لحراس أمن في <%= city.city %> ضمن <%= city.region %>.
+        تعلن شركة أرتال للحراسات الأمنية المدنية الخاصة عن حاجتها لـ<%= role.plural %> في <%= city.city %> ضمن <%= city.region %>.
         رواتب تنافسية، جداول عمل مرنة وتدريب معتمد.
       </p>
       <a href="/" class="inline-block mt-8 bg-white text-primary font-bold px-8 py-3.5 rounded-xl shadow-lg hover:bg-slate-100 transition">
@@ -152,17 +162,26 @@
 
     <!-- مقدمة المدينة -->
     <section>
-      <h2 class="text-2xl font-bold text-primary mb-4">عن الوظائف في <%= city.city %></h2>
+      <h2 class="text-2xl font-bold text-primary mb-4">عن وظيفة <%= role.title %> في <%= city.city %></h2>
       <p class="leading-loose text-slate-700">
         <%= city.intro %>
-        توفّر شركة أرتال فرص عمل ثابتة كحارس أمن في <%= city.city %> وما حولها، ضمن بيئة عمل احترافية ومسارات تطوير وظيفي واضحة.
-        نبحث عن كفاءات وطنية ملتزمة للانضمام إلى فريقنا في تقديم حلول الحراسة الأمنية للمنشآت التجارية والسكنية والصناعية والحكومية.
+        <%= roleIntro %>
       </p>
+    </section>
+
+    <!-- المهام والمسؤوليات -->
+    <section>
+      <h2 class="text-2xl font-bold text-primary mb-4">مهام <%= role.title %> في <%= city.city %></h2>
+      <ul class="space-y-2 text-slate-700 leading-loose list-disc pr-5">
+        <% role.duties.forEach(d => { %>
+          <li><%= d %></li>
+        <% }) %>
+      </ul>
     </section>
 
     <!-- أنواع المواقع التي نؤمّنها في المدينة -->
     <section>
-      <h2 class="text-2xl font-bold text-primary mb-4">أين يعمل حارس الأمن في <%= city.city %>؟</h2>
+      <h2 class="text-2xl font-bold text-primary mb-4">أين يعمل <%= role.title %> في <%= city.city %>؟</h2>
       <p class="leading-loose text-slate-700 mb-4">
         تتنوّع مواقع العمل في <%= city.city %> حسب طبيعة المنشأة، ومن أبرز ما نؤمّنه:
       </p>
@@ -180,7 +199,7 @@
     <section>
       <h2 class="text-2xl font-bold text-primary mb-4">نخدم جميع أحياء <%= city.city %></h2>
       <p class="leading-loose text-slate-700 mb-4">
-        تشمل فرص العمل كحارس أمن مختلف أحياء ومواقع <%= city.city %>، ومنها:
+        تشمل فرص العمل كـ<%= role.title %> مختلف أحياء ومواقع <%= city.city %>، ومنها:
       </p>
       <div class="flex flex-wrap gap-2">
         <% city.districts.forEach(d => { %>
@@ -205,12 +224,11 @@
 
     <!-- الشروط -->
     <section>
-      <h2 class="text-2xl font-bold text-primary mb-4">شروط القبول</h2>
+      <h2 class="text-2xl font-bold text-primary mb-4">شروط القبول لوظيفة <%= role.title %></h2>
       <ul class="space-y-2 text-slate-700 leading-loose list-disc pr-5">
-        <li>أن يكون المتقدم <strong>سعودي الجنسية</strong>.</li>
-        <li>اللياقة الصحية والبدنية.</li>
-        <li>حسن السيرة والسلوك وخلوّه من السوابق.</li>
-        <li>يجيد القراءة والكتابة. <span class="text-slate-500">(الخبرة السابقة ميزة وليست شرطاً)</span></li>
+        <% role.requirements.forEach(r => { %>
+          <li><%- r %></li>
+        <% }) %>
       </ul>
     </section>
 
@@ -225,7 +243,7 @@
       </ol>
       <div class="text-center mt-8">
         <a href="/" class="inline-block bg-primary text-white font-bold px-8 py-3.5 rounded-xl shadow-lg hover:bg-primary-container transition">
-          ابدأ التقديم على وظيفة حارس أمن في <%= city.city %>
+          ابدأ التقديم على وظيفة <%= role.title %> في <%= city.city %>
         </a>
       </div>
     </section>
@@ -235,34 +253,46 @@
       <h2 class="text-2xl font-bold text-primary mb-4">الأسئلة الشائعة</h2>
       <div class="space-y-3">
         <details class="bg-white border border-slate-200 rounded-xl p-4">
-          <summary class="font-semibold cursor-pointer text-primary">كم راتب حارس الأمن في <%= city.city %>؟</summary>
-          <p class="mt-2 text-slate-600 leading-loose">رواتب تنافسية حسب الموقع وطبيعة العمل، مع بدلات وجداول عمل مرنة.</p>
+          <summary class="font-semibold cursor-pointer text-primary">كم راتب <%= role.title %> في <%= city.city %>؟</summary>
+          <p class="mt-2 text-slate-600 leading-loose"><%= role.faqSalary %></p>
         </details>
         <details class="bg-white border border-slate-200 rounded-xl p-4">
           <summary class="font-semibold cursor-pointer text-primary">هل التقديم على وظائف الحراسة في <%= city.city %> مجاني؟</summary>
           <p class="mt-2 text-slate-600 leading-loose">نعم، التقديم إلكتروني ومجاني تماماً عبر موقع أرتال، ولا توجد أي رسوم على المتقدمين.</p>
         </details>
         <details class="bg-white border border-slate-200 rounded-xl p-4">
-          <summary class="font-semibold cursor-pointer text-primary">ما شروط القبول كحارس أمن في <%= city.city %>؟</summary>
-          <p class="mt-2 text-slate-600 leading-loose">أن يكون المتقدم سعودي الجنسية، لائقاً صحياً، حسن السيرة والسلوك. الخبرة السابقة ميزة وليست شرطاً.</p>
+          <summary class="font-semibold cursor-pointer text-primary">ما شروط القبول كـ<%= role.title %> في <%= city.city %>؟</summary>
+          <p class="mt-2 text-slate-600 leading-loose"><%= role.faqRequirements %></p>
         </details>
         <details class="bg-white border border-slate-200 rounded-xl p-4">
-          <summary class="font-semibold cursor-pointer text-primary">هل يوجد توظيف فوري لحراس الأمن في <%= city.city %>؟</summary>
-          <p class="mt-2 text-slate-600 leading-loose">نعم، نستقبل طلبات التوظيف بشكل مستمر في <%= city.city %> وتتم مراجعتها أولاً بأول، مع إمكانية المباشرة السريعة بعد اجتياز التدريب حسب احتياج المواقع مثل <%= city.sites[0] %>.</p>
+          <summary class="font-semibold cursor-pointer text-primary">هل يوجد توظيف فوري لوظائف <%= role.title %> في <%= city.city %>؟</summary>
+          <p class="mt-2 text-slate-600 leading-loose">نعم، نستقبل طلبات التوظيف بشكل مستمر في <%= city.city %> وتتم مراجعتها أولاً بأول، مع إمكانية المباشرة السريعة حسب احتياج المواقع مثل <%= city.sites[0] %>.</p>
         </details>
         <details class="bg-white border border-slate-200 rounded-xl p-4">
-          <summary class="font-semibold cursor-pointer text-primary">هل تتطلب الوظيفة في <%= city.city %> خبرة سابقة؟</summary>
-          <p class="mt-2 text-slate-600 leading-loose">الخبرة السابقة ميزة وليست شرطاً؛ نوفّر تدريباً معتمداً قبل المباشرة يؤهّلك للعمل حتى لو كانت هذه وظيفتك الأولى.</p>
+          <summary class="font-semibold cursor-pointer text-primary">هل تتطلب وظيفة <%= role.title %> في <%= city.city %> خبرة سابقة؟</summary>
+          <p class="mt-2 text-slate-600 leading-loose"><%= role.faqExperience %></p>
         </details>
       </div>
     </section>
 
-    <!-- مدن أخرى -->
+    <!-- وظائف أخرى في نفس المدينة -->
+    <% if (otherRoles && otherRoles.length) { %>
     <section>
-      <h2 class="text-2xl font-bold text-primary mb-4">وظائف حراسة أمنية في مدن أخرى</h2>
+      <h2 class="text-2xl font-bold text-primary mb-4">وظائف أخرى في <%= city.city %></h2>
       <div class="flex flex-wrap gap-2">
-        <% cities.filter(c => c.slug !== city.slug).forEach(c => { %>
-          <a href="/jobs/<%= c.slug %>" class="text-sm bg-white border border-slate-200 hover:border-primary hover:text-primary rounded-full px-4 py-2 transition">وظائف حارس أمن <%= c.city %></a>
+        <% otherRoles.forEach(r => { %>
+          <a href="<%= r.url %>" class="text-sm bg-white border border-slate-200 hover:border-primary hover:text-primary rounded-full px-4 py-2 transition">وظائف <%= r.title %> في <%= city.city %></a>
+        <% }) %>
+      </div>
+    </section>
+    <% } %>
+
+    <!-- مدن أخرى — لنفس الوظيفة، فلا نرسل الزائر لصفحة غير موجودة -->
+    <section>
+      <h2 class="text-2xl font-bold text-primary mb-4">وظائف <%= role.title %> في مدن أخرى</h2>
+      <div class="flex flex-wrap gap-2">
+        <% roleCities.filter(c => c.slug !== city.slug).forEach(c => { %>
+          <a href="/jobs/<%= c.slug %><%= roleSeg %>" class="text-sm bg-white border border-slate-200 hover:border-primary hover:text-primary rounded-full px-4 py-2 transition">وظائف <%= role.title %> <%= c.city %></a>
         <% }) %>
       </div>
     </section>
