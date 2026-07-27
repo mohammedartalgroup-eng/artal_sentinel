@@ -292,7 +292,8 @@
           </div>
         </form>
 
-        <!-- شريط الإجراءات الجماعية (داخل تدفق الصفحة — فوق الجدول مباشرة) -->
+        <% if (filters.status === 'pending') { %>
+        <!-- شريط الإجراءات الجماعية (يظهر فقط عندما يكون الفلتر على «جديد») -->
         <div id="bulk-bar"
           style="display:none; background:#001736; color:#fff; border-radius:1rem; padding:0.75rem 1rem;
                  align-items:center; gap:0.75rem; flex-wrap:wrap;">
@@ -303,6 +304,19 @@
             style="font-size:0.75rem; color:#c4d3ee; text-decoration:underline; background:none; border:none; cursor:pointer; white-space:nowrap">
             إلغاء التحديد
           </button>
+
+          <!-- بانر تحديد كل النتائج عبر كل الصفحات -->
+          <span id="bulk-allpages-wrap" style="display:none; font-size:0.8rem; white-space:nowrap">
+            <a id="bulk-allpages-link" href="javascript:void(0)"
+              style="color:#ffdf9e; text-decoration:underline; cursor:pointer">
+              تحديد كل النتائج المطابقة (<span id="bulk-total">0</span>)
+            </a>
+            <span id="bulk-allpages-active" style="display:none; color:#ffdf9e; font-weight:600">
+              ✓ محدَّد كل الـ <span id="bulk-total-2">0</span> نتيجة —
+              <a id="bulk-allpages-cancel" href="javascript:void(0)"
+                style="color:#c4d3ee; text-decoration:underline; cursor:pointer; font-weight:400">تراجع</a>
+            </span>
+          </span>
 
           <span style="flex:1 1 auto"></span>
 
@@ -369,6 +383,13 @@
             </div>
           </div>
         </dialog>
+        <% } else { %>
+        <!-- تلميح: الميزة الجماعية متاحة فقط على حالة «جديد» -->
+        <div class="bg-[#f2f4f6] text-[#43474f] text-xs rounded-xl px-4 py-2.5 flex items-center gap-2">
+          <span class="material-symbols-outlined text-base text-[#7594ca]">info</span>
+          التحديد الجماعي وتغيير الحالة متاحان فقط عند اختيار حالة «جديد» في الفلتر.
+        </div>
+        <% } %>
 
         <!-- Table -->
         <div class="bg-white rounded-2xl overflow-hidden">
@@ -380,13 +401,16 @@
             <% } else { %>
               <div class="overflow-x-auto">
                 <table class="w-full text-sm">
+                  <% const bulkEnabled = filters.status === 'pending'; %>
                   <thead class="bg-[#f8f9fb] border-b border-[#eceef0]">
                     <tr class="text-[#43474f] text-xs">
+                      <% if (bulkEnabled) { %>
                       <th class="px-4 py-4 whitespace-nowrap">
                         <input type="checkbox" id="bulk-select-all" title="تحديد كل النتائج الظاهرة"
                           class="w-4 h-4 accent-[#001736] align-middle cursor-pointer">
                         <span id="bulk-count-head" class="hidden text-[10px] text-[#405f91] font-semibold align-middle mr-1"></span>
                       </th>
+                      <% } %>
                       <th class="text-right px-5 py-4 font-semibold">الاسم</th>
                       <th class="text-right px-4 py-4 font-semibold">الهوية</th>
                       <th class="text-right px-4 py-4 font-semibold">الجوال</th>
@@ -408,10 +432,12 @@
                         <% const sm=STATUS_META[a.status] || { label: a.status, color: 'gray' }; %>
                           <tr class="hover:bg-[#f8f9fb] transition-colors cursor-pointer"
                             onclick="location.href='/admin/applicants/<%= a.id %>'">
+                            <% if (bulkEnabled) { %>
                             <td class="px-4 py-3.5" onclick="event.stopPropagation()">
                               <input type="checkbox" class="bulk-row w-4 h-4 accent-[#001736] align-middle cursor-pointer"
                                 value="<%= a.id %>" data-name="<%= a.full_name %>">
                             </td>
+                            <% } %>
                             <td class="px-5 py-3.5 font-medium text-[#001736]">
                               <%= a.full_name %>
                               <% if (a.repeatCount && a.repeatCount > 1) { %>
@@ -686,10 +712,13 @@
 
       rebuildCityOptions(PRE_SELECTED_CITIES);
 
-      // ─── التحديد الجماعي وتغيير الحالة ──────────────────────────────────────
+      // ─── التحديد الجماعي وتغيير الحالة (فلتر «جديد» فقط) ────────────────────
       (function () {
         const rows      = Array.from(document.querySelectorAll('.bulk-row'));
         if (!rows.length) return;
+
+        const TOTAL   = <%= Number(total) || 0 %>;                 // كل النتائج المطابقة
+        const FILTERS = <%- JSON.stringify(filters) %>;            // لإرسالها في وضع "كل النتائج"
 
         const selectAll = document.getElementById('bulk-select-all');
         const bar       = document.getElementById('bulk-bar');
@@ -700,38 +729,62 @@
         const headEl    = document.getElementById('bulk-count-head');
         const inlineEl  = document.getElementById('bulk-count-inline');
         const inlineNEl = document.getElementById('bulk-count-inline-n');
+        // بانر "كل النتائج"
+        const apWrap    = document.getElementById('bulk-allpages-wrap');
+        const apLink    = document.getElementById('bulk-allpages-link');
+        const apActive  = document.getElementById('bulk-allpages-active');
+        const apCancel  = document.getElementById('bulk-allpages-cancel');
+        document.getElementById('bulk-total').textContent   = TOTAL;
+        document.getElementById('bulk-total-2').textContent = TOTAL;
 
-        const selected = () => rows.filter(cb => cb.checked);
+        let allPages = false;   // true = كل النتائج عبر كل الصفحات
+
+        const selected  = () => rows.filter(cb => cb.checked);
+        const effective = () => allPages ? TOTAL : selected().length;
 
         function sync() {
           const n = selected().length;
-          countEl.textContent = n;
+          const eff = effective();
 
-          // عدّاد صغير في رأس الجدول وفي شريط العنوان العلوي
-          headEl.textContent = n ? n + '/' + rows.length : '';
-          headEl.classList.toggle('hidden', n === 0);
-          inlineNEl.textContent = n;
-          inlineEl.classList.toggle('hidden', n === 0);
+          countEl.textContent = eff;
 
-          bar.style.display = n ? 'flex' : 'none';
+          headEl.textContent = eff ? (allPages ? eff : n + '/' + rows.length) : '';
+          headEl.classList.toggle('hidden', eff === 0);
+          inlineNEl.textContent = eff;
+          inlineEl.classList.toggle('hidden', eff === 0);
+
+          bar.style.display = eff ? 'flex' : 'none';
           selectAll.checked = n === rows.length;
           selectAll.indeterminate = n > 0 && n < rows.length;
 
-          applyBtn.disabled = n === 0 || !statusEl.value;
+          // بانر "كل النتائج": يظهر عندما تُحدَّد كل صفوف الصفحة وهناك صفحات أخرى
+          const allCurrent = n === rows.length && rows.length > 0;
+          if (!allCurrent) allPages = false;   // إلغاء أي صف يُلغي وضع كل النتائج
+          const canAllPages = TOTAL > rows.length;
+          apWrap.style.display = (allCurrent && canAllPages) ? '' : 'none';
+          apLink.style.display   = allPages ? 'none' : '';
+          apActive.style.display = allPages ? '' : 'none';
+
+          applyBtn.disabled = eff === 0 || !statusEl.value;
           applyBtn.style.opacity = applyBtn.disabled ? '0.4' : '1';
           applyBtn.style.cursor  = applyBtn.disabled ? 'not-allowed' : 'pointer';
         }
 
         selectAll.addEventListener('change', () => {
           rows.forEach(cb => { cb.checked = selectAll.checked; });
+          if (!selectAll.checked) allPages = false;
           sync();
         });
         rows.forEach(cb => cb.addEventListener('change', sync));
         statusEl.addEventListener('change', sync);
 
+        apLink.addEventListener('click', () => { allPages = true;  sync(); });
+        apCancel.addEventListener('click', () => { allPages = false; sync(); });
+
         clearBtn.addEventListener('click', () => {
           rows.forEach(cb => { cb.checked = false; });
           selectAll.checked = false;
+          allPages = false;
           sync();
         });
 
@@ -748,7 +801,7 @@
         function openModal() {
           noteErrEl.style.display = 'none';
           noteEl.style.borderColor = '#e0e3e5';
-          mCountEl.textContent  = selected().length;
+          mCountEl.textContent  = effective();
           mStatusEl.textContent = statusEl.options[statusEl.selectedIndex].text;
           // <dialog> يُرسم في الـ top layer — لا يتأثر بأي overflow أو z-index
           if (typeof modal.showModal === 'function') modal.showModal();
@@ -762,7 +815,7 @@
         }
 
         applyBtn.addEventListener('click', () => {
-          if (!selected().length || !statusEl.value) return;
+          if (!effective() || !statusEl.value) return;
           openModal();
         });
 
@@ -779,23 +832,23 @@
 
           const picked = selected();
           const status = statusEl.value;
-          if (!picked.length || !status) return closeModal();
+          if (!effective() || !status) return closeModal();
 
           confirmBtn.disabled = true;
           confirmBtn.style.opacity = '0.6';
           const originalText = confirmBtn.textContent;
           confirmBtn.textContent = 'جارٍ التحديث…';
 
+          // وضع "كل النتائج" يرسل الفلاتر بدل قائمة معرّفات محدودة بالصفحة
+          const payload = allPages
+            ? { all: true, filters: FILTERS, status, note, note_type: noteTypeEl.value }
+            : { ids: picked.map(cb => cb.value), filters: FILTERS, status, note, note_type: noteTypeEl.value };
+
           try {
             const res = await fetch('/admin/applicants/bulk-status', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                ids: picked.map(cb => cb.value),
-                status,
-                note,
-                note_type: noteTypeEl.value,
-              }),
+              body: JSON.stringify(payload),
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'فشل التحديث');

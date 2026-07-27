@@ -331,6 +331,52 @@ function parseCityList(raw) {
   return String(raw).split(',').map(s => s.trim()).filter(Boolean);
 }
 
+// يبني شرط WHERE لقائمة المتقدمين من الفلاتر — مشترك بين عرض القائمة والتحديث الجماعي
+// (بنفس المصدر يضمن أن "تحديد كل النتائج" يطابق تماماً ما يراه المستخدم في القائمة).
+function buildApplicantFilter(src) {
+  const {
+    q = '', status = '', region = '', gender = '', english = '', qualification = '',
+    has_car = '', has_license = '', ext_check = '', source = '',
+    age_min = '', age_max = '', date_from = '', date_to = '',
+  } = src;
+  const cities = parseCityList(src.city);
+
+  const conditions = [];
+  const params = [];
+
+  if (q) {
+    conditions.push('(full_name LIKE ? OR id_number LIKE ? OR phone LIKE ?)');
+    params.push(`%${q}%`, `%${q}%`, `%${q}%`);
+  }
+  if (status)        { conditions.push('status = ?');        params.push(status); }
+  if (region)        { conditions.push('region = ?');        params.push(region); }
+  if (cities.length) {
+    conditions.push(`city IN (${cities.map(() => '?').join(',')})`);
+    params.push(...cities);
+  }
+  if (gender)        { conditions.push('gender = ?');        params.push(gender); }
+  if (english !== '') { conditions.push('english = ?');      params.push(parseInt(english)); }
+  if (qualification) { conditions.push('qualification = ?'); params.push(qualification); }
+  if (has_car !== '')     { conditions.push('has_car = ?');     params.push(parseInt(has_car)); }
+  if (has_license !== '') { conditions.push('has_license = ?'); params.push(parseInt(has_license)); }
+  if (ext_check === 'found')      { conditions.push('ext_check_done = 1 AND ext_found = 1'); }
+  else if (ext_check === 'not_found')  { conditions.push('ext_check_done = 1 AND (ext_found = 0 OR ext_found IS NULL)'); }
+  else if (ext_check === 'unchecked')  { conditions.push('ext_check_done = 0'); }
+  // فلترة بالمصدر (مُفهرس idx_source → سريع). 'غير معروف' = بلا مصدر مسجّل
+  if (source === 'غير معروف')  { conditions.push("(source IS NULL OR source = '')"); }
+  else if (source)             { conditions.push('source = ?'); params.push(source); }
+  if (age_min) { conditions.push('age >= ?'); params.push(parseInt(age_min)); }
+  if (age_max) { conditions.push('age <= ?'); params.push(parseInt(age_max)); }
+  if (date_from) { conditions.push('created_at >= ?'); params.push(date_from + ' 00:00:00'); }
+  if (date_to)   { conditions.push('created_at < DATE_ADD(?, INTERVAL 1 DAY)'); params.push(date_to); }
+
+  return {
+    where: conditions.length ? 'WHERE ' + conditions.join(' AND ') : '',
+    params,
+    status,   // قيمة فلتر الحالة — يُستخدم لبوابة "جديد فقط"
+  };
+}
+
 router.get('/applicants', async (req, res) => {
   try {
     const {
@@ -346,36 +392,7 @@ router.get('/applicants', async (req, res) => {
     const pageNum = Math.max(1, parseInt(page) || 1);
     const offset = (pageNum - 1) * PAGE_SIZE;
 
-    const conditions = [];
-    const params = [];
-
-    if (q) {
-      conditions.push('(full_name LIKE ? OR id_number LIKE ? OR phone LIKE ?)');
-      params.push(`%${q}%`, `%${q}%`, `%${q}%`);
-    }
-    if (status)        { conditions.push('status = ?');        params.push(status); }
-    if (region)        { conditions.push('region = ?');        params.push(region); }
-    if (cities.length) {
-      conditions.push(`city IN (${cities.map(() => '?').join(',')})`);
-      params.push(...cities);
-    }
-    if (gender)        { conditions.push('gender = ?');        params.push(gender); }
-    if (english !== '') { conditions.push('english = ?');      params.push(parseInt(english)); }
-    if (qualification) { conditions.push('qualification = ?'); params.push(qualification); }
-    if (has_car !== '')     { conditions.push('has_car = ?');     params.push(parseInt(has_car)); }
-    if (has_license !== '') { conditions.push('has_license = ?'); params.push(parseInt(has_license)); }
-    if (ext_check === 'found')      { conditions.push('ext_check_done = 1 AND ext_found = 1'); }
-    else if (ext_check === 'not_found')  { conditions.push('ext_check_done = 1 AND (ext_found = 0 OR ext_found IS NULL)'); }
-    else if (ext_check === 'unchecked')  { conditions.push('ext_check_done = 0'); }
-    // فلترة بالمصدر (مُفهرس idx_source → سريع). 'غير معروف' = بلا مصدر مسجّل
-    if (source === 'غير معروف')  { conditions.push("(source IS NULL OR source = '')"); }
-    else if (source)             { conditions.push('source = ?'); params.push(source); }
-    if (age_min) { conditions.push('age >= ?'); params.push(parseInt(age_min)); }
-    if (age_max) { conditions.push('age <= ?'); params.push(parseInt(age_max)); }
-    if (date_from) { conditions.push('created_at >= ?'); params.push(date_from + ' 00:00:00'); }
-    if (date_to)   { conditions.push('created_at < DATE_ADD(?, INTERVAL 1 DAY)'); params.push(date_to); }
-
-    const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+    const { where, params } = buildApplicantFilter(req.query);
     const safeSort  = ['created_at', 'full_name', 'status', 'age', 'region', 'rating'].includes(sort) ? sort : 'created_at';
     const safeOrder = order === 'asc' ? 'ASC' : 'DESC';
 
@@ -597,10 +614,21 @@ router.post('/applicants/:id/status', async (req, res) => {
 
 // ─── Bulk Update Status ───────────────────────────────────────────────────────
 
+// حدّ أقصى وقائي — لتفادي عملية جماعية هائلة تُرهق القاعدة
+const BULK_MAX = 2000;
+
 router.post('/applicants/bulk-status', async (req, res) => {
   try {
     const { status } = req.body;
     if (!STATUS_META[status]) return res.status(400).json({ error: 'حالة غير صالحة' });
+
+    // ── بوابة الأمان: الميزة لا تعمل إلا والفلتر مطبَّق على "جديد" (pending) ──
+    // نُعيد بناء نفس شرط القائمة من الفلاتر المُرسَلة، ونتحقق أن status='pending'.
+    const filterSrc = (req.body.filters && typeof req.body.filters === 'object') ? req.body.filters : {};
+    const { where, params, status: filterStatus } = buildApplicantFilter(filterSrc);
+    if (filterStatus !== 'pending') {
+      return res.status(400).json({ error: 'التحديث الجماعي متاح فقط عندما يكون الفلتر مطبَّقاً على «جديد».' });
+    }
 
     // الملاحظة إجبارية — تُسجَّل لكل متقدم كأن المستخدم دخل ملفه وأضافها
     const note = typeof req.body.note === 'string' ? req.body.note.trim() : '';
@@ -608,49 +636,83 @@ router.post('/applicants/bulk-status', async (req, res) => {
     if (note.length > 2000) return res.status(400).json({ error: 'الملاحظة طويلة جداً (الحد 2000 حرف)' });
     const noteType = NOTE_TYPES[req.body.note_type] ? req.body.note_type : 'note';
 
-    const ids = [...new Set(
-      (Array.isArray(req.body.ids) ? req.body.ids : [])
-        .map(v => parseInt(v))
-        .filter(n => Number.isInteger(n) && n > 0)
-    )];
-    if (!ids.length) return res.status(400).json({ error: 'لم يتم تحديد أي متقدم' });
-    if (ids.length > 500) return res.status(400).json({ error: 'الحد الأقصى 500 متقدم في المرة الواحدة' });
+    // وضعان: تحديد كل النتائج (all=true) أو صفوف محدّدة بالمعرّفات (ids)
+    const selectAll = req.body.all === true || req.body.all === 'true';
+    let rows;
 
-    const placeholders = ids.map(() => '?').join(',');
-    const rows = await db.all(
-      `SELECT id, full_name, status FROM applicants WHERE id IN (${placeholders})`,
-      ids
-    );
-    if (!rows.length) return res.status(404).json({ error: 'لا يوجد متقدمون مطابقون' });
+    if (selectAll) {
+      // كل المتقدمين المطابقين للفلتر — مقيّدون بـ pending عبر الفلتر نفسه
+      const countRow = await db.get(`SELECT COUNT(*) AS c FROM applicants ${where}`, params);
+      const total = Number(countRow?.c) || 0;
+      if (!total) return res.status(404).json({ error: 'لا يوجد متقدمون مطابقون' });
+      if (total > BULK_MAX) {
+        return res.status(400).json({ error: `النتائج (${total}) تتجاوز الحد الأقصى ${BULK_MAX}. ضيّق الفلتر أكثر.` });
+      }
+      rows = await db.all(`SELECT id, full_name, status FROM applicants ${where}`, params);
+    } else {
+      const ids = [...new Set(
+        (Array.isArray(req.body.ids) ? req.body.ids : [])
+          .map(v => parseInt(v))
+          .filter(n => Number.isInteger(n) && n > 0)
+      )];
+      if (!ids.length) return res.status(400).json({ error: 'لم يتم تحديد أي متقدم' });
+      if (ids.length > BULK_MAX) return res.status(400).json({ error: `الحد الأقصى ${BULK_MAX} متقدم في المرة الواحدة` });
+      // نقيّد صراحةً بـ pending: حتى لو أُرسلت معرّفات لغير الجدد، لا تُمَس
+      const ph = ids.map(() => '?').join(',');
+      rows = await db.all(
+        `SELECT id, full_name, status FROM applicants WHERE id IN (${ph}) AND status = 'pending'`,
+        ids
+      );
+    }
+    if (!rows.length) return res.status(404).json({ error: 'لا يوجد متقدمون مطابقون (بحالة «جديد»)' });
 
-    // 1) الملاحظة أولاً — لكل متقدم محدَّد، حتى مَن لم تتغيّر حالته
-    await db.run(
-      `INSERT INTO applicant_notes (applicant_id, content, type, user_name) VALUES ${rows.map(() => '(?, ?, ?, ?)').join(', ')}`,
-      rows.flatMap(r => [r.id, note, noteType, req.session.adminName || null])
-    );
-    await db.run(
-      `UPDATE applicants SET updated_at = CURRENT_TIMESTAMP WHERE id IN (${rows.map(() => '?').join(',')})`,
-      rows.map(r => r.id)
-    );
-    await Promise.all(rows.map(r =>
-      db.audit(req.session.adminId, req.session.adminUser, 'note_add', 'applicant', r.id,
-        r.full_name, `${NOTE_TYPES[noteType].label}: ${note.substring(0, 80)}`, req.ip)
-    ));
+    const now = req.session.adminName || null;
+    // معالجة على دفعات لتفادي استنفاد اتصالات القاعدة عند الأعداد الكبيرة
+    const chunk = (arr, n) => { const o = []; for (let i = 0; i < arr.length; i += n) o.push(arr.slice(i, i + n)); return o; };
 
-    // 2) الحالة — فقط لمَن حالته مختلفة، تفادياً لسجلات نشاط فارغة
+    // 1) الملاحظة أولاً — لكل متقدم مطابق
+    for (const part of chunk(rows, 200)) {
+      await db.run(
+        `INSERT INTO applicant_notes (applicant_id, content, type, user_name) VALUES ${part.map(() => '(?, ?, ?, ?)').join(', ')}`,
+        part.flatMap(r => [r.id, note, noteType, now])
+      );
+      await db.run(
+        `INSERT INTO audit_log (user_id, username, action, target_type, target_id, target_name, details, ip)
+         VALUES ${part.map(() => '(?, ?, ?, ?, ?, ?, ?, ?)').join(', ')}`,
+        part.flatMap(r => [req.session.adminId, req.session.adminUser, 'note_add', 'applicant', r.id,
+          r.full_name, `${NOTE_TYPES[noteType].label}: ${note.substring(0, 80)}`, req.ip])
+      );
+    }
+
+    // 2) الحالة — فقط لمَن حالته مختلفة عن الهدف
     const changed = rows.filter(r => r.status !== status);
     if (changed.length) {
-      const changedIds = changed.map(r => r.id);
-      await db.run(
-        `UPDATE applicants SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN (${changedIds.map(() => '?').join(',')})`,
-        [status, ...changedIds]
-      );
-
-      await Promise.all(changed.flatMap(r => [
-        db.logActivity(r.id, 'تغيير الحالة', STATUS_META[r.status]?.label, STATUS_META[status]?.label, req.session.adminName || null),
-        db.audit(req.session.adminId, req.session.adminUser, 'status_change', 'applicant', r.id,
-          r.full_name, `${STATUS_META[r.status]?.label} ← ${STATUS_META[status]?.label} (تغيير جماعي)`, req.ip),
-      ]));
+      for (const part of chunk(changed, 500)) {
+        await db.run(
+          `UPDATE applicants SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN (${part.map(() => '?').join(',')})`,
+          [status, ...part.map(r => r.id)]
+        );
+      }
+      for (const part of chunk(changed, 200)) {
+        await db.run(
+          `INSERT INTO applicant_activity (applicant_id, action, old_value, new_value, user_name) VALUES ${part.map(() => '(?, ?, ?, ?, ?)').join(', ')}`,
+          part.flatMap(r => [r.id, 'تغيير الحالة', STATUS_META[r.status]?.label, STATUS_META[status]?.label, now])
+        );
+        await db.run(
+          `INSERT INTO audit_log (user_id, username, action, target_type, target_id, target_name, details, ip)
+           VALUES ${part.map(() => '(?, ?, ?, ?, ?, ?, ?, ?)').join(', ')}`,
+          part.flatMap(r => [req.session.adminId, req.session.adminUser, 'status_change', 'applicant', r.id,
+            r.full_name, `${STATUS_META[r.status]?.label} ← ${STATUS_META[status]?.label} (تغيير جماعي)`, req.ip])
+        );
+      }
+    } else {
+      // لم تتغيّر حالة أحد (مثلاً الهدف = جديد) — نحدّث updated_at فقط لأثر الملاحظة
+      for (const part of chunk(rows, 500)) {
+        await db.run(
+          `UPDATE applicants SET updated_at = CURRENT_TIMESTAMP WHERE id IN (${part.map(() => '?').join(',')})`,
+          part.map(r => r.id)
+        );
+      }
     }
 
     res.json({
