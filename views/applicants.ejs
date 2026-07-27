@@ -534,12 +534,24 @@
               <!-- Pagination -->
                 <div class="flex items-center justify-between px-6 py-4 border-t border-[#f2f4f6] flex-wrap gap-3">
 
-                  <!-- عرض X–Y من Z -->
-                  <% const _from = (pageNum - 1) * 20 + 1; const _to = _from + applicants.length - 1; %>
-                  <span class="text-xs text-[#43474f]">
-                    عرض <span class="font-semibold text-[#001736]"><%= _from %>–<%= _to %></span>
-                    من <span class="font-semibold text-[#001736]"><%= total %></span> متقدم
-                  </span>
+                  <!-- عرض X–Y من Z + اختيار عدد العرض في الصفحة -->
+                  <% const _from = (pageNum - 1) * pageSize + 1; const _to = _from + applicants.length - 1; %>
+                  <div class="flex items-center gap-3 flex-wrap">
+                    <span class="text-xs text-[#43474f]">
+                      عرض <span class="font-semibold text-[#001736]"><%= _from %>–<%= _to %></span>
+                      من <span class="font-semibold text-[#001736]"><%= total %></span> متقدم
+                    </span>
+                    <label class="flex items-center gap-1.5 text-xs text-[#43474f] whitespace-nowrap">
+                      عرض
+                      <select id="per-page-select"
+                        style="width:auto; padding:0.3rem 0.5rem; font-size:0.75rem; border:1px solid #e0e3e5; border-radius:0.5rem; background:#fff; cursor:pointer">
+                        <% perPageOptions.forEach(n => { %>
+                          <option value="<%= n %>" <%= pageSize === n ? 'selected' : '' %>><%= n %></option>
+                        <% }) %>
+                      </select>
+                      في الصفحة
+                    </label>
+                  </div>
 
                   <% if (totalPages > 1) { %>
                   <div class="flex items-center gap-1">
@@ -711,6 +723,18 @@
       });
 
       rebuildCityOptions(PRE_SELECTED_CITIES);
+
+      // ─── عدد العرض في الصفحة ────────────────────────────────────────────────
+      (function () {
+        const sel = document.getElementById('per-page-select');
+        if (!sel) return;
+        sel.addEventListener('change', () => {
+          const u = new URL(window.location.href);
+          u.searchParams.set('per_page', sel.value);
+          u.searchParams.set('page', '1');   // عدد جديد → نعود لأول صفحة
+          window.location.href = u.toString();
+        });
+      })();
 
       // ─── التحديد الجماعي وتغيير الحالة (فلتر «جديد» فقط) ────────────────────
       (function () {

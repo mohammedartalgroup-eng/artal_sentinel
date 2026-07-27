@@ -383,12 +383,14 @@ router.get('/applicants', async (req, res) => {
       q = '', status = '', region = '', gender = '', english = '', qualification = '',
       has_car = '', has_license = '', ext_check = '', source = '',
       age_min = '', age_max = '', date_from = '', date_to = '',
-      sort = 'created_at', order = 'desc', page = '1'
+      sort = 'created_at', order = 'desc', page = '1', per_page = '20'
     } = req.query;
 
     const cities = parseCityList(req.query.city);
 
-    const PAGE_SIZE = 20;
+    // عدد العرض في الصفحة — قيم مسموحة فقط (تفادي LIMIT عشوائي)
+    const PER_PAGE_OPTIONS = [20, 30, 50, 70, 100];
+    const PAGE_SIZE = PER_PAGE_OPTIONS.includes(parseInt(per_page)) ? parseInt(per_page) : 20;
     const pageNum = Math.max(1, parseInt(page) || 1);
     const offset = (pageNum - 1) * PAGE_SIZE;
 
@@ -424,8 +426,8 @@ router.get('/applicants', async (req, res) => {
     applicants.forEach(a => { a.repeatCount = repeatMap[a.id_number] || 1; });
 
     res.render('applicants', {
-      applicants, total, totalPages, pageNum,
-      filters: { q, status, region, city: cities, gender, english, qualification, has_car, has_license, ext_check, source, age_min, age_max, date_from, date_to, sort, order },
+      applicants, total, totalPages, pageNum, pageSize: PAGE_SIZE, perPageOptions: PER_PAGE_OPTIONS,
+      filters: { q, status, region, city: cities, gender, english, qualification, has_car, has_license, ext_check, source, age_min, age_max, date_from, date_to, sort, order, per_page: PAGE_SIZE },
       STATUS_META, NOTE_TYPES, REGIONS, SA_REGIONS, adminUser: req.session.adminUser
     });
   } catch (err) {
