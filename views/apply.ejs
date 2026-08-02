@@ -191,9 +191,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" onload="this.onload=null;this.rel='stylesheet'"><noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&family=Inter:wght@400;500;600&display=swap"></noscript>
-  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=block" onload="this.onload=null;this.rel='stylesheet'"><noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=block"></noscript>
+  <!-- خط أيقونات مقتطع على المستخدَمة فقط (12 أيقونة) — ~6KB بدل 1.1MB، display=swap لتفادي اختفاء الأيقونات -->
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&icon_names=assignment_ind,badge,check,expand_more,holiday_village,person,refresh,school,search,send,smartphone,upload_file&display=swap" onload="this.onload=null;this.rel='stylesheet'"><noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&icon_names=assignment_ind,badge,check,expand_more,holiday_village,person,refresh,school,search,send,smartphone,upload_file&display=swap"></noscript>
   <style>
-    .glass-panel { background:rgba(0,23,54,0.7); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); }
     .material-symbols-outlined { font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24; }
     body { background-color:#f8f9fb; font-family:'Inter',sans-serif; }
     h1,h2,h3 { font-family:'Manrope',sans-serif; }
@@ -260,25 +260,23 @@
 <header class="bg-[#001736] top-0 z-50">
   <div class="flex justify-center items-center py-4 w-full max-w-7xl mx-auto px-6">
     <div class="bg-white rounded-xl px-5 py-2 shadow-lg">
-      <img src="/images/icon.png" alt="أرتال للحراسة الأمنية" class="h-12 w-auto object-contain">
+      <img src="/images/icon.png" alt="أرتال للحراسة الأمنية" width="48" height="48" class="h-12 w-auto object-contain">
     </div>
   </div>
 </header>
 
 <main class="min-h-screen">
   <!-- Hero Section -->
-  <section class="relative h-[400px] flex items-center justify-center overflow-hidden">
-    <div class="absolute inset-0 z-0">
-      <img class="w-full h-full object-cover"
-           src="https://lh3.googleusercontent.com/aida-public/AB6AXuAtzVauCXhqadAQOZ35FTSVSaSESW7rwlnFy_9aPJuYKdHQCtTOVmZEymMt2IiI3ZeVUKWBBKrkCD6yiK7QIYMm0lsWSWnQXVcZR26T5AOWAcRfAuVm9vavhWKeGSXcGJI9hYdphDKg3ZMwYLLnIPYRd05tO3-Ce1g-9I1M7WhvpPh9TlKSwXNSPlwJMgHgnZCMHOYRYN3rezbwmaUVNtwMpgchRotftKOemd--te6i0-uKED2vu4dy7t_MjiERbLDaJYq3gssUM93_"
-           alt="شركة أرتال للحراسات الأمنية المدنية الخاصة — وظائف حراسة أمنية في السعودية">
-      <div class="absolute inset-0 bg-primary/80 backdrop-blur-sm"></div>
-    </div>
+  <section class="relative h-[400px] flex items-center justify-center overflow-hidden"
+           style="background:linear-gradient(135deg,#001736 0%,#002b5b 55%,#03356e 100%)">
+    <!-- خلفية متدرّجة بلون العلامة بدل صورة خارجية مكسورة (كانت تُعيد 400 وتخصم من LCP وأفضل الممارسات) -->
+    <div class="absolute inset-0 z-0" aria-hidden="true"
+         style="background:radial-gradient(120% 90% at 50% 0%,rgba(117,148,202,0.18) 0%,rgba(0,23,54,0) 60%)"></div>
     <div class="relative z-10 text-center px-4 max-w-4xl mx-auto">
       <h1 class="text-4xl md:text-5xl font-extrabold text-white mb-6 leading-tight">
         انضم إلى شركة أرتال للحراسات الأمنية المدنية الخاصة
       </h1>
-      <p class="text-on-primary-container font-medium text-lg max-w-2xl mx-auto opacity-90">
+      <p class="text-slate-200 font-medium text-lg max-w-2xl mx-auto">
         نبحث عن الكفاءات الوطنية المتميزة للانضمام إلى فريقنا الاحترافي في تقديم الحلول الأمنية المتقدمة
       </p>
     </div>
@@ -289,7 +287,7 @@
     <div class="max-w-3xl mx-auto bg-surface-container-lowest rounded-xl shadow-2xl overflow-hidden border border-outline-variant/10">
       <div class="bg-primary-container p-8 text-white">
         <div class="flex items-center gap-3 mb-2">
-          <span class="material-symbols-outlined text-tertiary-fixed">assignment_ind</span>
+          <span aria-hidden="true" class="material-symbols-outlined text-tertiary-fixed">assignment_ind</span>
           <h2 class="text-2xl font-bold">طلب توظيف جديد</h2>
         </div>
         <p class="text-slate-300 text-sm">يرجى تعبئة كافة البيانات المطلوبة بدقة ليتم التواصل معكم</p>
@@ -308,21 +306,21 @@
 
           <!-- Full Name -->
           <div class="md:col-span-2">
-            <label class="block text-sm font-semibold text-on-surface-variant mb-2">
+            <label for="f-full_name" class="block text-sm font-semibold text-on-surface-variant mb-2">
               الاسم الرباعي <span class="text-error">*</span>
             </label>
             <div class="input-wrap relative" id="wrap-full_name">
               <input id="f-full_name" name="full_name"
-                     class="w-full bg-surface-container-low border-0 rounded-lg px-4 py-3.5 focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-slate-400"
+                     class="w-full bg-surface-container-low border-0 rounded-lg px-4 py-3.5 focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-slate-500"
                      placeholder="أدخل اسمك الكامل كما في الهوية" type="text" autocomplete="name"/>
-              <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">person</span>
+              <span aria-hidden="true" class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">person</span>
             </div>
             <p class="err-msg" id="err-full_name">الاسم الرباعي مطلوب (5 أحرف على الأقل)</p>
           </div>
 
           <!-- ID Number -->
           <div>
-            <label class="block text-sm font-semibold text-on-surface-variant mb-2">
+            <label for="f-id_number" class="block text-sm font-semibold text-on-surface-variant mb-2">
               رقم الهوية الوطنية <span class="text-error">*</span>
             </label>
             <div class="input-wrap" id="wrap-id_number">
@@ -340,7 +338,7 @@
 
           <!-- Mobile Number -->
           <div>
-            <label class="block text-sm font-semibold text-on-surface-variant mb-2">
+            <label for="f-phone" class="block text-sm font-semibold text-on-surface-variant mb-2">
               رقم الجوال <span class="text-error">*</span>
             </label>
             <div class="input-wrap relative" id="wrap-phone">
@@ -352,14 +350,14 @@
                      maxlength="10"
                      dir="ltr"
                      autocomplete="tel"/>
-              <span class="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">smartphone</span>
+              <span aria-hidden="true" class="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">smartphone</span>
             </div>
             <p class="err-msg" id="err-phone">رقم الجوال يجب أن يبدأ بـ 05 ويتكون من 10 أرقام</p>
           </div>
 
           <!-- Age -->
           <div class="md:col-span-2">
-            <label class="block text-sm font-semibold text-on-surface-variant mb-2">
+            <label for="f-age" class="block text-sm font-semibold text-on-surface-variant mb-2">
               العمر <span class="text-error">*</span>
             </label>
             <div class="input-wrap" id="wrap-age">
@@ -372,29 +370,30 @@
 
           <!-- Region (full width) -->
           <div class="md:col-span-2">
-            <label class="block text-sm font-semibold text-on-surface-variant mb-2">
+            <label id="lbl-region" class="block text-sm font-semibold text-on-surface-variant mb-2">
               المنطقة الإدارية <span class="text-error">*</span>
             </label>
             <div class="input-wrap relative" id="wrap-region">
               <input type="hidden" name="region" id="f-region" value="">
               <button type="button" id="ss-region-trigger"
+                      aria-haspopup="listbox" aria-expanded="false" aria-controls="ss-region-list" aria-labelledby="lbl-region ss-region-display"
                       class="ss-trigger w-full px-4 py-3.5 flex items-center justify-between gap-2 text-sm"
                       onclick="ssToggle('region')">
-                <span id="ss-region-display" class="text-slate-400">اختر المنطقة الإدارية</span>
-                <span class="material-symbols-outlined text-slate-400 transition-transform duration-200" id="ss-region-arrow">expand_more</span>
+                <span id="ss-region-display" class="text-slate-600">اختر المنطقة الإدارية</span>
+                <span aria-hidden="true" class="material-symbols-outlined text-slate-500 transition-transform duration-200" id="ss-region-arrow">expand_more</span>
               </button>
               <div class="ss-panel absolute z-50 w-full mt-1 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden hidden"
                    id="ss-region-panel">
                 <div class="p-2 border-b border-slate-100">
                   <div class="relative">
                     <input type="text" id="ss-region-search" autocomplete="off"
-                           placeholder="ابحث عن منطقة…"
+                           placeholder="ابحث عن منطقة…" aria-label="ابحث عن منطقة"
                            class="w-full bg-slate-50 rounded-lg px-3 py-2 pr-8 text-sm border border-slate-200 outline-none focus:border-[#7594ca]"
                            oninput="ssFilter('region')">
-                    <span class="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-base pointer-events-none">search</span>
+                    <span aria-hidden="true" class="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 text-base pointer-events-none">search</span>
                   </div>
                 </div>
-                <ul class="overflow-y-auto py-1 text-sm" style="max-height:210px" id="ss-region-list"></ul>
+                <ul role="listbox" aria-label="المنطقة الإدارية" class="overflow-y-auto py-1 text-sm" style="max-height:210px" id="ss-region-list"></ul>
               </div>
             </div>
             <p class="err-msg" id="err-region">يرجى اختيار المنطقة الإدارية</p>
@@ -402,29 +401,30 @@
 
           <!-- City -->
           <div>
-            <label class="block text-sm font-semibold text-on-surface-variant mb-2">
+            <label id="lbl-city" class="block text-sm font-semibold text-on-surface-variant mb-2">
               المدينة / المحافظة <span class="text-error">*</span>
             </label>
             <div class="input-wrap relative" id="wrap-city">
               <input type="hidden" name="city" id="f-city" value="">
               <button type="button" id="ss-city-trigger" disabled
+                      aria-haspopup="listbox" aria-expanded="false" aria-controls="ss-city-list" aria-labelledby="lbl-city ss-city-display"
                       class="ss-trigger w-full px-4 py-3.5 flex items-center justify-between gap-2 text-sm"
                       onclick="ssToggle('city')">
-                <span id="ss-city-display" class="text-slate-400">اختر المنطقة أولاً</span>
-                <span class="material-symbols-outlined text-slate-400 transition-transform duration-200" id="ss-city-arrow">expand_more</span>
+                <span id="ss-city-display" class="text-slate-600">اختر المنطقة أولاً</span>
+                <span aria-hidden="true" class="material-symbols-outlined text-slate-500 transition-transform duration-200" id="ss-city-arrow">expand_more</span>
               </button>
               <div class="ss-panel absolute z-50 w-full mt-1 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden hidden"
                    id="ss-city-panel">
                 <div class="p-2 border-b border-slate-100">
                   <div class="relative">
                     <input type="text" id="ss-city-search" autocomplete="off"
-                           placeholder="ابحث عن مدينة…"
+                           placeholder="ابحث عن مدينة…" aria-label="ابحث عن مدينة"
                            class="w-full bg-slate-50 rounded-lg px-3 py-2 pr-8 text-sm border border-slate-200 outline-none focus:border-[#7594ca]"
                            oninput="ssFilter('city')">
-                    <span class="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-base pointer-events-none">search</span>
+                    <span aria-hidden="true" class="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 text-base pointer-events-none">search</span>
                   </div>
                 </div>
-                <ul class="overflow-y-auto py-1 text-sm" style="max-height:210px" id="ss-city-list"></ul>
+                <ul role="listbox" aria-label="المدينة / المحافظة" class="overflow-y-auto py-1 text-sm" style="max-height:210px" id="ss-city-list"></ul>
               </div>
             </div>
             <p class="err-msg" id="err-city">يرجى اختيار المدينة أو المحافظة</p>
@@ -432,21 +432,21 @@
 
           <!-- Neighborhood (free text, optional) -->
           <div>
-            <label class="block text-sm font-semibold text-on-surface-variant mb-2">
+            <label for="f-neighborhood" class="block text-sm font-semibold text-on-surface-variant mb-2">
               الحي <span class="text-error">*</span>
             </label>
             <div class="input-wrap relative" id="wrap-neighborhood">
               <input id="f-neighborhood" name="neighborhood"
-                     class="w-full bg-surface-container-low border-0 rounded-lg px-4 py-3.5 focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-slate-400"
+                     class="w-full bg-surface-container-low border-0 rounded-lg px-4 py-3.5 focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-slate-500"
                      placeholder="مثال: العليا، النزهة…" type="text" maxlength="100"/>
-              <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">holiday_village</span>
+              <span aria-hidden="true" class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">holiday_village</span>
             </div>
             <p class="err-msg" id="err-neighborhood">يرجى كتابة اسم الحي</p>
           </div>
 
           <!-- Gender -->
-          <div class="md:col-span-1 input-wrap" id="wrap-gender">
-            <label class="block text-sm font-semibold text-on-surface-variant mb-3">
+          <div class="md:col-span-1 input-wrap" id="wrap-gender" role="radiogroup" aria-labelledby="lbl-gender">
+            <label id="lbl-gender" class="block text-sm font-semibold text-on-surface-variant mb-3">
               الجنس <span class="text-error">*</span>
             </label>
             <div class="flex gap-6">
@@ -467,8 +467,8 @@
           </div>
 
           <!-- Car Ownership -->
-          <div class="md:col-span-1 input-wrap" id="wrap-has_car">
-            <label class="block text-sm font-semibold text-on-surface-variant mb-3">
+          <div class="md:col-span-1 input-wrap" id="wrap-has_car" role="radiogroup" aria-labelledby="lbl-has_car">
+            <label id="lbl-has_car" class="block text-sm font-semibold text-on-surface-variant mb-3">
               هل تمتلك سيارة؟ <span class="text-error">*</span>
             </label>
             <div class="flex gap-6">
@@ -489,8 +489,8 @@
           </div>
 
           <!-- License -->
-          <div class="md:col-span-1 input-wrap" id="wrap-has_license">
-            <label class="block text-sm font-semibold text-on-surface-variant mb-3">
+          <div class="md:col-span-1 input-wrap" id="wrap-has_license" role="radiogroup" aria-labelledby="lbl-has_license">
+            <label id="lbl-has_license" class="block text-sm font-semibold text-on-surface-variant mb-3">
               هل لديك رخصة قيادة؟ <span class="text-error">*</span>
             </label>
             <div class="flex gap-6">
@@ -511,8 +511,8 @@
           </div>
 
           <!-- English Proficiency -->
-          <div class="md:col-span-1 input-wrap" id="wrap-english">
-            <label class="block text-sm font-semibold text-on-surface-variant mb-3">
+          <div class="md:col-span-1 input-wrap" id="wrap-english" role="radiogroup" aria-labelledby="lbl-english">
+            <label id="lbl-english" class="block text-sm font-semibold text-on-surface-variant mb-3">
               هل تجيد اللغة الإنجليزية؟ <span class="text-error">*</span>
             </label>
             <div class="flex gap-6">
@@ -534,7 +534,7 @@
 
           <!-- Qualification -->
           <div class="md:col-span-1">
-            <label class="block text-sm font-semibold text-on-surface-variant mb-2">
+            <label for="f-qualification" class="block text-sm font-semibold text-on-surface-variant mb-2">
               المؤهل العلمي <span class="text-error">*</span>
             </label>
             <div class="input-wrap" id="wrap-qualification">
@@ -554,15 +554,15 @@
 
           <!-- Specialization (optional) -->
           <div class="md:col-span-2">
-            <label class="block text-sm font-semibold text-on-surface-variant mb-2">
-              التخصص <span class="text-xs text-slate-400 font-normal">(اختياري)</span>
+            <label for="f-specialization" class="block text-sm font-semibold text-on-surface-variant mb-2">
+              التخصص <span class="text-xs text-slate-500 font-normal">(اختياري)</span>
             </label>
             <div class="relative">
               <input id="f-specialization" name="specialization"
-                     class="w-full bg-surface-container-low border-0 rounded-lg px-4 py-3.5 focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-slate-400"
+                     class="w-full bg-surface-container-low border-0 rounded-lg px-4 py-3.5 focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-slate-500"
                      placeholder="مثال: أمن وحماية، إدارة أعمال، تقنية معلومات…"
                      type="text" maxlength="100"/>
-              <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">school</span>
+              <span aria-hidden="true" class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">school</span>
             </div>
           </div>
 
@@ -577,10 +577,10 @@
             <label class="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-outline-variant/30 rounded-xl bg-surface-container-low hover:bg-surface-container transition-colors cursor-pointer group"
                    id="cvLabel">
               <div class="flex flex-col items-center justify-center pt-5 pb-6">
-                <span class="material-symbols-outlined text-primary mb-2 text-3xl group-hover:scale-110 transition-transform">upload_file</span>
-                <p class="text-xs text-slate-500" id="cvName">PDF, DOC, JPG, PNG (الحد الأقصى 5MB)</p>
+                <span aria-hidden="true" class="material-symbols-outlined text-primary mb-2 text-3xl group-hover:scale-110 transition-transform">upload_file</span>
+                <p class="text-xs text-slate-600" id="cvName">PDF, DOC, JPG, PNG (الحد الأقصى 5MB)</p>
               </div>
-              <input class="hidden" name="cv" type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+              <input class="hidden" name="cv" type="file" aria-label="رفع السيرة الذاتية" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
                      required
                      onchange="updateFileName(this,'cvName')"/>
             </label>
@@ -592,10 +592,10 @@
             <label class="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-outline-variant/30 rounded-xl bg-surface-container-low hover:bg-surface-container transition-colors cursor-pointer group"
                    id="idLabel">
               <div class="flex flex-col items-center justify-center pt-5 pb-6">
-                <span class="material-symbols-outlined text-primary mb-2 text-3xl group-hover:scale-110 transition-transform">badge</span>
-                <p class="text-xs text-slate-500" id="idName">JPG, PNG, PDF (صورة واضحة)</p>
+                <span aria-hidden="true" class="material-symbols-outlined text-primary mb-2 text-3xl group-hover:scale-110 transition-transform">badge</span>
+                <p class="text-xs text-slate-600" id="idName">JPG, PNG, PDF (صورة واضحة)</p>
               </div>
-              <input class="hidden" name="id_image" type="file" accept=".jpg,.jpeg,.png,.webp,.pdf"
+              <input class="hidden" name="id_image" type="file" aria-label="رفع صورة الهوية الوطنية" accept=".jpg,.jpeg,.png,.webp,.pdf"
                      required
                      onchange="updateFileName(this,'idName')"/>
             </label>
@@ -607,7 +607,7 @@
           <button class="w-full bg-gradient-to-r from-primary to-primary-container text-white font-bold py-4 rounded-lg flex items-center justify-center gap-3 hover:opacity-90 transition-all shadow-lg active:scale-[0.98]"
                   type="submit" id="submitBtn">
             إرسال الطلب
-            <span class="material-symbols-outlined">send</span>
+            <span aria-hidden="true" class="material-symbols-outlined">send</span>
           </button>
           <p class="text-xs text-center text-slate-400 mt-3">
             <span class="text-error">*</span> الحقول المُشار إليها إلزامية
@@ -736,7 +736,7 @@
     <p class="font-bold mb-5 text-center">روابط سريعة — وظائف الحراسة الأمنية في السعودية</p>
     <div class="flex flex-wrap justify-center gap-2 mb-8">
       <% (typeof cities !== 'undefined' && cities ? cities : []).forEach(function (c) { %>
-      <a href="/jobs/<%= c.slug %>" class="text-xs bg-white/10 hover:bg-white/20 rounded-full px-3 py-1.5 transition">وظائف حراسة <%= c.city %></a>
+      <a href="/jobs/<%= c.slug %>" class="text-xs bg-white/10 hover:bg-white/20 rounded-full px-3.5 py-2 inline-flex items-center min-h-[40px] transition">وظائف حراسة <%= c.city %></a>
       <% }); %>
     </div>
     <!-- روابط التواصل الاجتماعي -->
@@ -787,11 +787,12 @@ function ssRenderList(id, items) {
     return;
   }
   list.innerHTML = items.map(item => `
-    <li class="ss-option px-4 py-2.5 cursor-pointer flex items-center justify-between
+    <li role="option" aria-selected="${hidden.value === item ? 'true' : 'false'}"
+        class="ss-option px-4 py-2.5 cursor-pointer flex items-center justify-between
                ${hidden.value === item ? 'ss-selected' : ''}"
         data-value="${item}" onclick="ssSelect('${id}', this.dataset.value)">
       <span>${item}</span>
-      ${hidden.value === item ? '<span class="material-symbols-outlined text-[#001736] text-base">check</span>' : ''}
+      ${hidden.value === item ? '<span aria-hidden="true" class="material-symbols-outlined text-[#001736] text-base">check</span>' : ''}
     </li>`).join('');
 }
 
@@ -808,6 +809,8 @@ function ssOpen(id) {
   const search = document.getElementById(`ss-${id}-search`);
   panel.classList.remove('hidden');
   arrow.style.transform = 'rotate(180deg)';
+  const trg = document.getElementById(`ss-${id}-trigger`);
+  if (trg) trg.setAttribute('aria-expanded', 'true');
   search.value = '';
   ssFilter(id); // reset filter
   search.focus();
@@ -819,6 +822,8 @@ function ssClose(id) {
   const arrow = document.getElementById(`ss-${id}-arrow`);
   if (panel) panel.classList.add('hidden');
   if (arrow) arrow.style.transform = '';
+  const trg = document.getElementById(`ss-${id}-trigger`);
+  if (trg) trg.setAttribute('aria-expanded', 'false');
   if (SS_ACTIVE === id) SS_ACTIVE = null;
 }
 
@@ -840,7 +845,7 @@ function ssSelect(id, value) {
   const display = document.getElementById(`ss-${id}-display`);
   hidden.value  = value;
   display.textContent = value;
-  display.classList.remove('text-slate-400');
+  display.classList.remove('text-slate-600');
   display.classList.add('text-[#191c1e]');
   ssClose(id);
   clearError(id);
@@ -852,7 +857,7 @@ function ssSelect(id, value) {
     document.getElementById('f-city').value = '';
     const cityDisplay = document.getElementById('ss-city-display');
     cityDisplay.textContent = 'اختر المدينة / المحافظة';
-    cityDisplay.classList.add('text-slate-400');
+    cityDisplay.classList.add('text-slate-600');
     cityDisplay.classList.remove('text-[#191c1e]');
     clearError('city');
     // تفعيل قائمة المدن
@@ -892,17 +897,8 @@ function setupNumericOnly(inputId) {
     }
     clearError(inputId.replace('f-', ''));
   });
-
-  // لصق النص — نفس التحويل
-  el.addEventListener('paste', function (e) {
-    e.preventDefault();
-    const pasted = (e.clipboardData || window.clipboardData).getData('text');
-    const cleaned = toEnglish(pasted).replace(/\D/g, '');
-    const start = this.selectionStart, end = this.selectionEnd;
-    this.value = this.value.slice(0, start) + cleaned + this.value.slice(end);
-    this.value = this.value.slice(0, parseInt(this.maxLength) || 999);
-    clearError(inputId.replace('f-', ''));
-  });
+  // اللصق مسموح ولا يُمنع (تدقيق paste-preventing-inputs): مستمع input أعلاه
+  // يحوّل الأرقام العربية ويزيل غير الأرقام تلقائياً بعد اللصق مباشرةً.
 }
 
 // ─── إظهار خطأ ──────────────────────────────────────────────────────────────
@@ -1087,7 +1083,7 @@ document.getElementById('applyForm').addEventListener('submit', function (e) {
   // ── كل شيء صحيح: أرسل الفورم
   const btn = document.getElementById('submitBtn');
   btn.disabled = true;
-  btn.innerHTML = '<span class="material-symbols-outlined" style="animation:spin 1s linear infinite">refresh</span> جارٍ الإرسال...';
+  btn.innerHTML = '<span aria-hidden="true" class="material-symbols-outlined" style="animation:spin 1s linear infinite">refresh</span> جارٍ الإرسال...';
   this.submit();
 });
 
