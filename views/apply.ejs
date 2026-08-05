@@ -768,7 +768,9 @@
 let SA_DATA = [];
 let SS_ACTIVE = null; // الـ panel المفتوح حالياً
 
-fetch('/data/sa-regions.json')
+// ?v= لكسر الكاش (المتصفح + CDN يحتفظان بالملف ليوم أو أكثر)
+// عند أي تعديل على المدن في routes/regions.js ارفع الرقم
+fetch('/data/sa-regions.json?v=2')
   .then(r => r.json())
   .then(data => {
     SA_DATA = data;

@@ -20,7 +20,9 @@ const SA_REGIONS = [
 
 // GET /data/sa-regions.json
 router.get('/sa-regions.json', (req, res) => {
-  res.setHeader('Cache-Control', 'public, max-age=86400'); // cache لمدة يوم
+  // cache لمدة يوم — الـ CDN قد يحتفظ به أطول، لذلك views/apply.ejs يطلبه بـ ?v=N
+  // أي تعديل على المدن أعلاه يستوجب رفع رقم v هناك وإلا لن يظهر للزوار
+  res.setHeader('Cache-Control', 'public, max-age=86400');
   res.json(SA_REGIONS);
 });
 
