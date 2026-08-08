@@ -9,6 +9,8 @@ const requireManager = require('../middleware/requireManager');
 const usersRouter    = require('./users');
 const SA_REGIONS     = require('./regions').SA_REGIONS;
 const { checkExternal } = require('../utils/extCheck');
+const google         = require('../utils/google');   // لا يرمي عند التحميل — كل تحقق كسول
+const crypto         = require('crypto');
 
 // ─── Rate Limiter — تسجيل الدخول فقط ─────────────────────────────────────────
 const loginLimiter = rateLimit({
@@ -87,6 +89,46 @@ router.get('/logout', async (req, res) => {
   req.session.destroy(() => res.redirect('/admin/login'));
 });
 
+// ─── Google OAuth callback ───────────────────────────────────────────────────
+//  ⚠️ يجب أن يبقى فوق requireAuth: الكوكي sameSite:'strict' لا تُرسَل في العودة
+//     من accounts.google.com (تنقّل cross-site)، فلو كان خلف الحماية لارتد
+//     المستخدم إلى صفحة الدخول وضاع الـ code. الحماية هنا قيمة state أحادية
+//     الاستخدام محفوظة في قاعدة البيانات — وهي أقوى من فحص الجلسة الضمني.
+const googleOauthLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 15,
+  standardHeaders: true, legacyHeaders: false,
+});
+
+router.get('/google/callback', googleOauthLimiter, async (req, res) => {
+  try {
+    if (req.query.error) return res.redirect('/admin/settings?google=denied');
+
+    const s = await db.getSettings();
+    const stored = String(s.google_oauth_state || '');
+    // استهلاك أحادي: نُفرّغ القيمة قبل أي عملية أخرى
+    await db.run("UPDATE settings SET value = '' WHERE `key` = 'google_oauth_state'");
+
+    const [nonce, expiry] = stored.split('.');
+    const given = String(req.query.state || '');
+    const okLen = nonce && given.length === nonce.length;
+    const okVal = okLen && crypto.timingSafeEqual(Buffer.from(nonce), Buffer.from(given));
+    if (!okVal || !expiry || Date.now() > Number(expiry)) {
+      return res.redirect('/admin/settings?google=state');
+    }
+
+    const tokens = await google.exchangeCode(String(req.query.code || ''));
+    const email  = await google.fetchAccountEmail(tokens.access_token);
+    await google.saveConnection({ refreshToken: tokens.refresh_token, email });
+
+    await db.audit(null, email || 'google', 'google_connect', 'settings', null, null, email, req.ip);
+    res.redirect('/admin/settings?google=connected');
+  } catch (err) {
+    console.error('[Google callback]', err.message);
+    const code = /رمز تحديث/.test(err.message) ? 'norefresh' : 'error';
+    res.redirect(`/admin/settings?google=${code}`);
+  }
+});
+
 // ─── All routes below require auth ───────────────────────────────────────────
 router.use(requireAuth);
 
@@ -125,6 +167,47 @@ router.use((req, res, next) => {
 
 // إدارة المستخدمين — للمديرين فقط
 router.use('/users', requireManager, usersRouter);
+
+// ─── مسارات المقابلات — تُركَّب داخل try/catch ────────────────────────────────
+//  عزل: حتى خطأ في تحميل ملف المقابلات لا يمنع بقية لوحة التحكم من العمل.
+try {
+  router.use(require('./interviews'));
+} catch (e) {
+  console.error('[Interviews] تعذّر تحميل مسارات المقابلات — بقية اللوحة تعمل:', e.message);
+}
+
+// ─── ربط/فصل حساب Google (للمدير فقط) ───────────────────────────────────────
+router.get('/google/connect', requireManager, googleOauthLimiter, async (req, res) => {
+  try {
+    if (!google.isConfigured()) return res.redirect('/admin/settings?google=notconfigured');
+    const nonce = crypto.randomBytes(16).toString('hex');
+    await db.run('UPDATE settings SET value = ? WHERE `key` = ?',
+      [`${nonce}.${Date.now() + 10 * 60 * 1000}`, 'google_oauth_state']);
+    res.redirect(google.buildAuthUrl(nonce));
+  } catch (err) {
+    console.error('[Google connect]', err.message);
+    res.redirect('/admin/settings?google=error');
+  }
+});
+
+router.post('/google/disconnect', requireManager, async (req, res) => {
+  try {
+    await google.disconnect();
+    await db.audit(req.session.adminId, req.session.adminUser, 'google_disconnect', 'settings', null, null, null, req.ip);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[Google disconnect]', err.message);
+    res.status(500).json({ error: 'تعذّر فصل الاتصال' });
+  }
+});
+
+router.get('/google/status', requireManager, async (req, res) => {
+  try {
+    res.json(await google.getConnection());
+  } catch (err) {
+    res.status(500).json({ error: 'تعذّر قراءة حالة الاتصال' });
+  }
+});
 
 // Root redirect
 router.get('/', (req, res) => res.redirect('/admin/dashboard'));
@@ -546,18 +629,54 @@ router.get('/applicants/:id', async (req, res) => {
       checkExternal(applicant.id, applicant.id_number).catch(() => {});
     }
 
-    const [notes, activity, priorApps] = await Promise.all([
+    // ⚠️ عزل: استعلامات المقابلات تحمل .catch خاصاً بها — لو غاب جدول interviews
+    //    أو تعطّل استعلامه تظهر الصفحة كاملة بلا بطاقة المقابلة، ولا تسقط بـ 500.
+    const [notes, activity, priorApps, ivRows, ivUsers, settings] = await Promise.all([
       db.all('SELECT * FROM applicant_notes WHERE applicant_id = ? ORDER BY created_at DESC', [applicant.id]),
       db.all('SELECT * FROM applicant_activity WHERE applicant_id = ? ORDER BY created_at DESC', [applicant.id]),
       // تقديمات سابقة/أخرى بنفس رقم الهوية (نظرة كاملة للمرشّح) — لا تشمل هذا الطلب
       applicant.id_number
         ? db.all('SELECT id, status, rating, source, created_at FROM applicants WHERE id_number = ? AND id != ? ORDER BY created_at DESC', [applicant.id_number, applicant.id])
         : Promise.resolve([]),
+      db.INTERVIEWS_SCHEMA_OK
+        ? db.all('SELECT * FROM interviews WHERE applicant_id = ? ORDER BY start_at DESC', [applicant.id]).catch(() => [])
+        : Promise.resolve([]),
+      db.all("SELECT id, username, full_name FROM admin_users WHERE is_active = 1 ORDER BY COALESCE(full_name, username) ASC").catch(() => []),
+      db.getSettings().catch(() => ({})),
     ]);
+
+    // بناء بيانات بطاقة المقابلة — أي خطأ هنا يُلغي البطاقة فقط
+    let interviewsEnabled = false, activeInterview = null, waUrl = '', googleConnected = false;
+    try {
+      interviewsEnabled = db.INTERVIEWS_SCHEMA_OK && settings.interviews_enabled === 'true';
+      googleConnected   = Boolean(settings.google_refresh_token);
+      const S = require('../utils/slots');
+      const { buildWhatsAppText, buildWaUrl } = require('../utils/interviewMsg');
+      const nameByEmail = Object.fromEntries(ivUsers.map(u => [u.username, u.full_name || u.username]));
+      const live = ivRows.find(r => r.status === 'scheduled') || ivRows.find(r => r.status === 'pending');
+      if (live) {
+        const startMs = new Date(live.start_at).getTime();
+        activeInterview = {
+          id: live.id, startMs, startLocal: live.start_local,
+          dateLabel: S.arabicDate(startMs), timeLabel: S.localTime(startMs),
+          durationMin: live.duration_min, meetLink: live.meet_link, htmlLink: live.html_link,
+          status: live.status, pendingLink: !live.meet_link,
+          interviewers: String(live.interviewers || '').split(',').filter(Boolean)
+            .map(e => ({ email: e, name: nameByEmail[e] || e })),
+        };
+        waUrl = buildWaUrl(applicant.phone,
+          buildWhatsAppText(applicant, activeInterview, { companyName: settings.company_name }));
+      }
+    } catch (e) {
+      console.error('[Interview] card build:', e.message);
+      activeInterview = null;
+    }
 
     res.render('applicant-detail', {
       applicant, notes, activity, priorApps,
-      STATUS_META, NOTE_TYPES, adminUser: req.session.adminUser
+      STATUS_META, NOTE_TYPES, adminUser: req.session.adminUser,
+      interviewsEnabled, googleConnected, activeInterview, waUrl,
+      interviewerList: ivUsers.filter(u => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(u.username || '')),
     });
   } catch (err) {
     console.error('[Applicant Detail]', err.message);
@@ -858,9 +977,28 @@ router.delete('/applicants/:id', requireManager, async (req, res) => {
   try {
     const applicant = await db.get('SELECT full_name FROM applicants WHERE id = ?', [req.params.id]);
     if (!applicant) return res.status(404).json({ error: 'غير موجود' });
+
+    // الـ FK يحذف صفوف المقابلات تلقائياً (CASCADE) لكنه يترك أحداث Google يتيمة —
+    // نحاول حذفها أولاً بأفضل جهد. ⚠️ فشل Google لا يمنع حذف المتقدم أبداً.
+    let removedEvents = 0;
+    if (db.INTERVIEWS_SCHEMA_OK) {
+      try {
+        const live = await db.all(
+          "SELECT id, google_event_id FROM interviews WHERE applicant_id = ? AND status = 'scheduled' AND google_event_id IS NOT NULL",
+          [req.params.id]
+        );
+        for (const iv of live) {
+          try { await google.deleteEvent(iv.google_event_id); removedEvents++; }
+          catch (e) { console.error(`[Interview] تعذّر حذف حدث ${iv.google_event_id} عند حذف المتقدم:`, e.message); }
+        }
+      } catch (e) {
+        console.error('[Interview] تنظيف أحداث Google قبل الحذف:', e.message);
+      }
+    }
+
     await db.run('DELETE FROM applicants WHERE id = ?', [req.params.id]);
     await db.audit(req.session.adminId, req.session.adminUser, 'applicant_delete', 'applicant',
-      req.params.id, applicant.full_name, null, req.ip);
+      req.params.id, applicant.full_name, removedEvents ? `حُذفت ${removedEvents} مقابلة من تقويم Google` : null, req.ip);
     res.json({ ok: true });
   } catch (err) {
     console.error('[Applicant DELETE]', err.message);
@@ -873,37 +1011,86 @@ router.delete('/applicants/:id', requireManager, async (req, res) => {
 router.get('/settings', requireManager, async (req, res) => {
   try {
     const settings = await db.getSettings();
-    res.render('settings', { settings, success: req.query.saved, adminUser: req.session.adminUser });
+    // لا يُمرَّر السر إلى القالب إطلاقاً (حتى لا يسرّبه قالب مستقبلي بالخطأ)
+    const hasToken = Boolean(settings.google_refresh_token);
+    delete settings.google_refresh_token;
+    delete settings.google_oauth_state;
+
+    res.render('settings', {
+      settings, success: req.query.saved, adminUser: req.session.adminUser,
+      googleMsg: req.query.google || '',
+      googleConn: {
+        configured:  google.isConfigured(),
+        connected:   hasToken,
+        email:       settings.google_account_email || '',
+        connectedAt: settings.google_connected_at || '',
+        status:      settings.google_token_status || '',
+      },
+      interviewsReady: db.INTERVIEWS_SCHEMA_OK,
+      settingsError: req.query.err || '',
+    });
   } catch (err) {
     console.error('[Settings GET]', err.message);
     res.status(500).send('خطأ في تحميل الإعدادات');
   }
 });
 
+// التحقق من قيم قواعد المقابلات — يُرجع رسالة خطأ أو null
+function validateInterviewSettings(b) {
+  if (b.interview_duration !== undefined && ![10, 15, 20, 30].includes(parseInt(b.interview_duration, 10))) {
+    return 'مدة المقابلة يجب أن تكون 10 أو 15 أو 20 أو 30 دقيقة';
+  }
+  if (b.interview_work_days !== undefined) {
+    const days = String(b.interview_work_days).split(',').filter(x => x !== '');
+    if (!days.length) return 'اختر يوم عمل واحداً على الأقل';
+    if (days.some(d => !/^[0-6]$/.test(d))) return 'أيام العمل غير صالحة';
+  }
+  const HH = /^\d{1,2}:\d{2}$/;
+  if (b.interview_start_hour !== undefined && !HH.test(b.interview_start_hour)) return 'صيغة ساعة البداية غير صالحة';
+  if (b.interview_end_hour   !== undefined && !HH.test(b.interview_end_hour))   return 'صيغة ساعة النهاية غير صالحة';
+  if (b.interview_start_hour && b.interview_end_hour) {
+    const toMin = t => { const [h, m] = String(t).split(':').map(Number); return h * 60 + m; };
+    if (toMin(b.interview_end_hour) <= toMin(b.interview_start_hour)) return 'ساعة النهاية يجب أن تكون بعد ساعة البداية';
+  }
+  const range = (v, lo, hi) => { const n = parseInt(v, 10); return Number.isFinite(n) && n >= lo && n <= hi; };
+  if (b.interview_buffer       !== undefined && !range(b.interview_buffer, 0, 60))        return 'الفاصل بين المقابلات: 0 إلى 60 دقيقة';
+  if (b.interview_lead_min     !== undefined && !range(b.interview_lead_min, 0, 10080))   return 'أقل مهلة للحجز: 0 إلى 10080 دقيقة';
+  if (b.interview_horizon_days !== undefined && !range(b.interview_horizon_days, 1, 60))  return 'عدد الأيام المعروضة: 1 إلى 60 يوماً';
+  return null;
+}
+
 router.post('/settings', requireManager, async (req, res) => {
   try {
-    const allowed = ['phone', 'whatsapp', 'email', 'address', 'maps_url', 'company_name', 'accepting_applications'];
+    // القسم يحدد المفاتيح المسموح كتابتها — حتى لا يمس نموذجٌ مفاتيحَ نموذج آخر
+    // (مثلاً: حفظ قواعد المقابلات كان سيُطفئ accepting_applications بالخطأ).
+    const section = req.body.form_section === 'interviews' ? 'interviews' : 'contact';
     const updates = [];
+    const set = (key, value) => updates.push(db.run(
+      'UPDATE settings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE `key` = ?', [value, key]
+    ));
 
-    for (const key of allowed) {
-      if (req.body[key] !== undefined) {
-        updates.push(db.run(
-          'UPDATE settings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE `key` = ?',
-          [req.body[key], key]
-        ));
+    if (section === 'contact') {
+      const allowed = ['phone', 'whatsapp', 'email', 'address', 'maps_url', 'company_name', 'accepting_applications'];
+      for (const key of allowed) {
+        if (req.body[key] !== undefined) set(key, req.body[key]);
       }
-    }
-    // checkbox — unchecked sends nothing, so default to false
-    if (req.body.accepting_applications === undefined) {
-      updates.push(db.run(
-        'UPDATE settings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE `key` = ?',
-        ['false', 'accepting_applications']
-      ));
+      // checkbox — unchecked sends nothing, so default to false
+      if (req.body.accepting_applications === undefined) set('accepting_applications', 'false');
+    } else {
+      const invalid = validateInterviewSettings(req.body);
+      if (invalid) return res.redirect('/admin/settings?err=' + encodeURIComponent(invalid));
+
+      const allowed = ['interview_duration', 'interview_work_days', 'interview_start_hour',
+                       'interview_end_hour', 'interview_buffer', 'interview_lead_min', 'interview_horizon_days'];
+      for (const key of allowed) {
+        if (req.body[key] !== undefined) set(key, String(req.body[key]));
+      }
+      set('interviews_enabled', req.body.interviews_enabled === undefined ? 'false' : 'true');
     }
 
     await Promise.all(updates);
-    await db.audit(req.session.adminId, req.session.adminUser, 'settings_update', 'settings', null, null, null, req.ip);
-    res.redirect('/admin/settings?saved=1');
+    await db.audit(req.session.adminId, req.session.adminUser, 'settings_update', 'settings', null, null, section, req.ip);
+    res.redirect(`/admin/settings?saved=1${section === 'interviews' ? '#interviews' : ''}`);
   } catch (err) {
     console.error('[Settings POST]', err.message);
     res.status(500).send('خطأ في حفظ الإعدادات');

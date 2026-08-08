@@ -53,6 +53,36 @@
       <%= passwordError %>
     </div>
     <% } %>
+    <% if (typeof settingsError !== 'undefined' && settingsError) { %>
+    <div class="bg-red-50 border border-red-200 text-red-700 rounded-xl px-5 py-3.5 flex items-center gap-2 text-sm">
+      <span class="material-symbols-outlined text-base">error</span>
+      <%= settingsError %>
+    </div>
+    <% } %>
+    <%
+      // رسائل ربط Google — أصناف Tailwind مكتوبة حرفياً (لا تركيب ديناميكي) حتى لا تعتمد على إعادة بناء CSS
+      const GOOGLE_MSGS = {
+        connected:     { ok: true,  text: 'تم ربط حساب Google بنجاح.' },
+        disconnected:  { ok: true,  text: 'تم فصل حساب Google.' },
+        denied:        { ok: false, text: 'أُلغيت عملية الربط من صفحة Google.' },
+        state:         { ok: false, text: 'انتهت صلاحية طلب الربط أو تعذّر التحقق منه — أعد المحاولة.' },
+        norefresh:     { ok: false, text: 'لم يُرجع Google رمز تحديث — أزل صلاحية التطبيق من حساب Google ثم أعد الربط.' },
+        notconfigured: { ok: false, text: 'متغيرات Google غير مكتملة في ملف البيئة.' },
+        error:         { ok: false, text: 'تعذّر إتمام الربط مع Google — راجع سجل الخادم.' },
+      };
+      const gm = (typeof googleMsg !== 'undefined' && GOOGLE_MSGS[googleMsg]) ? GOOGLE_MSGS[googleMsg] : null;
+    %>
+    <% if (gm && gm.ok) { %>
+    <div class="bg-green-50 border border-green-200 text-green-700 rounded-xl px-5 py-3.5 flex items-center gap-2 text-sm">
+      <span class="material-symbols-outlined text-base">check_circle</span>
+      <%= gm.text %>
+    </div>
+    <% } else if (gm) { %>
+    <div class="bg-red-50 border border-red-200 text-red-700 rounded-xl px-5 py-3.5 flex items-center gap-2 text-sm">
+      <span class="material-symbols-outlined text-base">error</span>
+      <%= gm.text %>
+    </div>
+    <% } %>
 
     <!-- Contact Info -->
     <div class="bg-white rounded-2xl p-7">
@@ -63,6 +93,7 @@
       <p class="text-xs text-[#43474f] mb-6">تظهر هذه البيانات في صفحة التأكيد التي يراها المتقدم بعد التسجيل.</p>
 
       <form method="POST" action="/admin/settings" class="space-y-5">
+        <input type="hidden" name="form_section" value="contact">
         <div class="field">
           <label class="block text-xs text-[#43474f] font-semibold uppercase tracking-wider mb-1.5">اسم الشركة</label>
           <input type="text" name="company_name" value="<%= settings.company_name %>" placeholder="Artal Security Guards">
@@ -139,6 +170,166 @@
       </form>
     </div>
 
+    <!-- Google Meet integration -->
+    <% const gc = (typeof googleConn !== 'undefined' && googleConn) ? googleConn : { configured:false, connected:false, email:'', connectedAt:'', status:'' }; %>
+    <div class="bg-white rounded-2xl p-7" id="google">
+      <h2 class="font-bold text-[#001736] text-base mb-1 flex items-center gap-2">
+        <span class="material-symbols-outlined text-lg">videocam</span>
+        تكامل Google Meet
+      </h2>
+      <p class="text-xs text-[#43474f] mb-6">
+        يُربط حساب Google Workspace واحد مخصص للمقابلات — تُنشأ كل الاجتماعات في تقويمه وتُقرأ منه الأوقات المشغولة.
+      </p>
+
+      <% if (typeof interviewsReady !== 'undefined' && !interviewsReady) { %>
+      <div class="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-xs mb-5 flex items-start gap-2">
+        <span class="material-symbols-outlined text-base">error</span>
+        <span>تعذّر تهيئة جدول المقابلات في قاعدة البيانات — الميزة معطّلة. راجع سجل الخادم (بقية النظام يعمل طبيعياً).</span>
+      </div>
+      <% } %>
+
+      <% if (!gc.configured) { %>
+      <div class="bg-[#f8f9fb] border border-[#e0e3e5] rounded-xl px-4 py-4 text-xs text-[#43474f] leading-relaxed">
+        <div class="font-semibold text-[#001736] mb-2">الإعداد غير مكتمل</div>
+        أضف هذه المتغيرات إلى ملف <span dir="ltr" class="font-mono">.env</span> ثم أعد تشغيل الخادم:
+        <ul class="mt-2 space-y-1 font-mono text-[11px]" dir="ltr">
+          <li>GOOGLE_CLIENT_ID</li>
+          <li>GOOGLE_CLIENT_SECRET</li>
+          <li>GOOGLE_REDIRECT_URI</li>
+          <li>GOOGLE_ENC_KEY</li>
+        </ul>
+      </div>
+      <% } else if (!gc.connected) { %>
+      <a href="/admin/google/connect"
+         class="w-full bg-[#001736] text-white font-bold py-3.5 rounded-xl hover:bg-[#002b5b] transition-colors flex items-center justify-center gap-2">
+        <span class="material-symbols-outlined text-base">link</span>
+        ربط حساب Google
+      </a>
+      <p class="text-[10px] text-[#7594ca] mt-2.5 text-center">سجّل الدخول بالحساب المخصص للمقابلات (وليس بحسابك الشخصي).</p>
+      <% } else { %>
+        <% if (gc.status === 'invalid') { %>
+        <div class="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-xs mb-4 flex items-start gap-2">
+          <span class="material-symbols-outlined text-base">error</span>
+          <span>انتهت صلاحية الربط بحساب Google — أعد الربط لاستئناف الجدولة. المقابلات المجدولة وروابطها تبقى تعمل.</span>
+        </div>
+        <% } %>
+        <div class="flex items-center justify-between p-4 bg-[#f8f9fb] rounded-xl mb-4">
+          <div>
+            <div class="text-sm font-semibold text-[#001736]" dir="ltr"><%= gc.email || 'حساب Google' %></div>
+            <div class="text-xs text-[#43474f] mt-0.5">
+              <% if (gc.connectedAt) { %>مُتصل منذ <%= fmtDateTime(gc.connectedAt) %><% } else { %>مُتصل<% } %>
+            </div>
+          </div>
+          <span class="text-[11px] font-semibold px-2.5 py-1 rounded-full <%= gc.status === 'invalid' ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700' %>">
+            <%= gc.status === 'invalid' ? 'يحتاج إعادة ربط' : 'متصل' %>
+          </span>
+        </div>
+        <div class="flex gap-3">
+          <a href="/admin/google/connect"
+             class="flex-1 border border-[#e0e3e5] text-[#001736] font-semibold py-3 rounded-xl hover:bg-[#f8f9fb] transition-colors flex items-center justify-center gap-2 text-sm">
+            <span class="material-symbols-outlined text-base">refresh</span>
+            إعادة الربط
+          </a>
+          <button type="button" onclick="disconnectGoogle()"
+                  class="flex-1 border border-red-200 text-red-600 font-semibold py-3 rounded-xl hover:bg-red-50 transition-colors flex items-center justify-center gap-2 text-sm">
+            <span class="material-symbols-outlined text-base">link_off</span>
+            فصل الاتصال
+          </button>
+        </div>
+      <% } %>
+    </div>
+
+    <!-- Interview scheduling rules -->
+    <div class="bg-white rounded-2xl p-7" id="interviews">
+      <h2 class="font-bold text-[#001736] text-base mb-1 flex items-center gap-2">
+        <span class="material-symbols-outlined text-lg">event_available</span>
+        قواعد مواعيد المقابلات
+      </h2>
+      <p class="text-xs text-[#43474f] mb-6">تحدد الأوقات التي تظهر للموظف عند جدولة مقابلة مع متقدم.</p>
+
+      <form method="POST" action="/admin/settings" class="space-y-5" id="iv-rules-form">
+        <input type="hidden" name="form_section" value="interviews">
+
+        <div class="flex items-center justify-between p-4 bg-[#f8f9fb] rounded-xl">
+          <div>
+            <div class="text-sm font-semibold text-[#001736]">تفعيل ميزة المقابلات</div>
+            <div class="text-xs text-[#43474f] mt-0.5">عند الإيقاف تختفي أزرار الجدولة فوراً — ولا يتأثر أي جزء آخر من النظام</div>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" name="interviews_enabled" value="true" class="sr-only peer"
+                   <%= settings.interviews_enabled === 'true' ? 'checked' : '' %>>
+            <div class="w-12 h-6 bg-[#e0e3e5] peer-focus:outline-none rounded-full peer
+                        peer-checked:after:translate-x-full peer-checked:after:border-white
+                        after:content-[''] after:absolute after:top-[2px] after:right-[2px]
+                        after:bg-white after:border-gray-300 after:border after:rounded-full
+                        after:h-5 after:w-5 after:transition-all peer-checked:bg-[#001736]"></div>
+          </label>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div class="field">
+            <label class="block text-xs text-[#43474f] font-semibold uppercase tracking-wider mb-1.5">مدة المقابلة</label>
+            <select name="interview_duration" style="width:100%;background:white;border:1px solid #e0e3e5;border-radius:.75rem;padding:.75rem 1rem;font-size:.875rem;outline:none;">
+              <% [10,15,20,30].forEach(function(d){ %>
+              <option value="<%= d %>" <%= String(settings.interview_duration || '15') === String(d) ? 'selected' : '' %>><%= d %> دقيقة</option>
+              <% }); %>
+            </select>
+          </div>
+          <div class="field">
+            <label class="block text-xs text-[#43474f] font-semibold uppercase tracking-wider mb-1.5">عدد الأيام المعروضة</label>
+            <input type="number" name="interview_horizon_days" min="1" max="60" value="<%= settings.interview_horizon_days || '14' %>">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs text-[#43474f] font-semibold uppercase tracking-wider mb-2">أيام العمل</label>
+          <%
+            const IV_DAYS = ['الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+            const ivSelected = String(settings.interview_work_days || '0,1,2,3,4,6').split(',');
+          %>
+          <div class="flex flex-wrap gap-2" id="iv-days">
+            <% IV_DAYS.forEach(function(name, i){ var on = ivSelected.indexOf(String(i)) !== -1; %>
+            <button type="button" data-day="<%= i %>" data-on="<%= on ? '1' : '0' %>"
+                    style="border-radius:9999px;padding:.4rem .9rem;font-size:.8rem;font-weight:600;border:1px solid <%= on ? '#001736' : '#e0e3e5' %>;background:<%= on ? '#001736' : '#fff' %>;color:<%= on ? '#fff' : '#43474f' %>;cursor:pointer;">
+              <%= name %>
+            </button>
+            <% }); %>
+          </div>
+          <!-- خانات الاختيار غير المؤشَّرة لا تُرسَل، فنستخدم حقلاً مخفياً يحمل القيمة كاملة -->
+          <input type="hidden" name="interview_work_days" id="iv-days-value" value="<%= ivSelected.join(',') %>">
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div class="field">
+            <label class="block text-xs text-[#43474f] font-semibold uppercase tracking-wider mb-1.5">من الساعة</label>
+            <input type="time" name="interview_start_hour" value="<%= settings.interview_start_hour || '09:00' %>" dir="ltr">
+          </div>
+          <div class="field">
+            <label class="block text-xs text-[#43474f] font-semibold uppercase tracking-wider mb-1.5">إلى الساعة</label>
+            <input type="time" name="interview_end_hour" value="<%= settings.interview_end_hour || '17:00' %>" dir="ltr">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div class="field">
+            <label class="block text-xs text-[#43474f] font-semibold uppercase tracking-wider mb-1.5">فاصل بين المقابلات (دقيقة)</label>
+            <input type="number" name="interview_buffer" min="0" max="60" value="<%= settings.interview_buffer || '0' %>">
+          </div>
+          <div class="field">
+            <label class="block text-xs text-[#43474f] font-semibold uppercase tracking-wider mb-1.5">أقل مهلة قبل الحجز (دقيقة)</label>
+            <input type="number" name="interview_lead_min" min="0" max="10080" value="<%= settings.interview_lead_min || '120' %>">
+            <p class="text-[10px] text-[#7594ca] mt-1.5">مثال: 120 = لا يمكن حجز موعد خلال الساعتين القادمتين</p>
+          </div>
+        </div>
+
+        <button type="submit"
+                class="w-full bg-[#001736] text-white font-bold py-3.5 rounded-xl hover:bg-[#002b5b] transition-colors flex items-center justify-center gap-2">
+          <span class="material-symbols-outlined text-base">save</span>
+          حفظ قواعد المواعيد
+        </button>
+      </form>
+    </div>
+
     <!-- Change Password -->
     <div class="bg-white rounded-2xl p-7">
       <h2 class="font-bold text-[#001736] text-base mb-1 flex items-center gap-2">
@@ -196,5 +387,47 @@
 
   </main>
 </div>
+
+<script>
+  // ─── شرائح أيام العمل — تُحدّث الحقل المخفي (خانة غير مؤشَّرة لا تُرسَل أصلاً)
+  (function () {
+    const wrap  = document.getElementById('iv-days');
+    const field = document.getElementById('iv-days-value');
+    if (!wrap || !field) return;
+
+    function paint(btn, on) {
+      btn.dataset.on = on ? '1' : '0';
+      btn.style.background  = on ? '#001736' : '#fff';
+      btn.style.color       = on ? '#fff' : '#43474f';
+      btn.style.borderColor = on ? '#001736' : '#e0e3e5';
+    }
+    function sync() {
+      const days = [...wrap.querySelectorAll('button[data-day]')]
+        .filter(b => b.dataset.on === '1')
+        .map(b => b.dataset.day);
+      field.value = days.join(',');
+    }
+    wrap.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-day]');
+      if (!btn) return;
+      paint(btn, btn.dataset.on !== '1');
+      sync();
+    });
+
+    const form = document.getElementById('iv-rules-form');
+    if (form) form.addEventListener('submit', (e) => {
+      sync();
+      if (!field.value) { e.preventDefault(); alert('اختر يوم عمل واحداً على الأقل'); }
+    });
+  })();
+
+  function disconnectGoogle() {
+    if (!confirm('فصل حساب Google؟ لن تتمكن من جدولة مقابلات جديدة حتى تعيد الربط.')) return;
+    fetch('/admin/google/disconnect', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+      .then(r => r.json())
+      .then(d => { location.href = d.ok ? '/admin/settings?google=disconnected' : '/admin/settings?google=error'; })
+      .catch(() => { location.href = '/admin/settings?google=error'; });
+  }
+</script>
 </body>
 </html>

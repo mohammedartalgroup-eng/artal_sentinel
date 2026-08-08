@@ -147,3 +147,9 @@ uploads/id_images/*
 .env
 # سكريبتات التطوير المحلي — لا ترفع للسيرفر أبداً
 scripts/
+# مخلّفات نظام macOS
+.DS_Store
+**/.DS_Store
+# أدوات المساعدة المحلية (نسخ worktrees وإعدادات محرر — ~1MB بلا فائدة للخادم)
+.claude/
+.qodo/

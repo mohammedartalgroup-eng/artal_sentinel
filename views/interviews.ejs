@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>المقابلات — أرتال Sentinel</title>
+  <link rel="icon" type="image/png" href="/images/icon.png">
+  <link rel="stylesheet" href="/css/tailwind.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" onload="this.onload=null;this.rel='stylesheet'"><noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&family=Inter:wght@400;500;600&display=swap"></noscript>
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=block" onload="this.onload=null;this.rel='stylesheet'"><noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=block"></noscript>
+  <style>
+    body { font-family: 'Inter', sans-serif; background: #f2f4f6; }
+    h1,h2,h3 { font-family: 'Manrope', sans-serif; }
+    .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+    select, input[type="text"] {
+      background: white; border: 1px solid #e0e3e5; border-radius: 0.75rem;
+      padding: 0.5rem 0.75rem; font-size: 0.875rem; width: 100%;
+      outline: none; transition: border-color 0.15s;
+    }
+    select:focus, input:focus { border-color: #7594ca; }
+    .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+  </style>
+</head>
+<body class="text-[#191c1e]">
+<%- include('partials/sidebar', { currentPage: 'interviews' }) %>
+
+<div class="lg:mr-64 min-h-screen pt-14 lg:pt-0">
+
+  <header class="bg-white border-b border-[#eceef0] px-4 lg:px-8 py-4 lg:py-5 flex items-center justify-between sticky top-14 lg:top-0 z-30">
+    <div>
+      <h1 class="text-xl font-bold text-[#001736]">المقابلات</h1>
+      <p class="text-xs text-[#43474f] mt-0.5">المقابلات الأونلاين عبر Google Meet</p>
+    </div>
+    <% if (!disabled) { %>
+    <div class="hidden sm:flex items-center gap-4 text-xs">
+      <div class="text-center">
+        <div class="font-bold text-[#001736] text-base"><%= counts.today %></div>
+        <div class="text-[#43474f]">اليوم</div>
+      </div>
+      <div class="h-8 bg-[#eceef0]" style="width:1px;"></div>
+      <div class="text-center">
+        <div class="font-bold text-[#001736] text-base"><%= counts.week %></div>
+        <div class="text-[#43474f]">هذا الأسبوع</div>
+      </div>
+      <div class="h-8 bg-[#eceef0]" style="width:1px;"></div>
+      <div class="text-center">
+        <div class="font-bold text-[#001736] text-base"><%= counts.upcoming %></div>
+        <div class="text-[#43474f]">القادمة</div>
+      </div>
+    </div>
+    <% } %>
+  </header>
+
+  <main class="p-4 lg:p-8 space-y-6">
+
+    <% if (disabled) { %>
+    <div class="bg-white rounded-2xl text-center" style="padding:3rem;">
+      <span class="material-symbols-outlined text-5xl" style="color:#c9ced6;">event_busy</span>
+      <h2 class="font-bold text-[#001736] text-base mt-4">ميزة المقابلات غير مفعّلة</h2>
+      <p class="text-xs text-[#43474f] mt-2 max-w-md mx-auto">
+        يمكن للمدير تفعيلها وربط حساب Google من صفحة الإعدادات. بقية أجزاء النظام تعمل طبيعياً.
+      </p>
+      <% if (locals.adminRole === 'manager') { %>
+      <a href="/admin/settings#interviews" style="margin-top:1.25rem;"
+         class="inline-flex items-center gap-2 bg-[#001736] text-white text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-[#002b5b] transition-colors">
+        <span class="material-symbols-outlined text-base">settings</span>
+        فتح الإعدادات
+      </a>
+      <% } %>
+    </div>
+    <% } else { %>
+
+    <% if (googleConn && googleConn.status === 'invalid') { %>
+    <div class="bg-red-50 border border-red-200 text-red-700 rounded-xl px-5 py-3.5 flex items-center gap-2 text-sm">
+      <span class="material-symbols-outlined text-base">error</span>
+      انتهت صلاحية الربط بحساب Google — لا يمكن جدولة مقابلات جديدة حتى إعادة الربط من الإعدادات.
+    </div>
+    <% } %>
+
+    <!-- Filters -->
+    <form method="GET" action="/admin/interviews">
+      <div class="bg-white rounded-2xl p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="font-bold text-[#001736] text-sm flex items-center gap-2">
+            <span class="material-symbols-outlined text-base">filter_list</span>
+            الفلترة
+          </h2>
+          <a href="/admin/interviews" class="text-xs text-[#405f91] hover:underline">إعادة ضبط</a>
+        </div>
+
+        <div class="flex flex-wrap gap-2 mb-4">
+          <%
+            const RANGES = [['today','اليوم'],['week','هذا الأسبوع'],['upcoming','القادمة'],['past','السابقة'],['all','الكل']];
+          %>
+          <% RANGES.forEach(function (r) { const on = filters.range === r[0]; %>
+          <a href="/admin/interviews?range=<%= r[0] %><%= filters.interviewer ? '&interviewer=' + encodeURIComponent(filters.interviewer) : '' %><%= filters.status ? '&status=' + filters.status : '' %>"
+             class="text-xs font-semibold px-3.5 py-2 rounded-xl transition-colors
+                    <%= on ? 'bg-[#001736] text-white' : 'border border-[#e0e3e5] text-[#43474f] hover:bg-[#f2f4f6]' %>">
+            <%= r[1] %>
+          </a>
+          <% }); %>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <input type="hidden" name="range" value="<%= filters.range %>">
+          <div>
+            <label class="block text-xs text-[#43474f] font-semibold mb-1.5">المقابِل</label>
+            <select name="interviewer">
+              <option value="">الجميع</option>
+              <% interviewerList.forEach(function (u) { %>
+              <option value="<%= u.username %>" <%= filters.interviewer === u.username ? 'selected' : '' %>>
+                <%= u.full_name || u.username %>
+              </option>
+              <% }); %>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs text-[#43474f] font-semibold mb-1.5">الحالة</label>
+            <select name="status">
+              <option value="">الكل</option>
+              <option value="scheduled" <%= filters.status === 'scheduled' ? 'selected' : '' %>>مجدولة</option>
+              <option value="cancelled" <%= filters.status === 'cancelled' ? 'selected' : '' %>>ملغاة</option>
+              <option value="pending"   <%= filters.status === 'pending'   ? 'selected' : '' %>>تحتاج مراجعة</option>
+            </select>
+          </div>
+          <div class="flex items-end">
+            <button type="submit"
+                    class="w-full bg-[#001736] text-white text-sm font-semibold py-2.5 rounded-xl hover:bg-[#002b5b] transition-colors flex items-center justify-center gap-2">
+              <span class="material-symbols-outlined text-base">search</span>
+              تطبيق
+            </button>
+          </div>
+        </div>
+      </div>
+    </form>
+
+    <!-- Table -->
+    <div class="bg-white rounded-2xl overflow-hidden">
+      <% if (!rows.length) { %>
+      <div class="text-center" style="padding:3rem;">
+        <span class="material-symbols-outlined text-5xl" style="color:#c9ced6;">event_note</span>
+        <p class="text-sm text-[#43474f] mt-3">لا توجد مقابلات مطابقة</p>
+      </div>
+      <% } else { %>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-[#f8f9fb] text-xs text-[#43474f] uppercase tracking-wider">
+            <tr>
+              <th class="px-5 py-3 text-right font-semibold">الموعد</th>
+              <th class="px-5 py-3 text-right font-semibold">المتقدم</th>
+              <th class="px-5 py-3 text-right font-semibold">الجوال</th>
+              <th class="px-5 py-3 text-right font-semibold">المقابلون</th>
+              <th class="px-5 py-3 text-right font-semibold">الحالة</th>
+              <th class="px-5 py-3 text-right font-semibold">الرابط</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-[#f2f4f6]">
+            <% rows.forEach(function (r) { %>
+            <tr class="hover:bg-[#fafbfc] transition-colors">
+              <td class="px-5 py-3.5 whitespace-nowrap">
+                <div class="font-semibold text-[#001736] text-xs"><%= r._dateLabel %></div>
+                <div class="text-xs text-[#43474f] mt-0.5" dir="ltr"><%= r._timeLabel %> · <%= r.duration_min %>د</div>
+              </td>
+              <td class="px-5 py-3.5">
+                <a href="/admin/applicants/<%= r.applicant_id %>" class="text-[#405f91] hover:underline font-medium">
+                  <%= r.full_name %>
+                </a>
+              </td>
+              <td class="px-5 py-3.5 text-xs text-[#43474f] font-mono" dir="ltr"><%= r.phone || '—' %></td>
+              <td class="px-5 py-3.5">
+                <div class="flex flex-wrap gap-1">
+                  <% r._names.forEach(function (n) { %>
+                  <span class="bg-[#eef2fa] text-[#405f91] rounded-full px-2 py-0.5 text-[11px] font-semibold"><%= n %></span>
+                  <% }); %>
+                </div>
+              </td>
+              <td class="px-5 py-3.5">
+                <% if (r.status === 'cancelled') { %>
+                  <span class="badge" style="background:#fff0f0;color:#c62828">ملغاة</span>
+                <% } else if (r.status === 'pending') { %>
+                  <span class="badge" style="background:#fff8e1;color:#b45309">تحتاج مراجعة</span>
+                <% } else if (r._past) { %>
+                  <span class="badge" style="background:#f3f4f6;color:#4b5563">انتهت</span>
+                <% } else { %>
+                  <span class="badge" style="background:#e8f5e9;color:#2e7d32">مجدولة</span>
+                <% } %>
+              </td>
+              <td class="px-5 py-3.5">
+                <% if (r.meet_link) { %>
+                <div class="flex items-center gap-2">
+                  <a href="<%= r.meet_link %>" target="_blank" rel="noopener"
+                     class="text-[#405f91] hover:underline text-xs font-semibold flex items-center gap-1">
+                    <span class="material-symbols-outlined text-sm">videocam</span>
+                    فتح
+                  </a>
+                  <button type="button" onclick="copyLink(this, '<%= r.meet_link %>')" title="نسخ الرابط"
+                          class="text-[#8a9099] hover:text-[#001736] transition-colors">
+                    <span class="material-symbols-outlined text-sm">content_copy</span>
+                  </button>
+                </div>
+                <% } else { %>
+                <span class="text-xs text-[#8a9099]">—</span>
+                <% } %>
+              </td>
+            </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+
+      <% if (totalPages > 1) { %>
+      <div class="px-6 py-4 border-t border-[#eceef0] flex items-center justify-between">
+        <span class="text-xs text-[#43474f]">
+          صفحة <strong><%= page %></strong> من <strong><%= totalPages %></strong>
+          &nbsp;·&nbsp; <strong><%= total %></strong> مقابلة إجمالاً
+        </span>
+        <div class="flex items-center gap-1.5">
+          <%
+            const cleanFilters = Object.fromEntries(Object.entries(filters).filter(([,v]) => v));
+            const qp = new URLSearchParams(cleanFilters);
+          %>
+          <% if (page > 1) { qp.set('page', page - 1); %>
+            <a href="/admin/interviews?<%= qp.toString() %>"
+               class="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-[#e0e3e5] text-xs hover:bg-[#f2f4f6] transition-colors">
+              <span class="material-symbols-outlined text-sm">chevron_right</span>
+              السابقة
+            </a>
+          <% } %>
+          <% for (let p = Math.max(1, page - 2); p <= Math.min(totalPages, page + 2); p++) { qp.set('page', p); %>
+            <a href="/admin/interviews?<%= qp.toString() %>"
+               class="w-8 h-8 rounded-lg text-xs flex items-center justify-center transition-colors
+                      <%= p === page ? 'bg-[#001736] text-white' : 'border border-[#e0e3e5] hover:bg-[#f2f4f6]' %>">
+              <%= p %>
+            </a>
+          <% } %>
+          <% if (page < totalPages) { qp.set('page', page + 1); %>
+            <a href="/admin/interviews?<%= qp.toString() %>"
+               class="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-[#e0e3e5] text-xs hover:bg-[#f2f4f6] transition-colors">
+              التالية
+              <span class="material-symbols-outlined text-sm">chevron_left</span>
+            </a>
+          <% } %>
+        </div>
+      </div>
+      <% } %>
+      <% } %>
+    </div>
+
+    <% } %>
+  </main>
+</div>
+
+<script>
+  function copyLink(btn, link) {
+    navigator.clipboard.writeText(link).then(() => {
+      const icon = btn.querySelector('.material-symbols-outlined');
+      const old = icon.textContent;
+      icon.textContent = 'check';
+      setTimeout(() => { icon.textContent = old; }, 1200);
+    });
+  }
+</script>
+</body>
+</html>

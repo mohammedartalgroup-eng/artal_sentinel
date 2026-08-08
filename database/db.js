@@ -65,6 +65,11 @@ pool.getSettings = async function () {
   return Object.fromEntries(rows.map(r => [r.key, r.value]));
 };
 
+// ─── علم جاهزية مخطط المقابلات ───────────────────────────────────────────────
+// ميزة المقابلات معزولة تماماً: إن فشل إنشاء جدولها يبقى العلم false وتُعطَّل الميزة
+// وحدها، بينما يواصل خط الاستقطاب (التقديم + المتقدمون + المتابعة) عمله كالمعتاد.
+pool.INTERVIEWS_SCHEMA_OK = false;
+
 // ─── Schema ──────────────────────────────────────────────────────────────────
 
 async function initialize() {
@@ -346,6 +351,95 @@ async function initialize() {
     }
 
     console.log('[DB] MySQL connected & schema ready ✓');
+
+    // ─── المقابلات الأونلاين (Google Meet) — كتلة معزولة ──────────────────────
+    //  ⚠️ كل ما يخص المقابلات داخل try/catch لا يرمي أبداً: أي فشل هنا يُعطّل
+    //     ميزة المقابلات وحدها ولا يمنع الموقع من الإقلاع (نموذج التقديم،
+    //     المتقدمون، المتابعة، التقارير — كلها تبقى تعمل).
+    try {
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS interviews (
+          id              INT AUTO_INCREMENT PRIMARY KEY,
+          applicant_id    INT NOT NULL,
+          start_at        DATETIME NOT NULL,
+          end_at          DATETIME NOT NULL,
+          start_local     CHAR(16) NOT NULL,
+          duration_min    SMALLINT UNSIGNED NOT NULL,
+          slot_key        VARCHAR(20)  DEFAULT NULL,
+          status          VARCHAR(20)  NOT NULL DEFAULT 'pending',
+          interviewers    VARCHAR(500) NOT NULL DEFAULT '',
+          google_event_id VARCHAR(128) DEFAULT NULL,
+          meet_link       VARCHAR(255) DEFAULT NULL,
+          html_link       VARCHAR(500) DEFAULT NULL,
+          created_by      VARCHAR(100) DEFAULT NULL,
+          created_by_id   INT          DEFAULT NULL,
+          cancelled_by    VARCHAR(100) DEFAULT NULL,
+          cancel_reason   VARCHAR(255) DEFAULT NULL,
+          last_error      VARCHAR(255) DEFAULT NULL,
+          created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          FOREIGN KEY (applicant_id) REFERENCES applicants(id) ON DELETE CASCADE,
+          UNIQUE KEY uq_slot (slot_key),
+          INDEX idx_applicant (applicant_id),
+          INDEX idx_start     (start_at),
+          INDEX idx_local     (start_local),
+          INDEX idx_status    (status)
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+      `);
+
+      // ملاحظات على التصميم:
+      //  • start_at/end_at بتوقيت UTC وتُكتب دائماً بربط كائن Date من Node،
+      //    ولا تُستخدم NOW()/CURRENT_TIMESTAMP لأوقات المقابلات إطلاقاً
+      //    (توقيت خادم MySQL مجهول، بينما ربط Date يذهب ويعود UTC بدقة).
+      //  • start_local نسخة نصية بتوقيت الرياض للفلترة المفهرسة والعرض البشري.
+      //  • slot_key فريد = قفل الحجز المزدوج؛ الإلغاء يجعله NULL فيتحرر الموعد
+      //    (MySQL يسمح بقيم NULL متعددة في الفهرس الفريد) دون حذف السجل.
+
+      const ivIdx = [
+        ['idx_start_status', 'ADD INDEX idx_start_status (start_at, status)'],
+      ];
+      for (const [name, ddl] of ivIdx) {
+        const [rows] = await conn.query(
+          'SELECT COUNT(*) as c FROM information_schema.STATISTICS WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?',
+          ['interviews', name]
+        );
+        if (rows[0].c === 0) {
+          await conn.query(`ALTER TABLE interviews ${ddl}`);
+          console.log(`[DB] Migration: added index ${name} on interviews`);
+        }
+      }
+
+      const [ivErrCols] = await conn.query("SHOW COLUMNS FROM interviews LIKE 'last_error'");
+      if (ivErrCols.length === 0) {
+        await conn.query("ALTER TABLE interviews ADD COLUMN last_error VARCHAR(255) DEFAULT NULL");
+        console.log('[DB] Migration: added column last_error to interviews');
+      }
+
+      // إعدادات المقابلات — 0=الأحد … 5=الجمعة … 6=السبت (الافتراضي: السبت–الخميس)
+      const ivDefaults = [
+        ['interviews_enabled',     'true'],
+        ['interview_duration',     '15'],
+        ['interview_work_days',    '0,1,2,3,4,6'],
+        ['interview_start_hour',   '09:00'],
+        ['interview_end_hour',     '17:00'],
+        ['interview_buffer',       '0'],
+        ['interview_lead_min',     '120'],
+        ['interview_horizon_days', '14'],
+        ['google_refresh_token',   ''],
+        ['google_account_email',   ''],
+        ['google_connected_at',    ''],
+        ['google_token_status',    ''],
+        ['google_oauth_state',     ''],
+      ];
+      for (const [k, v] of ivDefaults) {
+        await conn.query('INSERT IGNORE INTO settings (`key`, value) VALUES (?, ?)', [k, v]);
+      }
+
+      pool.INTERVIEWS_SCHEMA_OK = true;
+      console.log('[DB] Interviews schema ready ✓');
+    } catch (e) {
+      console.error('[DB] Interviews schema failed — ميزة المقابلات معطّلة، وبقية النظام يعمل:', e.message);
+    }
   } finally {
     conn.release();
   }

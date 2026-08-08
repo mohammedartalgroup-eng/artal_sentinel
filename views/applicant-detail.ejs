@@ -424,6 +424,117 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
       <!-- RIGHT: CRM Timeline + Notes -->
       <div class="lg:col-span-2 space-y-6">
 
+        <!-- ═══ المقابلة الأونلاين ═══ -->
+        <!-- تظهر فقط إذا كانت الميزة مفعّلة ومخططها جاهز — وأي خطأ في بنائها
+             يُلغي البطاقة وحدها (الخادم يمرر activeInterview = null) -->
+        <% if (typeof interviewsEnabled !== 'undefined' && interviewsEnabled) { %>
+        <div class="bg-white rounded-2xl p-6" id="interview-card">
+          <h2 class="font-bold text-[#001736] text-sm mb-4 flex items-center gap-2">
+            <span class="material-symbols-outlined text-base">video_call</span>
+            المقابلة الأونلاين
+          </h2>
+
+          <% const IV = (typeof activeInterview !== 'undefined') ? activeInterview : null; %>
+          <% if (!IV) { %>
+            <% if (!googleConnected) { %>
+            <div class="bg-[#f8f9fb] border border-[#e0e3e5] rounded-xl px-4 py-3.5 text-xs text-[#43474f] flex items-start gap-2">
+              <span class="material-symbols-outlined text-base">info</span>
+              <span>
+                لم يُربط حساب Google بعد، فالجدولة غير متاحة.
+                <% if (locals.adminRole === 'manager') { %>
+                <a href="/admin/settings#google" class="text-[#405f91] font-semibold" style="text-decoration:underline;">اربط الحساب من الإعدادات</a>.
+                <% } else { %>راجع مدير النظام.<% } %>
+              </span>
+            </div>
+            <% } else { %>
+            <div class="flex items-center justify-between gap-4 flex-wrap">
+              <p class="text-xs text-[#43474f]">حدّد موعداً متاحاً وسيُنشأ اجتماع Google Meet تلقائياً.</p>
+              <button type="button" onclick="openInterviewModal()"
+                      class="bg-[#001736] text-white text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-[#002b5b] transition-colors flex items-center gap-2">
+                <span class="material-symbols-outlined text-base">event</span>
+                جدولة مقابلة
+              </button>
+            </div>
+            <% } %>
+          <% } else { %>
+            <% if (IV.status === 'pending') { %>
+            <div class="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-4 py-3 text-xs mb-4 flex items-start gap-2">
+              <span class="material-symbols-outlined text-base">warning</span>
+              <span>لم يكتمل إنشاء هذه المقابلة في تقويم Google — راجعها من <a href="/admin/interviews?status=pending" class="font-semibold" style="text-decoration:underline;">صفحة المقابلات</a>.</span>
+            </div>
+            <% } %>
+            <div class="bg-[#f8f9fb] rounded-xl p-4 space-y-3">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="material-symbols-outlined text-base text-[#405f91]">calendar_month</span>
+                <span class="text-sm font-bold text-[#001736]"><%= IV.dateLabel %></span>
+                <span class="text-sm text-[#43474f]">— الساعة <span dir="ltr"><%= IV.timeLabel %></span></span>
+                <span class="text-[11px] text-[#43474f] bg-white border border-[#e0e3e5] rounded-full px-2 py-0.5"><%= IV.durationMin %> دقيقة</span>
+              </div>
+
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <span class="text-[11px] text-[#43474f]">المقابلون:</span>
+                <% IV.interviewers.forEach(function (p) { %>
+                <span class="bg-[#eef2fa] text-[#405f91] rounded-full px-2 py-0.5 text-[11px] font-semibold"><%= p.name %></span>
+                <% }); %>
+              </div>
+
+              <% if (IV.meetLink) { %>
+              <div class="flex items-center gap-2 bg-white border border-[#e0e3e5] rounded-xl px-3 py-2">
+                <span class="material-symbols-outlined text-base text-[#405f91]">link</span>
+                <span dir="ltr" class="font-mono text-xs text-[#001736] truncate flex-1" id="meet-link-text"><%= IV.meetLink %></span>
+                <button type="button" onclick="copyMeetLink()" title="نسخ الرابط"
+                        class="text-[#43474f] hover:text-[#001736] transition-colors">
+                  <span class="material-symbols-outlined text-base">content_copy</span>
+                </button>
+              </div>
+              <% } else { %>
+              <div class="flex items-center gap-2 bg-white border border-[#e0e3e5] rounded-xl px-3 py-2">
+                <span class="text-xs text-[#43474f] flex-1">الرابط قيد الإنشاء لدى Google…</span>
+                <button type="button" onclick="refreshMeetLink()"
+                        class="text-xs font-semibold text-[#405f91] hover:underline">تحديث الرابط</button>
+              </div>
+              <% } %>
+
+              <div class="flex gap-2 flex-wrap pt-1">
+                <% if (IV.meetLink) { %>
+                <a href="<%= IV.meetLink %>" target="_blank" rel="noopener"
+                   class="text-xs font-semibold px-3 py-2 rounded-xl bg-[#001736] text-white hover:bg-[#002b5b] transition-colors flex items-center gap-1.5">
+                  <span class="material-symbols-outlined text-sm">videocam</span>
+                  فتح الاجتماع
+                </a>
+                <% } %>
+                <% if (typeof waUrl !== 'undefined' && waUrl) { %>
+                <a href="<%= waUrl %>" target="_blank" rel="noopener"
+                   class="text-xs font-semibold px-3 py-2 rounded-xl border border-[#e0e3e5] text-[#43474f] hover:bg-white transition-colors flex items-center gap-1.5">
+                  <svg viewBox="0 0 24 24" fill="currentColor" class="w-3.5 h-3.5 text-[#25D366]">
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                  </svg>
+                  إرسال واتساب
+                </a>
+                <% } %>
+                <% if (IV.htmlLink) { %>
+                <a href="<%= IV.htmlLink %>" target="_blank" rel="noopener"
+                   class="text-xs font-semibold px-3 py-2 rounded-xl border border-[#e0e3e5] text-[#43474f] hover:bg-white transition-colors flex items-center gap-1.5">
+                  <span class="material-symbols-outlined text-sm">calendar_month</span>
+                  تقويم Google
+                </a>
+                <% } %>
+                <button type="button" onclick="openInterviewModal(true)"
+                        class="text-xs font-semibold px-3 py-2 rounded-xl border border-[#e0e3e5] text-[#43474f] hover:bg-white transition-colors flex items-center gap-1.5">
+                  <span class="material-symbols-outlined text-sm">edit_calendar</span>
+                  إعادة الجدولة
+                </button>
+                <button type="button" onclick="cancelInterview()"
+                        class="text-xs font-semibold px-3 py-2 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 transition-colors flex items-center gap-1.5">
+                  <span class="material-symbols-outlined text-sm">event_busy</span>
+                  إلغاء المقابلة
+                </button>
+              </div>
+            </div>
+          <% } %>
+        </div>
+        <% } %>
+
         <!-- Add Note -->
         <div class="bg-white rounded-2xl p-6">
           <h2 class="font-bold text-[#001736] text-sm mb-4 flex items-center gap-2">
@@ -808,9 +919,64 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
   <span id="toastMsg"></span>
 </div>
 
+<!-- ═══ نافذة جدولة المقابلة ═══
+     <dialog> يُرسم في الـ top layer — لا يتأثر بأي overflow أو z-index.
+     التنسيق سطري عمداً: لا أصناف Tailwind جديدة ⇒ لا حاجة لإعادة بناء CSS. -->
+<% if (typeof interviewsEnabled !== 'undefined' && interviewsEnabled) { %>
+<dialog id="iv-modal" style="border:none;border-radius:1rem;padding:0;max-width:640px;width:92vw;box-shadow:0 20px 60px rgba(0,0,0,.25);">
+  <div style="padding:1.5rem;font-family:'Inter',sans-serif;" dir="rtl">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">
+      <h3 style="font-family:'Manrope',sans-serif;font-weight:700;color:#001736;font-size:1rem;margin:0;" id="iv-modal-title">جدولة مقابلة أونلاين</h3>
+      <button type="button" onclick="closeInterviewModal()" style="background:none;border:none;cursor:pointer;color:#43474f;font-size:1.25rem;line-height:1;">&times;</button>
+    </div>
+
+    <div id="iv-alert" style="display:none;border-radius:.75rem;padding:.65rem .9rem;font-size:.75rem;margin-bottom:.9rem;"></div>
+
+    <div style="margin-bottom:1rem;">
+      <div style="font-size:.7rem;font-weight:700;color:#43474f;letter-spacing:.04em;margin-bottom:.5rem;">المقابلون</div>
+      <div id="iv-people" style="display:flex;flex-wrap:wrap;gap:.4rem;"></div>
+    </div>
+
+    <div style="margin-bottom:.75rem;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem;">
+        <div style="font-size:.7rem;font-weight:700;color:#43474f;letter-spacing:.04em;">اليوم</div>
+        <button type="button" onclick="loadAvailability()" id="iv-reload"
+                style="font-size:.7rem;font-weight:600;color:#405f91;background:none;border:none;cursor:pointer;">تحديث الأوقات</button>
+      </div>
+      <div id="iv-days" style="display:flex;gap:.4rem;overflow-x:auto;padding-bottom:.35rem;"></div>
+    </div>
+
+    <div id="iv-slots" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:.5rem;min-height:110px;max-height:220px;overflow-y:auto;padding:.25rem;background:#f8f9fb;border-radius:.75rem;"></div>
+
+    <div style="margin-top:1rem;">
+      <div style="font-size:.7rem;font-weight:700;color:#43474f;letter-spacing:.04em;margin-bottom:.4rem;">ملاحظة (اختياري)</div>
+      <textarea id="iv-note" rows="2" placeholder="تُضاف إلى وصف الاجتماع وملف المتقدم"
+                style="width:100%;border:1px solid #e0e3e5;border-radius:.75rem;padding:.6rem .8rem;font-size:.8rem;resize:none;outline:none;font-family:'Inter',sans-serif;"></textarea>
+    </div>
+
+    <div style="display:flex;gap:.6rem;margin-top:1.1rem;">
+      <button type="button" id="iv-confirm" onclick="confirmInterview()" disabled
+              style="flex:1;background:#001736;color:#fff;font-weight:700;padding:.8rem;border:none;border-radius:.75rem;cursor:pointer;font-size:.85rem;opacity:.5;">
+        تأكيد الموعد
+      </button>
+      <button type="button" onclick="closeInterviewModal()"
+              style="padding:.8rem 1.2rem;background:#fff;color:#43474f;font-weight:600;border:1px solid #e0e3e5;border-radius:.75rem;cursor:pointer;font-size:.85rem;">
+        إلغاء
+      </button>
+    </div>
+  </div>
+</dialog>
+<% } %>
+
 <script>
 const APPLICANT_ID = <%= applicant.id %>;
 let selectedNoteType = 'note';
+
+// ─── بيانات المقابلة (تُحقن من الخادم) ─────────────────────────────────────
+const IV_ENABLED     = <%- JSON.stringify(typeof interviewsEnabled !== 'undefined' ? Boolean(interviewsEnabled) : false) %>;
+const IV_ACTIVE      = <%- JSON.stringify(typeof activeInterview !== 'undefined' ? activeInterview : null) %>;
+const IV_PEOPLE      = <%- JSON.stringify(typeof interviewerList !== 'undefined' ? interviewerList : []) %>;
+const IV_CURRENT_USR = <%- JSON.stringify(adminUser || '') %>;
 
 function toast(msg, icon = 'check', isError = false) {
   const el = document.getElementById('toast');
@@ -884,6 +1050,245 @@ function addNote() {
     }
   });
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  المقابلة الأونلاين
+// ═══════════════════════════════════════════════════════════════════════════
+let ivSelectedPeople = new Set();
+let ivDays = [];
+let ivActiveDate = null;
+let ivSelectedSlot = null;
+let ivRescheduleMode = false;
+let ivLoadTimer = null;
+
+function ivAlert(msg, kind = 'error') {
+  const el = document.getElementById('iv-alert');
+  if (!el) return;
+  if (!msg) { el.style.display = 'none'; return; }
+  const c = kind === 'warn' ? ['#fffbeb', '#fde68a', '#92400e'] : ['#fef2f2', '#fecaca', '#b91c1c'];
+  el.style.display = 'block';
+  el.style.background = c[0]; el.style.border = `1px solid ${c[1]}`; el.style.color = c[2];
+  el.textContent = msg;
+}
+
+function renderPeople() {
+  const wrap = document.getElementById('iv-people');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  IV_PEOPLE.forEach(p => {
+    const on = ivSelectedPeople.has(p.username);
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = p.full_name || p.username;
+    b.title = p.username;
+    b.style.cssText = `border-radius:9999px;padding:.35rem .8rem;font-size:.75rem;font-weight:600;cursor:pointer;
+      border:1px solid ${on ? '#001736' : '#e0e3e5'};background:${on ? '#001736' : '#fff'};color:${on ? '#fff' : '#43474f'};`;
+    b.onclick = () => {
+      if (ivSelectedPeople.has(p.username)) ivSelectedPeople.delete(p.username);
+      else ivSelectedPeople.add(p.username);
+      renderPeople();
+      clearTimeout(ivLoadTimer);
+      ivLoadTimer = setTimeout(loadAvailability, 400);   // إعادة الجلب عند تغيير الاختيار
+    };
+    wrap.appendChild(b);
+  });
+}
+
+function renderDays() {
+  const wrap = document.getElementById('iv-days');
+  wrap.innerHTML = '';
+  ivDays.forEach(d => {
+    const active = d.date === ivActiveDate;
+    const empty = d.slots.length === 0;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.disabled = empty;
+    b.innerHTML = `${d.labelShort} <span style="opacity:.7">(${d.slots.length})</span>`;
+    b.style.cssText = `white-space:nowrap;border-radius:.6rem;padding:.4rem .7rem;font-size:.72rem;font-weight:600;
+      cursor:${empty ? 'not-allowed' : 'pointer'};opacity:${empty ? '.45' : '1'};
+      border:1px solid ${active ? '#001736' : '#e0e3e5'};background:${active ? '#001736' : '#fff'};color:${active ? '#fff' : '#43474f'};`;
+    b.onclick = () => { ivActiveDate = d.date; ivSelectedSlot = null; renderDays(); renderSlots(); updateConfirm(); };
+    wrap.appendChild(b);
+  });
+}
+
+function renderSlots() {
+  const wrap = document.getElementById('iv-slots');
+  wrap.innerHTML = '';
+  const day = ivDays.find(d => d.date === ivActiveDate);
+  if (!day || !day.slots.length) {
+    wrap.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#7594ca;font-size:.75rem;padding:2rem 0;">لا توجد أوقات متاحة في هذا اليوم</div>';
+    return;
+  }
+  day.slots.forEach(s => {
+    const on = ivSelectedSlot === s.key;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = s.time;
+    b.dir = 'ltr';
+    b.style.cssText = `padding:.5rem;border-radius:.6rem;font-size:.78rem;font-weight:600;cursor:pointer;
+      border:1px solid ${on ? '#001736' : '#e0e3e5'};background:${on ? '#001736' : '#fff'};color:${on ? '#fff' : '#001736'};`;
+    b.onclick = () => { ivSelectedSlot = s.key; renderSlots(); updateConfirm(); };
+    wrap.appendChild(b);
+  });
+}
+
+function updateConfirm() {
+  const btn = document.getElementById('iv-confirm');
+  const ready = Boolean(ivSelectedSlot) && ivSelectedPeople.size > 0;
+  btn.disabled = !ready;
+  btn.style.opacity = ready ? '1' : '.5';
+  btn.style.cursor = ready ? 'pointer' : 'not-allowed';
+}
+
+function loadAvailability() {
+  const slots = document.getElementById('iv-slots');
+  const reload = document.getElementById('iv-reload');
+  slots.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#7594ca;font-size:.75rem;padding:2rem 0;">جارٍ جلب الأوقات…</div>';
+  document.getElementById('iv-days').innerHTML = '';
+  if (reload) reload.disabled = true;
+  ivAlert('');
+
+  const q = encodeURIComponent([...ivSelectedPeople].join(','));
+  fetch(`/admin/interviews/availability?interviewers=${q}`)
+    .then(async r => ({ status: r.status, data: await r.json().catch(() => ({})) }))
+    .then(({ status, data }) => {
+      if (status !== 200) {
+        slots.innerHTML = '';
+        ivAlert(data.error || 'تعذّر جلب الأوقات');
+        return;
+      }
+      ivDays = data.days || [];
+      const firstFree = ivDays.find(d => d.slots.length);
+      ivActiveDate = firstFree ? firstFree.date : (ivDays[0] && ivDays[0].date) || null;
+      ivSelectedSlot = null;
+      renderDays(); renderSlots(); updateConfirm();
+      if (data.warnings && data.warnings.length) ivAlert(data.warnings.join(' — '), 'warn');
+    })
+    .catch(() => { slots.innerHTML = ''; ivAlert('تعذّر الاتصال بالخادم'); })
+    .finally(() => { if (reload) reload.disabled = false; });
+}
+
+function openInterviewModal(reschedule = false) {
+  ivRescheduleMode = Boolean(reschedule);
+  document.getElementById('iv-modal-title').textContent = ivRescheduleMode ? 'إعادة جدولة المقابلة' : 'جدولة مقابلة أونلاين';
+  document.getElementById('iv-confirm').textContent = ivRescheduleMode ? 'تأكيد الموعد الجديد' : 'تأكيد الموعد';
+
+  ivSelectedPeople = new Set();
+  if (ivRescheduleMode && IV_ACTIVE) IV_ACTIVE.interviewers.forEach(p => ivSelectedPeople.add(p.email));
+  else if (IV_PEOPLE.some(p => p.username === IV_CURRENT_USR)) ivSelectedPeople.add(IV_CURRENT_USR);
+
+  renderPeople();
+  updateConfirm();
+
+  const modal = document.getElementById('iv-modal');
+  if (modal.showModal) modal.showModal(); else modal.setAttribute('open', '');
+  loadAvailability();
+}
+
+function closeInterviewModal() {
+  const modal = document.getElementById('iv-modal');
+  if (modal.close) modal.close(); else modal.removeAttribute('open');
+}
+
+function confirmInterview() {
+  const btn = document.getElementById('iv-confirm');
+  if (btn.disabled) return;
+  btn.disabled = true;
+  btn.textContent = 'جارٍ الحفظ…';
+  ivAlert('');
+
+  const url    = ivRescheduleMode ? `/admin/interviews/${IV_ACTIVE.id}` : `/admin/applicants/${APPLICANT_ID}/interview`;
+  const method = ivRescheduleMode ? 'PATCH' : 'POST';
+  const body   = {
+    slotKey: ivSelectedSlot,
+    interviewers: [...ivSelectedPeople],
+    note: document.getElementById('iv-note').value.trim(),
+  };
+
+  fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    .then(async r => ({ status: r.status, data: await r.json().catch(() => ({})) }))
+    .then(({ status, data }) => {
+      if (status === 200 && data.ok) {
+        toast(ivRescheduleMode ? 'تم تعديل الموعد' : 'تمت جدولة المقابلة', 'event_available');
+        setTimeout(() => location.reload(), 800);
+        return;
+      }
+      btn.disabled = false;
+      btn.textContent = ivRescheduleMode ? 'تأكيد الموعد الجديد' : 'تأكيد الموعد';
+      if (data.code === 'SLOT_TAKEN') {
+        ivAlert(data.error || 'حُجز هذا الموعد للتو');
+        loadAvailability();
+        return;
+      }
+      if (data.code === 'GOOGLE_DISCONNECTED' || data.code === 'IV_OFF') {
+        closeInterviewModal();
+        toast(data.error || 'ميزة المقابلات غير متاحة', 'error', true);
+        return;
+      }
+      ivAlert(data.error || 'تعذّر حفظ الموعد');
+    })
+    .catch(() => {
+      btn.disabled = false;
+      btn.textContent = ivRescheduleMode ? 'تأكيد الموعد الجديد' : 'تأكيد الموعد';
+      ivAlert('تعذّر الاتصال بالخادم');
+    });
+}
+
+function copyMeetLink() {
+  const el = document.getElementById('meet-link-text');
+  if (!el) return;
+  navigator.clipboard.writeText(el.textContent.trim())
+    .then(() => toast('تم نسخ الرابط', 'content_copy'))
+    .catch(() => toast('تعذّر النسخ', 'error', true));
+}
+
+function refreshMeetLink() {
+  if (!IV_ACTIVE) return;
+  fetch(`/admin/interviews/${IV_ACTIVE.id}/refresh-link`, { method: 'POST' })
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) { toast('تم جلب الرابط', 'check_circle'); setTimeout(() => location.reload(), 600); }
+      else toast(d.error || 'الرابط لم يجهز بعد', 'schedule', true);
+    })
+    .catch(() => toast('تعذّر الاتصال', 'error', true));
+}
+
+function cancelInterview() {
+  if (!IV_ACTIVE) return;
+  if (!confirm('إلغاء هذه المقابلة؟ سيُحذف الاجتماع من التقويم ويصل إشعار للمقابلين.')) return;
+  const reason = prompt('سبب الإلغاء (اختياري):') || '';
+
+  fetch(`/admin/interviews/${IV_ACTIVE.id}/cancel`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason })
+  })
+    .then(async r => ({ status: r.status, data: await r.json().catch(() => ({})) }))
+    .then(({ status, data }) => {
+      if (status === 200 && data.ok) {
+        toast('تم إلغاء المقابلة', 'event_busy');
+        setTimeout(() => location.reload(), 700);
+        return;
+      }
+      if (data.canForce && confirm(`${data.error}\n\nهل تريد الإلغاء في النظام فقط (دون التقويم)؟`)) {
+        fetch(`/admin/interviews/${IV_ACTIVE.id}/cancel`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason, force: true })
+        }).then(r => r.json()).then(() => location.reload());
+        return;
+      }
+      toast(data.error || 'تعذّر الإلغاء', 'error', true);
+    })
+    .catch(() => toast('تعذّر الاتصال بالخادم', 'error', true));
+}
+
+// منع Esc أثناء الحفظ (نفس نمط صفحة المتقدمين)
+document.addEventListener('DOMContentLoaded', () => {
+  const modal = document.getElementById('iv-modal');
+  if (!modal) return;
+  modal.addEventListener('cancel', (e) => {
+    const btn = document.getElementById('iv-confirm');
+    if (btn && btn.disabled && btn.textContent.indexOf('جارٍ') !== -1) e.preventDefault();
+  });
+});
 
 function deleteNote(nid) {
   if (!confirm('هل تريد حذف هذه الملاحظة؟')) return;
