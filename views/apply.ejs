@@ -355,8 +355,26 @@
             <p class="err-msg" id="err-phone">رقم الجوال يجب أن يبدأ بـ 05 ويتكون من 10 أرقام</p>
           </div>
 
+          <!-- Email (optional) -->
+          <div>
+            <label for="f-email" class="block text-sm font-semibold text-on-surface-variant mb-2">
+              البريد الإلكتروني <span class="text-slate-500 font-normal">(اختياري)</span>
+            </label>
+            <div class="input-wrap" id="wrap-email">
+              <input id="f-email" name="email"
+                     class="w-full bg-surface-container-low border-0 rounded-lg px-4 py-3.5 focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-slate-500"
+                     placeholder="example@mail.com"
+                     type="email"
+                     inputmode="email"
+                     maxlength="120"
+                     dir="ltr"
+                     autocomplete="email"/>
+            </div>
+            <p class="err-msg" id="err-email">صيغة البريد الإلكتروني غير صحيحة</p>
+          </div>
+
           <!-- Age -->
-          <div class="md:col-span-2">
+          <div>
             <label for="f-age" class="block text-sm font-semibold text-on-surface-variant mb-2">
               العمر <span class="text-error">*</span>
             </label>
@@ -920,7 +938,7 @@ function clearError(fieldName) {
 }
 
 // ─── مسح الخطأ عند الكتابة في الحقول النصية ────────────────────────────────
-['full_name', 'age'].forEach(name => {
+['full_name', 'email', 'age'].forEach(name => {
   const el = document.getElementById('f-' + name);
   if (el) el.addEventListener('input', () => clearError(name));
 });
@@ -976,6 +994,17 @@ document.getElementById('applyForm').addEventListener('submit', function (e) {
     valid = false;
   } else {
     clearError('phone');
+  }
+
+  // ── البريد الإلكتروني (اختياري — يُتحقق منه فقط إن كُتب)
+  const emailEl  = document.getElementById('f-email');
+  const emailVal = emailEl.value.trim();
+  if (emailVal && !/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(emailVal)) {
+    showError('email', 'صيغة البريد الإلكتروني غير صحيحة');
+    if (!firstError) firstError = 'f-email';
+    valid = false;
+  } else {
+    clearError('email');
   }
 
   // ── العمر (إلزامي، أكبر من 22)

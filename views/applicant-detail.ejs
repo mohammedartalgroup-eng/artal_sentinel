@@ -193,6 +193,17 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
               </div>
             </div>
             <div class="flex items-start gap-3">
+              <span class="material-symbols-outlined text-[#43474f] text-lg mt-0.5">mail</span>
+              <div class="min-w-0">
+                <div class="text-xs text-[#43474f] font-semibold uppercase tracking-wider">البريد الإلكتروني</div>
+                <% if (applicant.email) { %>
+                <a href="mailto:<%= applicant.email %>" class="mt-0.5 block text-[#7594ca] hover:underline break-all" dir="ltr"><%= applicant.email %></a>
+                <% } else { %>
+                <div class="mt-0.5 text-[#8a8f98]">—</div>
+                <% } %>
+              </div>
+            </div>
+            <div class="flex items-start gap-3">
               <span class="material-symbols-outlined text-[#43474f] text-lg mt-0.5">cake</span>
               <div>
                 <div class="text-xs text-[#43474f] font-semibold uppercase tracking-wider">العمر</div>
@@ -805,6 +816,10 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
             <span style="color:#506169;font-size:11px"> · تخصص: <%= applicant.specialization %></span>
             <% } %>
           </td>
+        </tr>
+        <tr style="background:#f8f9fb">
+          <td style="padding:8px 12px;font-weight:700;color:#43474f;border:1px solid #e0e3e5">البريد الإلكتروني</td>
+          <td colspan="3" style="padding:8px 12px;border:1px solid #e0e3e5;direction:ltr;text-align:right"><%= applicant.email || '—' %></td>
         </tr>
       </tbody>
     </table>

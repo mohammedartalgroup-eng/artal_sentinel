@@ -57,13 +57,18 @@ router.post('/', (req, res) => {
     }
 
     try {
-      const { full_name, id_number, phone, age, gender, region, city, neighborhood, has_car, has_license, english, qualification, specialization, source, referrer, landing_page } = req.body;
+      const { full_name, id_number, phone, email, age, gender, region, city, neighborhood, has_car, has_license, english, qualification, specialization, source, referrer, landing_page } = req.body;
+
+      // البريد الإلكتروني اختياري: يُقبل فارغاً، ويُتحقق منه فقط إن كُتب
+      const emailVal = email ? String(email).trim().toLowerCase() : '';
 
       // Basic validation
       const errors = [];
       if (!full_name || full_name.trim().length < 5)            errors.push('الاسم الرباعي مطلوب (5 أحرف على الأقل)');
       if (!id_number || !/^\d{10}$/.test(id_number.trim()))     errors.push('رقم الهوية يجب أن يكون 10 أرقام');
       if (!phone || !/^05\d{8}$/.test(phone.trim()))            errors.push('رقم الجوال غير صحيح');
+      if (emailVal && (emailVal.length > 120 || !/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(emailVal)))
+        errors.push('البريد الإلكتروني غير صحيح');
       const ageInt = parseInt(age);
       if (!age || isNaN(ageInt))         errors.push('يرجى إدخال العمر');
       else if (ageInt >= 100)            errors.push('العمر غير صحيح — يرجى إدخال عمرك وليس سنة ميلادك');
@@ -104,14 +109,15 @@ router.post('/', (req, res) => {
 
       const result = await db.run(
         `INSERT INTO applicants
-          (full_name, id_number, phone, age, gender, region, city, neighborhood,
+          (full_name, id_number, phone, email, age, gender, region, city, neighborhood,
            has_car, has_license, english, qualification, specialization, cv_path, id_image_path,
            source, referrer, landing_page)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           full_name.trim(),
           id_number.trim(),
           phone.trim(),
+          emailVal || null,
           ageInt,
           gender,
           region.trim(),

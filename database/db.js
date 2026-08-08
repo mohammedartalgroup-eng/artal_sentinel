@@ -175,6 +175,13 @@ async function initialize() {
       console.log('[DB] Migration: added column neighborhood');
     }
 
+    // ─── ترحيل: إضافة البريد الإلكتروني (اختياري) إلى applicants
+    const [emCols] = await conn.query("SHOW COLUMNS FROM applicants LIKE 'email'");
+    if (emCols.length === 0) {
+      await conn.query("ALTER TABLE applicants ADD COLUMN email VARCHAR(120) DEFAULT NULL AFTER phone");
+      console.log('[DB] Migration: added column email');
+    }
+
     // ─── ترحيل: أعمدة مصدر الزيارة (من أين جاء المتقدم)
     const [srcCols] = await conn.query("SHOW COLUMNS FROM applicants LIKE 'source'");
     if (srcCols.length === 0) {
