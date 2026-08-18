@@ -65,6 +65,29 @@ pool.getSettings = async function () {
   return Object.fromEntries(rows.map(r => [r.key, r.value]));
 };
 
+/**
+ * كتابة عدة إعدادات دفعةً واحدة — استعلام واحد لا استعلام لكل مفتاح.
+ *
+ * ⚠️ لماذا دفعة؟ إطلاق عشرين UPDATE بالتوازي عبر Promise.all يفتح عشرين
+ *    اتصالاً في آن واحد، وتُحدّ الاستضافة المشتركة الاتصالات المتزامنة لكل
+ *    مستخدم فيسقط الحفظ كاملاً. استعلام واحد = اتصال واحد.
+ *
+ * وهو upsert لا UPDATE: مفتاح جديد لم تُنشئه كتلة الإعدادات الافتراضية
+ * (لو تعطّلت مثلاً) كان UPDATE يتجاهله بصمت فيبدو الحفظ ناجحاً بلا أثر.
+ */
+pool.setSettings = async function (pairs) {
+  const entries = Object.entries(pairs || {}).filter(([k]) => k);
+  if (!entries.length) return 0;
+  const placeholders = entries.map(() => '(?, ?)').join(', ');
+  const params = entries.flatMap(([k, v]) => [String(k), String(v == null ? '' : v)]);
+  const [r] = await this.query(
+    'INSERT INTO settings (`key`, value) VALUES ' + placeholders +
+    ' ON DUPLICATE KEY UPDATE value = VALUES(value), updated_at = CURRENT_TIMESTAMP',
+    params
+  );
+  return r.affectedRows;
+};
+
 // ─── علم جاهزية مخطط المقابلات ───────────────────────────────────────────────
 // ميزة المقابلات معزولة تماماً: إن فشل إنشاء جدولها يبقى العلم false وتُعطَّل الميزة
 // وحدها، بينما يواصل خط الاستقطاب (التقديم + المتقدمون + المتابعة) عمله كالمعتاد.

@@ -1180,10 +1180,9 @@ router.post('/settings', requireManager, async (req, res) => {
     // (مثلاً: حفظ قواعد المقابلات كان سيُطفئ accepting_applications بالخطأ).
     const SECTIONS = ['interviews', 'notifications'];
     const section = SECTIONS.includes(req.body.form_section) ? req.body.form_section : 'contact';
-    const updates = [];
-    const set = (key, value) => updates.push(db.run(
-      'UPDATE settings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE `key` = ?', [value, key]
-    ));
+    // تُجمع القيم ثم تُكتب دفعةً واحدة — لا استعلام متوازٍ لكل مفتاح
+    const updates = {};
+    const set = (key, value) => { updates[key] = value; };
 
     if (section === 'contact') {
       const allowed = ['phone', 'whatsapp', 'email', 'address', 'maps_url', 'company_name', 'accepting_applications'];
@@ -1218,13 +1217,15 @@ router.post('/settings', requireManager, async (req, res) => {
       set('interviews_enabled', req.body.interviews_enabled === undefined ? 'false' : 'true');
     }
 
-    await Promise.all(updates);
-    await db.audit(req.session.adminId, req.session.adminUser, 'settings_update', 'settings', null, null, section, req.ip);
+    await db.setSettings(updates);
+    await db.audit(req.session.adminId, req.session.adminUser, 'settings_update', 'settings', null, null,
+      `${section} (${Object.keys(updates).length} مفتاحاً)`, req.ip);
     const anchor = { interviews: '#interviews', notifications: '#notify' }[section] || '';
     res.redirect(`/admin/settings?saved=1${anchor}`);
   } catch (err) {
     console.error('[Settings POST]', err.message);
-    res.status(500).send('خطأ في حفظ الإعدادات');
+    // الصفحة للمدير وحده — إظهار سبب الفشل يوفّر جولة كاملة في سجل الخادم
+    res.redirect('/admin/settings?err=' + encodeURIComponent(`تعذّر الحفظ — ${err.message}`.slice(0, 200)));
   }
 });
 
