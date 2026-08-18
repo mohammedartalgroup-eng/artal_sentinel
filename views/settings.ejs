@@ -330,6 +330,191 @@
       </form>
     </div>
 
+    <!-- Applicant notifications (WhatsApp + Email) -->
+    <%
+      const ms = typeof mailStatus     !== 'undefined' ? mailStatus     : { configured: false, installed: false };
+      const cs = typeof chatwootStatus !== 'undefined' ? chatwootStatus : { configured: false };
+      const MV = typeof msgVars !== 'undefined' ? msgVars : {};
+      const KINDS = [
+        { key: 'scheduled',   label: 'عند جدولة مقابلة',   hint: 'الإشعار الأساسي — يحمل الموعد ورابط Meet' },
+        { key: 'rescheduled', label: 'عند إعادة الجدولة',  hint: 'اتركه فارغاً لتعطيل واتساب في هذه الحالة' },
+        { key: 'cancelled',   label: 'عند إلغاء المقابلة', hint: 'اتركه فارغاً لتعطيل واتساب في هذه الحالة' },
+      ];
+    %>
+    <div class="bg-white rounded-2xl p-7" id="notify">
+      <h2 class="font-bold text-[#001736] text-base mb-1 flex items-center gap-2">
+        <span class="material-symbols-outlined text-lg">campaign</span>
+        إشعار المتقدم بالموعد
+      </h2>
+      <p class="text-xs text-[#43474f] mb-6">
+        عند تأكيد الجدولة تُرسَل رسالة واتساب وبريد إلكتروني للمتقدم تلقائياً — كلٌ حسب توفر رقمه وبريده.
+      </p>
+
+      <!-- حالة القناتين -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div class="border border-[#e0e3e5] rounded-xl p-4">
+          <div class="flex items-center justify-between mb-2">
+            <div class="text-sm font-semibold text-[#001736] flex items-center gap-1.5">
+              <span class="material-symbols-outlined text-base">mail</span> البريد (SMTP)
+            </div>
+            <span class="text-[11px] font-semibold px-2.5 py-1 rounded-full <%= ms.configured ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700' %>">
+              <%= ms.configured ? 'جاهز' : 'غير مكتمل' %>
+            </span>
+          </div>
+          <% if (ms.configured) { %>
+          <div class="text-xs text-[#43474f]" dir="ltr"><%= ms.user %> · <%= ms.host %>:<%= ms.port %></div>
+          <div class="flex gap-2 mt-3">
+            <input type="email" id="mail-test-to" placeholder="بريد للاختبار" dir="ltr"
+                   style="flex:1;border:1px solid #e0e3e5;border-radius:.6rem;padding:.5rem .7rem;font-size:.75rem;outline:none;">
+            <button type="button" onclick="notifyTest('email', this)"
+                    style="background:#001736;color:#fff;border:none;border-radius:.6rem;padding:.5rem .9rem;font-size:.75rem;font-weight:600;cursor:pointer;white-space:nowrap;">إرسال اختبار</button>
+          </div>
+          <% } else { %>
+          <div class="text-xs text-[#43474f] leading-relaxed">
+            أضف إلى <span dir="ltr" class="font-mono">.env</span>:
+            <span dir="ltr" class="font-mono text-[11px]">SMTP_USER</span> و<span dir="ltr" class="font-mono text-[11px]">SMTP_PASS</span>
+            (كلمة مرور تطبيق من حساب Google).
+          </div>
+          <% } %>
+        </div>
+
+        <div class="border border-[#e0e3e5] rounded-xl p-4">
+          <div class="flex items-center justify-between mb-2">
+            <div class="text-sm font-semibold text-[#001736] flex items-center gap-1.5">
+              <span class="material-symbols-outlined text-base">chat</span> واتساب (Chatwoot)
+            </div>
+            <span class="text-[11px] font-semibold px-2.5 py-1 rounded-full <%= cs.configured ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700' %>">
+              <%= cs.configured ? 'جاهز' : 'غير مكتمل' %>
+            </span>
+          </div>
+          <% if (cs.configured) { %>
+          <div class="text-xs text-[#43474f]" dir="ltr"><%= cs.host %> · account <%= cs.account %> · inbox <%= cs.inbox %></div>
+          <div class="flex gap-2 mt-3">
+            <input type="text" id="wa-test-to" placeholder="جوال للاختبار — 05xxxxxxxx" dir="ltr"
+                   style="flex:1;border:1px solid #e0e3e5;border-radius:.6rem;padding:.5rem .7rem;font-size:.75rem;outline:none;">
+            <button type="button" onclick="notifyTest('whatsapp', this)"
+                    style="background:#001736;color:#fff;border:none;border-radius:.6rem;padding:.5rem .9rem;font-size:.75rem;font-weight:600;cursor:pointer;white-space:nowrap;">إرسال اختبار</button>
+          </div>
+          <% } else { %>
+          <div class="text-xs text-[#43474f] leading-relaxed">
+            أضف إلى <span dir="ltr" class="font-mono">.env</span>:
+            <span dir="ltr" class="font-mono text-[11px]">CHATWOOT_INBOX_ID</span> و<span dir="ltr" class="font-mono text-[11px]">CHATWOOT_API_TOKEN</span>.
+          </div>
+          <% } %>
+        </div>
+      </div>
+
+      <form method="POST" action="/admin/settings" class="space-y-5">
+        <input type="hidden" name="form_section" value="notifications">
+
+        <div class="space-y-3">
+          <% [
+            ['notify_email_enabled',      'إرسال بريد إلكتروني للمتقدم', 'يُرسَل فقط إذا سجّل المتقدم بريده عند التقديم'],
+            ['notify_whatsapp_enabled',   'إرسال واتساب للمتقدم',        'يتطلب قالباً معتمداً في Twilio/Meta — لا تفعّله قبل الاعتماد'],
+            ['notify_applicant_attendee', 'دعوة المتقدم في تقويم Google', 'يصله مرفق .ics وتذكيرات Google، ويتحدّث تلقائياً عند إعادة الجدولة'],
+          ].forEach(function (f) { %>
+          <div class="flex items-center justify-between p-4 bg-[#f8f9fb] rounded-xl">
+            <div class="pl-3">
+              <div class="text-sm font-semibold text-[#001736]"><%= f[1] %></div>
+              <div class="text-xs text-[#43474f] mt-0.5"><%= f[2] %></div>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer shrink-0">
+              <input type="checkbox" name="<%= f[0] %>" value="true" class="sr-only peer"
+                     <%= settings[f[0]] === 'true' ? 'checked' : '' %>>
+              <div class="w-12 h-6 bg-[#e0e3e5] peer-focus:outline-none rounded-full peer
+                          peer-checked:after:translate-x-full peer-checked:after:border-white
+                          after:content-[''] after:absolute after:top-[2px] after:right-[2px]
+                          after:bg-white after:border-gray-300 after:border after:rounded-full
+                          after:h-5 after:w-5 after:transition-all peer-checked:bg-[#001736]"></div>
+            </label>
+          </div>
+          <% }); %>
+        </div>
+
+        <div class="border-t border-[#e0e3e5] pt-5">
+          <div class="text-sm font-bold text-[#001736] mb-1">قوالب واتساب المعتمدة</div>
+          <p class="text-xs text-[#43474f] mb-4 leading-relaxed">
+            واتساب لا يسمح ببدء محادثة خارج نافذة الـ 24 ساعة إلا بقالب معتمد. اكتب اسم القالب كما هو حرفياً في Twilio،
+            ورتّب المتغيّرات بحسب <span dir="ltr" class="font-mono">{{1}}</span>، <span dir="ltr" class="font-mono">{{2}}</span> … في نص القالب.
+          </p>
+
+          <div class="bg-[#f8f9fb] rounded-xl p-4 mb-4">
+            <div class="text-[11px] font-semibold text-[#43474f] mb-2">المتغيّرات المتاحة (افصل بينها بفاصلة):</div>
+            <div class="flex flex-wrap gap-1.5">
+              <% Object.entries(MV).forEach(function (e) { %>
+              <span class="bg-white border border-[#e0e3e5] rounded-full px-2.5 py-1 text-[11px] text-[#43474f]">
+                <span dir="ltr" class="font-mono text-[#405f91]"><%= e[0] %></span> — <%= e[1] %>
+              </span>
+              <% }); %>
+            </div>
+          </div>
+
+          <% KINDS.forEach(function (k) { %>
+          <div class="border border-[#e0e3e5] rounded-xl p-4 mb-3">
+            <div class="text-xs font-bold text-[#001736] mb-0.5"><%= k.label %></div>
+            <div class="text-[11px] text-[#43474f] mb-3"><%= k.hint %></div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div class="field md:col-span-2">
+                <label class="block text-[10px] text-[#43474f] font-semibold uppercase tracking-wider mb-1">اسم القالب</label>
+                <input type="text" name="wa_tpl_<%= k.key %>_name" dir="ltr" placeholder="interview_scheduled"
+                       value="<%= settings['wa_tpl_' + k.key + '_name'] || '' %>">
+              </div>
+              <div class="field">
+                <label class="block text-[10px] text-[#43474f] font-semibold uppercase tracking-wider mb-1">اللغة</label>
+                <input type="text" name="wa_tpl_<%= k.key %>_lang" dir="ltr" placeholder="ar"
+                       value="<%= settings['wa_tpl_' + k.key + '_lang'] || 'ar' %>">
+              </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+              <div class="field">
+                <label class="block text-[10px] text-[#43474f] font-semibold uppercase tracking-wider mb-1">التصنيف</label>
+                <select name="wa_tpl_<%= k.key %>_cat" dir="ltr"
+                        style="width:100%;background:white;border:1px solid #e0e3e5;border-radius:.75rem;padding:.75rem 1rem;font-size:.875rem;outline:none;">
+                  <% ['UTILITY','MARKETING','AUTHENTICATION'].forEach(function (c) { %>
+                  <option value="<%= c %>" <%= (settings['wa_tpl_' + k.key + '_cat'] || 'UTILITY') === c ? 'selected' : '' %>><%= c %></option>
+                  <% }); %>
+                </select>
+              </div>
+              <div class="field md:col-span-2">
+                <label class="block text-[10px] text-[#43474f] font-semibold uppercase tracking-wider mb-1">ترتيب المتغيّرات</label>
+                <input type="text" name="wa_tpl_<%= k.key %>_vars" dir="ltr" placeholder="name,date,time,link"
+                       value="<%= settings['wa_tpl_' + k.key + '_vars'] || '' %>">
+              </div>
+            </div>
+          </div>
+          <% }); %>
+
+          <div class="field mb-5">
+            <label class="block text-xs text-[#43474f] font-semibold uppercase tracking-wider mb-1.5">المسمّى الوظيفي الافتراضي</label>
+            <input type="text" name="default_job_title" maxlength="100" placeholder="حارس أمن"
+                   value="<%= settings.default_job_title || '' %>">
+            <p class="text-[10px] text-[#7594ca] mt-1.5 leading-relaxed">
+              يُستخدم حين يتعذّر استنتاج الوظيفة من صفحة التقديم. يظهر مُعبَّأً مسبقاً في نافذة الجدولة ويمكن للموظف تعديله لكل متقدم.
+            </p>
+          </div>
+
+          <div class="field">
+            <label class="block text-xs text-[#43474f] font-semibold uppercase tracking-wider mb-1.5">شكل المتغيّرات في Chatwoot</label>
+            <select name="wa_params_shape"
+                    style="width:100%;background:white;border:1px solid #e0e3e5;border-radius:.75rem;padding:.75rem 1rem;font-size:.875rem;outline:none;">
+              <option value="numbered"   <%= settings.wa_params_shape !== 'structured' ? 'selected' : '' %>>ترقيم بسيط — {"1": "…", "2": "…"}</option>
+              <option value="structured" <%= settings.wa_params_shape === 'structured' ? 'selected' : '' %>>بنية مكوّنات — {"body": […]}</option>
+            </select>
+            <p class="text-[10px] text-[#7594ca] mt-1.5 leading-relaxed">
+              يختلف بين إصدارات Chatwoot. إن فشل الإرسال بخطأ عدد المتغيّرات، أرسل القالب يدوياً مرة من واجهة Chatwoot
+              ثم اقرأ بنية <span dir="ltr" class="font-mono">template_params</span> الفعلية من الـ API وطابِق الاختيار عليها.
+            </p>
+          </div>
+        </div>
+
+        <button type="submit"
+                class="w-full bg-[#001736] text-white font-bold py-3.5 rounded-xl hover:bg-[#002b5b] transition-colors flex items-center justify-center gap-2">
+          <span class="material-symbols-outlined text-base">save</span>
+          حفظ إعدادات الإشعار
+        </button>
+      </form>
+    </div>
+
     <!-- Change Password -->
     <div class="bg-white rounded-2xl p-7">
       <h2 class="font-bold text-[#001736] text-base mb-1 flex items-center gap-2">
@@ -420,6 +605,25 @@
       if (!field.value) { e.preventDefault(); alert('اختر يوم عمل واحداً على الأقل'); }
     });
   })();
+
+  // اختبار قناة الإشعار — يُرسل على بيانات مقابلة وهمية
+  function notifyTest(channel, btn) {
+    const input = document.getElementById(channel === 'email' ? 'mail-test-to' : 'wa-test-to');
+    const target = (input && input.value || '').trim();
+    if (!target) { alert('أدخل وجهة الاختبار أولاً'); if (input) input.focus(); return; }
+
+    const old = btn.textContent;
+    btn.disabled = true; btn.textContent = 'جارٍ الإرسال…'; btn.style.opacity = '.6';
+
+    fetch('/admin/settings/notify-test', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channel, target }),
+    })
+      .then(r => r.json().then(d => ({ ok: r.ok, d })))
+      .then(({ ok, d }) => alert(ok ? (d.message || 'تم الإرسال') : ('فشل الإرسال: ' + (d.error || 'خطأ غير معروف'))))
+      .catch(() => alert('تعذّر الاتصال بالخادم'))
+      .finally(() => { btn.disabled = false; btn.textContent = old; btn.style.opacity = '1'; });
+  }
 
   function disconnectGoogle() {
     if (!confirm('فصل حساب Google؟ لن تتمكن من جدولة مقابلات جديدة حتى تعيد الربط.')) return;

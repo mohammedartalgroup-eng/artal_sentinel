@@ -15,7 +15,8 @@ const rateLimit = require('express-rate-limit');
 const db        = require('../database/db');
 const google    = require('../utils/google');
 const S         = require('../utils/slots');
-const { buildWhatsAppText, buildWaUrl } = require('../utils/interviewMsg');
+const notify    = require('../utils/notify');
+const { buildWhatsAppText, buildWaUrl, isEmail, deriveJobTitle } = require('../utils/interviewMsg');
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PIPE = ['pending', 'reviewed', 'shortlisted', 'interviewed', 'hired'];
@@ -140,6 +141,7 @@ function publicInterview(row, rowsByEmail = {}) {
     dateLabel: S.arabicDate(startMs),
     timeLabel: S.localTime(startMs),
     durationMin: row.duration_min,
+    jobTitle: row.job_title || '',
     meetLink: row.meet_link,
     htmlLink: row.html_link,
     status: row.status,
@@ -149,12 +151,33 @@ function publicInterview(row, rowsByEmail = {}) {
   };
 }
 
-function eventSpec({ applicant, startMs, endMs, emails, interviewId, note }) {
+/**
+ * قائمة حضور حدث التقويم = المقابلون + المتقدم (إن كان لديه بريد صالح
+ * والإعداد مفعّل). وجود المتقدم كـ attendee هو ما يجعل Google يرسل له دعوة
+ * رسمية بمرفق .ics وتذكيرات تلقائية، ويحدّثها فوراً عند إعادة الجدولة.
+ *
+ * ⚠️ تُستخدم في الإنشاء **وفي إعادة الجدولة** معاً: أي patch يرسل قائمة
+ *    حضور بلا المتقدم سيحذفه من الحدث بصمت ويلغي دعوته.
+ */
+function attendeeList(emails, applicant, settings) {
+  const list = emails.map(email => ({ email }));
+  const wanted = !settings || settings.notify_applicant_attendee !== 'false';
+  const mail = String(applicant?.email || '').trim();
+  if (wanted && isEmail(mail) && !emails.some(e => e.toLowerCase() === mail.toLowerCase())) {
+    list.push({ email: mail, displayName: applicant.full_name || undefined, optional: false });
+  }
+  return list;
+}
+
+function eventSpec({ applicant, startMs, endMs, emails, interviewId, note, settings, interviewerNames, jobTitle }) {
   const desc = [
     'مقابلة توظيف أونلاين عبر Google Meet',
     `المتقدم: ${applicant.full_name}`,
+    jobTitle ? `الوظيفة: ${jobTitle}` : null,
     `الجوال: ${applicant.phone || '—'}`,
     `رقم الطلب: #${applicant.id}`,
+    // تُذكر الأسماء في الوصف لأن قائمة الحضور مخفية عن المدعوين (أدناه)
+    interviewerNames ? `المقابلون: ${interviewerNames}` : null,
     note ? `ملاحظة: ${note}` : null,
   ].filter(Boolean).join('\n');
 
@@ -163,7 +186,7 @@ function eventSpec({ applicant, startMs, endMs, emails, interviewId, note }) {
     description: desc,
     start: { dateTime: S.toRfc3339(startMs), timeZone: 'Asia/Riyadh' },
     end:   { dateTime: S.toRfc3339(endMs),   timeZone: 'Asia/Riyadh' },
-    attendees: emails.map(email => ({ email })),
+    attendees: attendeeList(emails, applicant, settings),
     conferenceData: {
       createRequest: {
         requestId: `artal-${applicant.id}-${interviewId}-${startMs}`,
@@ -172,6 +195,8 @@ function eventSpec({ applicant, startMs, endMs, emails, interviewId, note }) {
     },
     guestsCanModify: false,
     guestsCanInviteOthers: false,
+    // المتقدم مدعوّ خارجي — إخفاء قائمة الحضور يمنع تسريب بُرُد الموظفين إليه
+    guestsCanSeeOtherGuests: false,
     reminders: { useDefault: true },
     extendedProperties: {
       private: { artal_applicant_id: String(applicant.id), artal_interview_id: String(interviewId) },
@@ -229,8 +254,11 @@ router.post('/applicants/:id/interview', requireInterviews, scheduleLimiter, asy
     if (!emails.length) return res.status(400).json({ error: 'اختر مقابلاً واحداً على الأقل' });
     if (emails.length > 5) return res.status(400).json({ error: 'الحد الأقصى خمسة مقابلين' });
 
-    const applicant = await db.get('SELECT id, full_name, phone, status FROM applicants WHERE id = ?', [req.params.id]);
+    const applicant = await db.get('SELECT id, full_name, phone, email, status FROM applicants WHERE id = ?', [req.params.id]);
     if (!applicant) return res.status(404).json({ error: 'المتقدم غير موجود' });
+
+    const nameByEmail = Object.fromEntries(ivRows.map(u => [u.username, u.full_name || u.username]));
+    const namesText   = emails.map(e => nameByEmail[e] || e).join('، ');
 
     const existing = await db.get(
       "SELECT id FROM interviews WHERE applicant_id = ? AND status = 'scheduled'", [applicant.id]
@@ -238,15 +266,19 @@ router.post('/applicants/:id/interview', requireInterviews, scheduleLimiter, asy
     if (existing) return res.status(409).json({ error: 'لدى هذا المتقدم مقابلة مجدولة بالفعل', code: 'ALREADY_SCHEDULED' });
 
     const note = String(req.body.note || '').trim().slice(0, 500);
+    // قالب واتساب المعتمد يذكر الوظيفة، ولا عمود لها في جدول المتقدمين —
+    // فيغلب اختيار الموظف، وإلا يُشتق من صفحة الوظيفة التي قدّم منها
+    const jobTitle = String(req.body.jobTitle || '').trim().slice(0, 100)
+      || deriveJobTitle(applicant, req.ivSettings);
 
     // 1) الصف هو القفل — يُؤخذ قبل نداء Google ويبقى محجوزاً طوال الرحلة
     try {
       const ins = await db.run(
         `INSERT INTO interviews
-           (applicant_id, start_at, end_at, start_local, duration_min, slot_key, status, interviewers, created_by, created_by_id)
-         VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
+           (applicant_id, start_at, end_at, start_local, duration_min, slot_key, status, interviewers, job_title, created_by, created_by_id)
+         VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`,
         [applicant.id, new Date(startMs), new Date(endMs), S.localStamp(startMs), rules.durationMin,
-         slotKey, emails.join(','), req.session.adminName || null, req.session.adminId || null]
+         slotKey, emails.join(','), jobTitle, req.session.adminName || null, req.session.adminId || null]
       );
       insertId = ins.insertId;
     } catch (e) {
@@ -272,7 +304,10 @@ router.post('/applicants/:id/interview', requireInterviews, scheduleLimiter, asy
     // 3) إنشاء الحدث — بلا إعادة محاولة (تفادي اجتماع مكرر)
     let ev;
     try {
-      ev = await google.createEvent(eventSpec({ applicant, startMs, endMs, emails, interviewId: insertId, note }));
+      ev = await google.createEvent(eventSpec({
+        applicant, startMs, endMs, emails, interviewId: insertId, note,
+        settings: req.ivSettings, interviewerNames: namesText, jobTitle,
+      }));
     } catch (e) {
       if (e instanceof google.GoogleError && e.code === 'TIMEOUT') {
         // قد يكون الحدث أُنشئ فعلاً — نُبقي الصف للتسوية اليدوية
@@ -308,8 +343,6 @@ router.post('/applicants/:id/interview', requireInterviews, scheduleLimiter, asy
     console.log(`[Interview] #${insertId} created — event ${ev.eventId}, applicant #${applicant.id}`);
 
     // 5) الآثار الجانبية — كلٌ في try/catch مستقل: لا تُفشل الطلب بعد إنشاء الحدث
-    const nameByEmail = Object.fromEntries(ivRows.map(u => [u.username, u.full_name || u.username]));
-    const namesText = emails.map(e => nameByEmail[e] || e).join('، ');
     const dateLabel = S.arabicDate(startMs);
     const timeLabel = S.localTime(startMs);
 
@@ -342,13 +375,23 @@ router.post('/applicants/:id/interview', requireInterviews, scheduleLimiter, asy
 
     const iv = {
       id: insertId, startMs, endMs, startLocal: S.localStamp(startMs), dateLabel, timeLabel,
-      durationMin: rules.durationMin, meetLink: ev.meetLink, htmlLink: ev.htmlLink,
+      durationMin: rules.durationMin, jobTitle, meetLink: ev.meetLink, htmlLink: ev.htmlLink,
       status: 'scheduled', pendingLink: !ev.meetLink,
       interviewers: emails.map(e => ({ email: e, name: nameByEmail[e] || e })),
     };
     const waText = buildWhatsAppText(applicant, iv, { companyName: req.ivSettings.company_name });
 
-    res.json({ ok: true, interview: iv, statusChanged, whatsappUrl: buildWaUrl(applicant.phone, waText) });
+    // إشعار المتقدم — القناتان بالتوازي. notifyInterview لا يرمي إطلاقاً، ونتيجته
+    // تعود للواجهة فوراً حتى يعرف الموظف إن لم تصل الرسالة ويعيد الإرسال بزر.
+    const delivery = await notify.notifyInterview({
+      applicant, interview: iv, kind: 'scheduled',
+      settings: req.ivSettings, actor: req.session.adminName || req.session.adminUser,
+    });
+
+    res.json({
+      ok: true, interview: iv, statusChanged, delivery,
+      whatsappUrl: buildWaUrl(applicant.phone, waText),
+    });
   } catch (err) {
     if (insertId) { try { await db.run("DELETE FROM interviews WHERE id = ? AND status = 'pending'", [insertId]); } catch (_) {} }
     mapGoogleError(err, res);
@@ -377,6 +420,10 @@ router.patch('/interviews/:iid', requireInterviews, scheduleLimiter, async (req,
       emails = v.emails;
     }
 
+    // يُقرأ قبل patchEvent: قائمة الحضور المرسَلة تستبدل القديمة بالكامل، فلو
+    // بُنيت بلا بريد المتقدم لحُذف من الحدث وأُلغيت دعوته بصمت
+    const applicant = await db.get('SELECT id, full_name, phone, email FROM applicants WHERE id = ?', [row.applicant_id]);
+
     const prev = { slot_key: row.slot_key, start_at: row.start_at, end_at: row.end_at, start_local: row.start_local, interviewers: row.interviewers };
 
     // القفل أولاً: الفهرس الفريد يمنع التصادم مع حجز متزامن
@@ -397,7 +444,7 @@ router.patch('/interviews/:iid', requireInterviews, scheduleLimiter, async (req,
       await google.patchEvent(row.google_event_id, {
         start: { dateTime: S.toRfc3339(startMs), timeZone: 'Asia/Riyadh' },
         end:   { dateTime: S.toRfc3339(endMs),   timeZone: 'Asia/Riyadh' },
-        attendees: emails.map(email => ({ email })),
+        attendees: attendeeList(emails, applicant, req.ivSettings),
       });
     } catch (e) {
       await db.run(
@@ -407,7 +454,6 @@ router.patch('/interviews/:iid', requireInterviews, scheduleLimiter, async (req,
       return mapGoogleError(e, res);
     }
 
-    const applicant = await db.get('SELECT id, full_name, phone FROM applicants WHERE id = ?', [row.applicant_id]);
     const dateLabel = S.arabicDate(startMs);
     const timeLabel = S.localTime(startMs);
 
@@ -426,7 +472,12 @@ router.patch('/interviews/:iid', requireInterviews, scheduleLimiter, async (req,
     const iv = publicInterview(fresh, nameByEmail);
     const waText = buildWhatsAppText(applicant || {}, iv, { companyName: req.ivSettings.company_name });
 
-    res.json({ ok: true, interview: iv, whatsappUrl: buildWaUrl(applicant?.phone, waText) });
+    const delivery = applicant ? await notify.notifyInterview({
+      applicant, interview: iv, kind: 'rescheduled',
+      settings: req.ivSettings, actor: req.session.adminName || req.session.adminUser,
+    }) : {};
+
+    res.json({ ok: true, interview: iv, delivery, whatsappUrl: buildWaUrl(applicant?.phone, waText) });
   } catch (err) {
     mapGoogleError(err, res);
   }
@@ -464,7 +515,7 @@ router.post('/interviews/:iid/cancel', requireInterviews, async (req, res) => {
       [req.session.adminName || null, reason || null, row.id]
     );
 
-    const applicant = await db.get('SELECT full_name FROM applicants WHERE id = ?', [row.applicant_id]);
+    const applicant = await db.get('SELECT id, full_name, phone, email FROM applicants WHERE id = ?', [row.applicant_id]);
     try {
       await db.logActivity(row.applicant_id, 'إلغاء مقابلة', row.start_local, reason || 'بدون سبب', req.session.adminName || null);
     } catch (e) { console.error('[Interview] cancel activity:', e.message); }
@@ -475,7 +526,19 @@ router.post('/interviews/:iid/cancel', requireInterviews, async (req, res) => {
     await db.audit(req.session.adminId, req.session.adminUser, 'interview_cancel', 'applicant',
       row.applicant_id, applicant?.full_name, `${row.start_local}${reason ? ` — ${reason}` : ''}`, req.ip);
 
-    res.json({ ok: true });
+    // إشعار الإلغاء اختياري — المتقدم يستقبل إلغاء Google تلقائياً بصفته مدعوّاً،
+    // وهذا يضيف رسالة عربية واضحة بالسبب
+    const delivery = applicant ? await notify.notifyInterview({
+      applicant,
+      interview: {
+        id: row.id, startMs: startedMs, durationMin: row.duration_min,
+        jobTitle: row.job_title || '', meetLink: null, interviewers: [], reason,
+      },
+      kind: 'cancelled',
+      settings: req.ivSettings, actor: req.session.adminName || req.session.adminUser,
+    }) : {};
+
+    res.json({ ok: true, delivery });
   } catch (err) {
     mapGoogleError(err, res);
   }
@@ -497,7 +560,48 @@ router.post('/interviews/:iid/refresh-link', requireInterviews, async (req, res)
   }
 });
 
-// ─── و. تسوية صف معلّق بعد انقطاع الشبكة ─────────────────────────────────────
+// ─── و. إعادة إرسال الإشعار للمتقدم ──────────────────────────────────────────
+//  الشبكة تتقطع وقوالب واتساب تُرفض — فبدل «حاول جدولة أخرى» يعيد الموظف
+//  الإرسال وحده. القناة اختيارية: بلا تحديد تُعاد المحاولة على القناتين.
+const notifyLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000, max: 20,
+  message: { error: 'طلبات كثيرة — انتظر قليلاً' },
+  standardHeaders: true, legacyHeaders: false,
+});
+
+router.post('/interviews/:iid/notify', requireInterviews, notifyLimiter, async (req, res) => {
+  try {
+    const row = await db.get('SELECT * FROM interviews WHERE id = ?', [req.params.iid]);
+    if (!row) return res.status(404).json({ error: 'المقابلة غير موجودة' });
+    if (row.status === 'pending') return res.status(409).json({ error: 'لم تكتمل هذه المقابلة بعد — سوّها أولاً' });
+
+    const applicant = await db.get('SELECT id, full_name, phone, email FROM applicants WHERE id = ?', [row.applicant_id]);
+    if (!applicant) return res.status(404).json({ error: 'المتقدم غير موجود' });
+
+    const one = ['whatsapp', 'email'].includes(req.body.channel) ? [req.body.channel] : null;
+    const kind = row.status === 'cancelled' ? 'cancelled' : 'scheduled';
+
+    const users = await activeInterviewers();
+    const nameByEmail = Object.fromEntries(users.map(u => [u.username, u.full_name || u.username]));
+
+    const delivery = await notify.notifyInterview({
+      applicant, interview: publicInterview(row, nameByEmail), kind,
+      settings: req.ivSettings, actor: req.session.adminName || req.session.adminUser,
+      channels: one,
+    });
+
+    await db.audit(req.session.adminId, req.session.adminUser, 'interview_notify', 'applicant',
+      applicant.id, applicant.full_name,
+      Object.entries(delivery).map(([ch, r]) => `${ch}:${r.status}`).join(' | '), req.ip);
+
+    res.json({ ok: true, delivery });
+  } catch (err) {
+    console.error('[Interview] notify:', err.message);
+    res.status(500).json({ error: 'تعذّر إرسال الإشعار' });
+  }
+});
+
+// ─── ز. تسوية صف معلّق بعد انقطاع الشبكة ─────────────────────────────────────
 router.post('/interviews/:iid/reconcile', requireInterviews, async (req, res) => {
   try {
     const row = await db.get('SELECT * FROM interviews WHERE id = ?', [req.params.iid]);
@@ -522,7 +626,7 @@ router.post('/interviews/:iid/reconcile', requireInterviews, async (req, res) =>
   }
 });
 
-// ─── ز. صفحة المقابلات ───────────────────────────────────────────────────────
+// ─── ح. صفحة المقابلات ───────────────────────────────────────────────────────
 const PAGE_SIZE = 50;
 
 router.get('/interviews', requireInterviewsPage, async (req, res) => {

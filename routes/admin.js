@@ -10,6 +10,8 @@ const usersRouter    = require('./users');
 const SA_REGIONS     = require('./regions').SA_REGIONS;
 const { checkExternal } = require('../utils/extCheck');
 const google         = require('../utils/google');   // لا يرمي عند التحميل — كل تحقق كسول
+const mailer         = require('../utils/mailer');   // ولا هذان — صفر اعتماديات وتحقق كسول
+const chatwoot       = require('../utils/chatwoot');
 const crypto         = require('crypto');
 
 // ─── Rate Limiter — تسجيل الدخول فقط ─────────────────────────────────────────
@@ -647,11 +649,13 @@ router.get('/applicants/:id', async (req, res) => {
 
     // بناء بيانات بطاقة المقابلة — أي خطأ هنا يُلغي البطاقة فقط
     let interviewsEnabled = false, activeInterview = null, waUrl = '', googleConnected = false;
+    let delivery = {}, notifyChannels = { whatsapp: false, email: false }, jobTitleGuess = '';
     try {
       interviewsEnabled = db.INTERVIEWS_SCHEMA_OK && settings.interviews_enabled === 'true';
       googleConnected   = Boolean(settings.google_refresh_token);
       const S = require('../utils/slots');
-      const { buildWhatsAppText, buildWaUrl } = require('../utils/interviewMsg');
+      const { buildWhatsAppText, buildWaUrl, deriveJobTitle } = require('../utils/interviewMsg');
+      jobTitleGuess = deriveJobTitle(applicant, settings);
       const nameByEmail = Object.fromEntries(ivUsers.map(u => [u.username, u.full_name || u.username]));
       const live = ivRows.find(r => r.status === 'scheduled') || ivRows.find(r => r.status === 'pending');
       if (live) {
@@ -659,13 +663,21 @@ router.get('/applicants/:id', async (req, res) => {
         activeInterview = {
           id: live.id, startMs, startLocal: live.start_local,
           dateLabel: S.arabicDate(startMs), timeLabel: S.localTime(startMs),
-          durationMin: live.duration_min, meetLink: live.meet_link, htmlLink: live.html_link,
+          durationMin: live.duration_min, jobTitle: live.job_title || jobTitleGuess,
+          meetLink: live.meet_link, htmlLink: live.html_link,
           status: live.status, pendingLink: !live.meet_link,
           interviewers: String(live.interviewers || '').split(',').filter(Boolean)
             .map(e => ({ email: e, name: nameByEmail[e] || e })),
         };
         waUrl = buildWaUrl(applicant.phone,
           buildWhatsAppText(applicant, activeInterview, { companyName: settings.company_name }));
+
+        // آخر حالة إرسال لكل قناة — لشارات «أُرسل / فشل» وأزرار إعادة الإرسال
+        delivery = await require('../utils/notify').deliveryFor(live.id);
+        notifyChannels = {
+          whatsapp: settings.notify_whatsapp_enabled === 'true' && require('../utils/chatwoot').isConfigured(),
+          email:    settings.notify_email_enabled    === 'true' && require('../utils/mailer').isConfigured(),
+        };
       }
     } catch (e) {
       console.error('[Interview] card build:', e.message);
@@ -675,7 +687,7 @@ router.get('/applicants/:id', async (req, res) => {
     res.render('applicant-detail', {
       applicant, notes, activity, priorApps,
       STATUS_META, NOTE_TYPES, adminUser: req.session.adminUser,
-      interviewsEnabled, googleConnected, activeInterview, waUrl,
+      interviewsEnabled, googleConnected, activeInterview, waUrl, delivery, notifyChannels, jobTitleGuess,
       interviewerList: ivUsers.filter(u => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(u.username || '')),
     });
   } catch (err) {
@@ -1028,6 +1040,9 @@ router.get('/settings', requireManager, async (req, res) => {
       },
       interviewsReady: db.INTERVIEWS_SCHEMA_OK,
       settingsError: req.query.err || '',
+      mailStatus: mailer.status(),
+      chatwootStatus: chatwoot.status(),
+      msgVars: require('../utils/interviewMsg').VAR_LABELS,
     });
   } catch (err) {
     console.error('[Settings GET]', err.message);
@@ -1059,11 +1074,44 @@ function validateInterviewSettings(b) {
   return null;
 }
 
+// التحقق من إعداد قوالب واتساب — يُرجع رسالة خطأ أو null
+function validateNotifySettings(b) {
+  const VARS = Object.keys(require('../utils/interviewMsg').VAR_LABELS);
+  const CATS = ['UTILITY', 'MARKETING', 'AUTHENTICATION'];
+  for (const kind of require('../utils/notify').KINDS) {
+    const nameKey = `wa_tpl_${kind}_name`;
+    if (b[nameKey] !== undefined && String(b[nameKey]).trim()) {
+      // أسماء قوالب واتساب: حروف صغيرة وأرقام وشرطة سفلية فقط
+      if (!/^[a-z0-9_]{1,512}$/.test(String(b[nameKey]).trim())) {
+        return `اسم القالب «${b[nameKey]}» غير صالح — يُسمح بحروف إنجليزية صغيرة وأرقام وشرطة سفلية فقط`;
+      }
+    }
+    const langKey = `wa_tpl_${kind}_lang`;
+    if (b[langKey] !== undefined && String(b[langKey]).trim() && !/^[a-z]{2}(_[A-Z]{2})?$/.test(String(b[langKey]).trim())) {
+      return `رمز اللغة «${b[langKey]}» غير صالح — مثال: ar أو en_US`;
+    }
+    const catKey = `wa_tpl_${kind}_cat`;
+    if (b[catKey] !== undefined && String(b[catKey]).trim() && !CATS.includes(String(b[catKey]).trim())) {
+      return 'تصنيف القالب يجب أن يكون UTILITY أو MARKETING أو AUTHENTICATION';
+    }
+    const varsKey = `wa_tpl_${kind}_vars`;
+    if (b[varsKey] !== undefined) {
+      const bad = String(b[varsKey]).split(',').map(s => s.trim()).filter(Boolean).filter(v => !VARS.includes(v));
+      if (bad.length) return `متغيّرات غير معروفة: ${bad.join('، ')}`;
+    }
+  }
+  if (b.wa_params_shape !== undefined && !['numbered', 'structured'].includes(b.wa_params_shape)) {
+    return 'شكل المتغيّرات غير صالح';
+  }
+  return null;
+}
+
 router.post('/settings', requireManager, async (req, res) => {
   try {
     // القسم يحدد المفاتيح المسموح كتابتها — حتى لا يمس نموذجٌ مفاتيحَ نموذج آخر
     // (مثلاً: حفظ قواعد المقابلات كان سيُطفئ accepting_applications بالخطأ).
-    const section = req.body.form_section === 'interviews' ? 'interviews' : 'contact';
+    const SECTIONS = ['interviews', 'notifications'];
+    const section = SECTIONS.includes(req.body.form_section) ? req.body.form_section : 'contact';
     const updates = [];
     const set = (key, value) => updates.push(db.run(
       'UPDATE settings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE `key` = ?', [value, key]
@@ -1076,6 +1124,20 @@ router.post('/settings', requireManager, async (req, res) => {
       }
       // checkbox — unchecked sends nothing, so default to false
       if (req.body.accepting_applications === undefined) set('accepting_applications', 'false');
+    } else if (section === 'notifications') {
+      const invalid = validateNotifySettings(req.body);
+      if (invalid) return res.redirect('/admin/settings?err=' + encodeURIComponent(invalid) + '#notify');
+
+      const allowed = ['wa_params_shape', 'default_job_title'];
+      for (const kind of require('../utils/notify').KINDS) {
+        allowed.push(`wa_tpl_${kind}_name`, `wa_tpl_${kind}_lang`, `wa_tpl_${kind}_cat`, `wa_tpl_${kind}_vars`);
+      }
+      for (const key of allowed) {
+        if (req.body[key] !== undefined) set(key, String(req.body[key]).trim());
+      }
+      for (const flag of ['notify_whatsapp_enabled', 'notify_email_enabled', 'notify_applicant_attendee']) {
+        set(flag, req.body[flag] === undefined ? 'false' : 'true');
+      }
     } else {
       const invalid = validateInterviewSettings(req.body);
       if (invalid) return res.redirect('/admin/settings?err=' + encodeURIComponent(invalid));
@@ -1090,10 +1152,74 @@ router.post('/settings', requireManager, async (req, res) => {
 
     await Promise.all(updates);
     await db.audit(req.session.adminId, req.session.adminUser, 'settings_update', 'settings', null, null, section, req.ip);
-    res.redirect(`/admin/settings?saved=1${section === 'interviews' ? '#interviews' : ''}`);
+    const anchor = { interviews: '#interviews', notifications: '#notify' }[section] || '';
+    res.redirect(`/admin/settings?saved=1${anchor}`);
   } catch (err) {
     console.error('[Settings POST]', err.message);
     res.status(500).send('خطأ في حفظ الإعدادات');
+  }
+});
+
+// ─── اختبار قناة الإشعار ──────────────────────────────────────────────────────
+//  يُرسل رسالة على بيانات مقابلة وهمية إلى وجهة يحددها المدير — الطريقة
+//  الوحيدة للتأكد من كلمة مرور التطبيق ومن اعتماد قالب واتساب قبل استخدامهما
+//  على متقدم حقيقي.
+const notifyTestLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000, max: 10,
+  message: { error: 'محاولات كثيرة — انتظر قليلاً' },
+  standardHeaders: true, legacyHeaders: false,
+});
+
+router.post('/settings/notify-test', requireManager, notifyTestLimiter, async (req, res) => {
+  const M = require('../utils/interviewMsg');
+  try {
+    const channel = req.body.channel === 'whatsapp' ? 'whatsapp' : 'email';
+    const target  = String(req.body.target || '').trim();
+    if (!target) return res.status(400).json({ error: 'أدخل وجهة الاختبار' });
+
+    const settings = await db.getSettings();
+    const demoApplicant = {
+      id: 0, full_name: req.session.adminName || 'اختبار',
+      phone: channel === 'whatsapp' ? target : '',
+      email: channel === 'email' ? target : '',
+    };
+    const demoInterview = {
+      id: 0, startMs: Date.now() + 86400000, durationMin: parseInt(settings.interview_duration, 10) || 15,
+      meetLink: 'https://meet.google.com/test-demo-link',
+      interviewers: [{ name: req.session.adminName || 'المقابل' }],
+    };
+    const opts = { companyName: settings.company_name };
+
+    if (channel === 'email') {
+      if (!M.isEmail(target)) return res.status(400).json({ error: 'بريد إلكتروني غير صالح' });
+      if (!mailer.isConfigured()) return res.status(409).json({ error: 'إعدادات SMTP غير مكتملة — راجع ملف .env' });
+      await mailer.sendMail({
+        to: target,
+        subject: `[اختبار] ${M.buildEmailSubject(demoApplicant, demoInterview, opts)}`,
+        html: M.buildEmailHtml(demoApplicant, demoInterview, { ...opts, kind: 'scheduled' }),
+        text: M.buildEmailText(demoApplicant, demoInterview, { ...opts, kind: 'scheduled' }),
+      });
+    } else {
+      if (!chatwoot.isConfigured()) return res.status(409).json({ error: 'تكامل Chatwoot غير مهيأ — راجع ملف .env' });
+      const tpl = require('../utils/notify').templateFor(settings, 'scheduled');
+      if (!tpl.name) return res.status(409).json({ error: 'لم يُحدَّد اسم قالب واتساب لإشعار الجدولة' });
+      const vars = M.messageVars(demoApplicant, demoInterview, opts);
+      await chatwoot.sendTemplate({
+        name: demoApplicant.full_name, phone: target,
+        content: M.buildWhatsAppText(demoApplicant, demoInterview, opts),
+        template: {
+          name: tpl.name, language: tpl.language, category: tpl.category,
+          processed_params: M.buildProcessedParams(vars, tpl.vars, tpl.shape),
+        },
+      });
+    }
+
+    await db.audit(req.session.adminId, req.session.adminUser, 'notify_test', 'settings',
+      null, null, `${channel} → ${target}`, req.ip);
+    res.json({ ok: true, message: 'أُرسلت رسالة الاختبار — تحقق من الوجهة' });
+  } catch (err) {
+    console.error('[Notify test]', err.message);
+    res.status(502).json({ error: err.message || 'فشل الإرسال' });
   }
 });
 

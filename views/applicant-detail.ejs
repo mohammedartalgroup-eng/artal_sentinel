@@ -541,6 +541,57 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
                   إلغاء المقابلة
                 </button>
               </div>
+
+              <!-- حالة إشعار المتقدم — الفشل الصامت هنا يعني متقدماً لا يعرف موعده -->
+              <%
+                const DLV = (typeof delivery !== 'undefined' && delivery) ? delivery : {};
+                const NCH = (typeof notifyChannels !== 'undefined' && notifyChannels) ? notifyChannels : {};
+                const CHAN = [
+                  { key: 'whatsapp', label: 'واتساب', icon: 'chat', has: Boolean(applicant.phone) },
+                  { key: 'email',    label: 'البريد', icon: 'mail', has: Boolean(applicant.email) },
+                ];
+                const CHIP = {
+                  sent:    { cls: 'bg-green-50 text-green-700 border-green-200', icon: 'check_circle', text: 'أُرسل' },
+                  failed:  { cls: 'bg-red-50 text-red-600 border-red-200',       icon: 'error',        text: 'فشل' },
+                  skipped: { cls: 'bg-[#f2f4f6] text-[#43474f] border-[#e0e3e5]', icon: 'remove',      text: 'لم يُرسل' },
+                };
+              %>
+              <div class="border-t border-[#e0e3e5] pt-3 mt-1" id="iv-delivery">
+                <div class="text-[11px] font-semibold text-[#43474f] mb-2">إشعار المتقدم</div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <% CHAN.forEach(function (c) {
+                       const rec = DLV[c.key];
+                       const st  = rec ? (CHIP[rec.status] || CHIP.skipped) : null;
+                       const why = rec && rec.error ? rec.error : (!c.has ? (c.key === 'email' ? 'لا يوجد بريد مسجّل للمتقدم' : 'لا يوجد رقم جوال') : 'لم تُجرَّب هذه القناة بعد');
+                  %>
+                  <span class="inline-flex items-center gap-1.5 border rounded-full px-2.5 py-1 text-[11px] font-semibold
+                               <%= st ? st.cls : 'bg-[#f2f4f6] text-[#43474f] border-[#e0e3e5]' %>"
+                        title="<%= why %>">
+                    <span class="material-symbols-outlined text-[13px]"><%= c.icon %></span>
+                    <%= c.label %>
+                    <span class="opacity-70">·</span>
+                    <%= st ? st.text : 'لم يُرسل' %>
+                  </span>
+                  <% }); %>
+
+                  <% if (NCH.whatsapp || NCH.email) { %>
+                  <button type="button" onclick="resendNotify()" id="iv-resend"
+                          class="text-[11px] font-semibold px-2.5 py-1 rounded-full border border-[#e0e3e5] text-[#405f91] hover:bg-white transition-colors flex items-center gap-1">
+                    <span class="material-symbols-outlined text-[13px]">send</span>
+                    إعادة الإرسال
+                  </button>
+                  <% } %>
+                </div>
+                <% if (!NCH.whatsapp && !NCH.email) { %>
+                <p class="text-[10px] text-[#7594ca] mt-2">
+                  الإرسال التلقائي غير مفعّل —
+                  <% if (locals.adminRole === 'manager') { %>
+                  <a href="/admin/settings#notify" style="text-decoration:underline;">فعّله من الإعدادات</a>.
+                  <% } else { %>راجع مدير النظام.<% } %>
+                  يبقى زر واتساب اليدوي أعلاه متاحاً.
+                </p>
+                <% } %>
+              </div>
             </div>
           <% } %>
         </div>
@@ -964,6 +1015,13 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
     <div id="iv-slots" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:.5rem;min-height:110px;max-height:220px;overflow-y:auto;padding:.25rem;background:#f8f9fb;border-radius:.75rem;"></div>
 
     <div style="margin-top:1rem;">
+      <div style="font-size:.7rem;font-weight:700;color:#43474f;letter-spacing:.04em;margin-bottom:.4rem;">الوظيفة</div>
+      <input type="text" id="iv-job" maxlength="100" placeholder="حارس أمن"
+             style="width:100%;border:1px solid #e0e3e5;border-radius:.75rem;padding:.6rem .8rem;font-size:.8rem;outline:none;font-family:'Inter',sans-serif;">
+      <div style="font-size:.65rem;color:#7594ca;margin-top:.3rem;">تظهر في رسالة الواتساب والبريد ووصف الاجتماع — مُستنتجة من صفحة الوظيفة التي قدّم منها، عدّلها إن لزم.</div>
+    </div>
+
+    <div style="margin-top:1rem;">
       <div style="font-size:.7rem;font-weight:700;color:#43474f;letter-spacing:.04em;margin-bottom:.4rem;">ملاحظة (اختياري)</div>
       <textarea id="iv-note" rows="2" placeholder="تُضاف إلى وصف الاجتماع وملف المتقدم"
                 style="width:100%;border:1px solid #e0e3e5;border-radius:.75rem;padding:.6rem .8rem;font-size:.8rem;resize:none;outline:none;font-family:'Inter',sans-serif;"></textarea>
@@ -992,6 +1050,7 @@ const IV_ENABLED     = <%- JSON.stringify(typeof interviewsEnabled !== 'undefine
 const IV_ACTIVE      = <%- JSON.stringify(typeof activeInterview !== 'undefined' ? activeInterview : null) %>;
 const IV_PEOPLE      = <%- JSON.stringify(typeof interviewerList !== 'undefined' ? interviewerList : []) %>;
 const IV_CURRENT_USR = <%- JSON.stringify(adminUser || '') %>;
+const IV_JOB_GUESS   = <%- JSON.stringify(typeof jobTitleGuess !== 'undefined' ? jobTitleGuess : '') %>;
 
 function toast(msg, icon = 'check', isError = false) {
   const el = document.getElementById('toast');
@@ -1191,6 +1250,9 @@ function openInterviewModal(reschedule = false) {
 
   ivSelectedPeople = new Set();
   if (ivRescheduleMode && IV_ACTIVE) IV_ACTIVE.interviewers.forEach(p => ivSelectedPeople.add(p.email));
+
+  const jobEl = document.getElementById('iv-job');
+  if (jobEl) jobEl.value = (IV_ACTIVE && IV_ACTIVE.jobTitle) || IV_JOB_GUESS || '';
   else if (IV_PEOPLE.some(p => p.username === IV_CURRENT_USR)) ivSelectedPeople.add(IV_CURRENT_USR);
 
   renderPeople();
@@ -1218,6 +1280,7 @@ function confirmInterview() {
   const body   = {
     slotKey: ivSelectedSlot,
     interviewers: [...ivSelectedPeople],
+    jobTitle: (document.getElementById('iv-job').value || '').trim(),
     note: document.getElementById('iv-note').value.trim(),
   };
 
@@ -1225,8 +1288,12 @@ function confirmInterview() {
     .then(async r => ({ status: r.status, data: await r.json().catch(() => ({})) }))
     .then(({ status, data }) => {
       if (status === 200 && data.ok) {
-        toast(ivRescheduleMode ? 'تم تعديل الموعد' : 'تمت جدولة المقابلة', 'event_available');
-        setTimeout(() => location.reload(), 800);
+        const base = ivRescheduleMode ? 'تم تعديل الموعد' : 'تمت جدولة المقابلة';
+        const bad  = failedChannels(data.delivery);
+        // الموعد نجح حتى لو تعثّر الإشعار — نقول ذلك صراحةً بدل رسالة نجاح تخفي الفشل
+        if (bad.length) toast(`${base} — لكن تعذّر إشعار المتقدم عبر ${bad.join(' و')}`, 'warning', true);
+        else toast(base, 'event_available');
+        setTimeout(() => location.reload(), bad.length ? 2600 : 800);
         return;
       }
       btn.disabled = false;
@@ -1247,6 +1314,45 @@ function confirmInterview() {
       btn.disabled = false;
       btn.textContent = ivRescheduleMode ? 'تأكيد الموعد الجديد' : 'تأكيد الموعد';
       ivAlert('تعذّر الاتصال بالخادم');
+    });
+}
+
+const CH_LABEL = { whatsapp: 'واتساب', email: 'البريد' };
+
+// القنوات التي حاولت الإرسال وفشلت. الحالة skipped ليست فشلاً — تعني أن القناة
+// مُطفأة أو لا وجهة لها، وذلك معروض أصلاً كشارة رمادية في البطاقة.
+function failedChannels(delivery) {
+  return Object.entries(delivery || {})
+    .filter(([, r]) => r && r.status === 'failed')
+    .map(([ch]) => CH_LABEL[ch] || ch);
+}
+
+function resendNotify() {
+  if (!IV_ACTIVE) return;
+  if (!confirm('إعادة إرسال إشعار الموعد للمتقدم عبر واتساب والبريد؟')) return;
+
+  const btn = document.getElementById('iv-resend');
+  if (btn) { btn.disabled = true; btn.style.opacity = '.6'; }
+
+  fetch(`/admin/interviews/${IV_ACTIVE.id}/notify`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({})
+  })
+    .then(async r => ({ status: r.status, data: await r.json().catch(() => ({})) }))
+    .then(({ status, data }) => {
+      if (status !== 200 || !data.ok) {
+        toast(data.error || 'تعذّر إعادة الإرسال', 'error', true);
+        if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+        return;
+      }
+      const sent = Object.entries(data.delivery || {}).filter(([, r]) => r.status === 'sent').map(([ch]) => CH_LABEL[ch] || ch);
+      const bad  = failedChannels(data.delivery);
+      if (sent.length) toast(`أُرسل عبر ${sent.join(' و')}`, 'send');
+      else toast(bad.length ? `فشل الإرسال عبر ${bad.join(' و')}` : 'لم تُرسل أي قناة — راجع الإعدادات', 'error', true);
+      setTimeout(() => location.reload(), 1600);
+    })
+    .catch(() => {
+      toast('تعذّر الاتصال بالخادم', 'error', true);
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
     });
 }
 

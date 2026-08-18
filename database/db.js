@@ -416,11 +416,46 @@ async function initialize() {
         }
       }
 
+      // المسمّى الوظيفي يُثبَّت على المقابلة وقت الجدولة: قالب واتساب يذكره،
+      // وإعادة الإرسال بعد أسابيع يجب أن ترسل نفس النص الذي وافق عليه الموظف.
+      const [ivJobCols] = await conn.query("SHOW COLUMNS FROM interviews LIKE 'job_title'");
+      if (ivJobCols.length === 0) {
+        await conn.query("ALTER TABLE interviews ADD COLUMN job_title VARCHAR(100) DEFAULT NULL");
+        console.log('[DB] Migration: added column job_title to interviews');
+      }
+
       const [ivErrCols] = await conn.query("SHOW COLUMNS FROM interviews LIKE 'last_error'");
       if (ivErrCols.length === 0) {
         await conn.query("ALTER TABLE interviews ADD COLUMN last_error VARCHAR(255) DEFAULT NULL");
         console.log('[DB] Migration: added column last_error to interviews');
       }
+
+      // سجل إشعارات المتقدم (واتساب/بريد) — صف لكل محاولة إرسال.
+      //  لماذا سجل مستقل بدل عمود في interviews؟ الإرسال يتكرر (جدولة، إعادة
+      //  جدولة، إلغاء، إعادة إرسال يدوية) وكل محاولة لها قناة وحالة وسبب فشل
+      //  خاص بها — والاحتفاظ بها كاملة هو ما يجيب «هل وصل المتقدم فعلاً؟».
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS interview_messages (
+          id           INT AUTO_INCREMENT PRIMARY KEY,
+          interview_id INT NOT NULL,
+          applicant_id INT NOT NULL,
+          channel      VARCHAR(10)  NOT NULL,
+          kind         VARCHAR(20)  NOT NULL,
+          status       VARCHAR(12)  NOT NULL,
+          target       VARCHAR(160) DEFAULT NULL,
+          provider_ref VARCHAR(120) DEFAULT NULL,
+          error        VARCHAR(255) DEFAULT NULL,
+          created_by   VARCHAR(100) DEFAULT NULL,
+          created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (interview_id) REFERENCES interviews(id) ON DELETE CASCADE,
+          INDEX idx_iv        (interview_id),
+          INDEX idx_applicant (applicant_id),
+          INDEX idx_lookup    (interview_id, channel, id)
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+      `);
+      //  channel: whatsapp | email
+      //  kind:    scheduled | rescheduled | cancelled
+      //  status:  sent | failed | skipped   (skipped = لا رقم/بريد، أو القناة مطفأة)
 
       // إعدادات المقابلات — 0=الأحد … 5=الجمعة … 6=السبت (الافتراضي: السبت–الخميس)
       const ivDefaults = [
@@ -437,6 +472,27 @@ async function initialize() {
         ['google_connected_at',    ''],
         ['google_token_status',    ''],
         ['google_oauth_state',     ''],
+
+        // ── إشعار المتقدم ──────────────────────────────────────────────────
+        //  واتساب يبدأ مطفأً عمداً: لا يعمل قبل اعتماد القالب في Twilio/Meta،
+        //  وتفعيله قبل ذلك يعني فشلاً في كل جدولة.
+        ['notify_whatsapp_enabled',  'false'],
+        ['notify_email_enabled',     'true'],
+        ['notify_applicant_attendee', 'true'],   // إضافة المتقدم لحضور حدث التقويم
+        ['wa_params_shape',          'numbered'],
+        ['default_job_title',        'حارس أمن'],
+        ['wa_tpl_scheduled_name',    'artal_interview_invitation_ar_v2'],
+        ['wa_tpl_scheduled_lang',    'ar'],
+        ['wa_tpl_scheduled_cat',     'UTILITY'],
+        ['wa_tpl_scheduled_vars',    'name,job,date,time,link'],
+        ['wa_tpl_rescheduled_name',  ''],
+        ['wa_tpl_rescheduled_lang',  'ar'],
+        ['wa_tpl_rescheduled_cat',   'UTILITY'],
+        ['wa_tpl_rescheduled_vars',  'name,date,time'],
+        ['wa_tpl_cancelled_name',    ''],
+        ['wa_tpl_cancelled_lang',    'ar'],
+        ['wa_tpl_cancelled_cat',     'UTILITY'],
+        ['wa_tpl_cancelled_vars',    'name,date,time'],
       ];
       for (const [k, v] of ivDefaults) {
         await conn.query('INSERT IGNORE INTO settings (`key`, value) VALUES (?, ?)', [k, v]);
