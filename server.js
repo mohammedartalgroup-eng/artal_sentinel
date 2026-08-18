@@ -18,6 +18,15 @@ const applyRouter   = require('./routes/apply');
 const adminRouter   = require('./routes/admin');
 const regionsRouter = require('./routes/regions');
 const jobsRouter    = require('./routes/jobs');
+
+// مسار استقبال إشعارات التوظيف من artalsys.com.
+// التحميل داخل try/catch عمداً: أي خطأ فيه يُسجَّل ولا يمنع إقلاع الموقع.
+let hooksRouter = null;
+try {
+  hooksRouter = require('./routes/hooks');
+} catch (e) {
+  console.error('[Hooks] تعذّر تحميل مسار الـ hooks — الموقع يعمل طبيعياً:', e.message);
+}
 const seoCities     = jobsRouter.CITIES;   // بيانات المدن مضمّنة داخل الراوتر (تُرفَع مع الكود)
 
 const app = express();
@@ -96,6 +105,7 @@ app.use('/apply',  applyRouter);
 app.use('/admin',  adminRouter);
 app.use('/data',   regionsRouter);   // بيانات المناطق — مضمّنة في الكود لا تحتاج ملف
 app.use('/jobs',   jobsRouter);      // صفحات هبوط المدن لمحركات البحث (SEO)
+if (hooksRouter) app.use('/api/hooks', hooksRouter);   // إشعارات التوظيف الواردة من نظام أرتال
 
 // Static fallback (for any other assets in public/)
 app.use(express.static(path.join(__dirname, 'public')));
