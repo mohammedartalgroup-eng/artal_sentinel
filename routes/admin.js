@@ -650,12 +650,19 @@ router.get('/applicants/:id', async (req, res) => {
     // بناء بيانات بطاقة المقابلة — أي خطأ هنا يُلغي البطاقة فقط
     let interviewsEnabled = false, activeInterview = null, waUrl = '', googleConnected = false;
     let delivery = {}, notifyChannels = { whatsapp: false, email: false }, jobTitleGuess = '';
+
+    // طلب استكمال البيانات مستقل عن المقابلات — يُحسب خارج كتلتها حتى يبقى
+    // الزر متاحاً لو تعطّلت ميزة المقابلات
+    jobTitleGuess = require('../utils/interviewMsg').deriveJobTitle(applicant, settings);
+    const infoRequest = {
+      ready: chatwoot.isConfigured() && Boolean(String(settings.wa_tpl_inforeq_name || '').trim()),
+      defaultProject: settings.default_project_name || '',
+    };
     try {
       interviewsEnabled = db.INTERVIEWS_SCHEMA_OK && settings.interviews_enabled === 'true';
       googleConnected   = Boolean(settings.google_refresh_token);
       const S = require('../utils/slots');
-      const { buildWhatsAppText, buildWaUrl, deriveJobTitle } = require('../utils/interviewMsg');
-      jobTitleGuess = deriveJobTitle(applicant, settings);
+      const { buildWhatsAppText, buildWaUrl } = require('../utils/interviewMsg');
       const nameByEmail = Object.fromEntries(ivUsers.map(u => [u.username, u.full_name || u.username]));
       const live = ivRows.find(r => r.status === 'scheduled') || ivRows.find(r => r.status === 'pending');
       if (live) {
@@ -688,11 +695,70 @@ router.get('/applicants/:id', async (req, res) => {
       applicant, notes, activity, priorApps,
       STATUS_META, NOTE_TYPES, adminUser: req.session.adminUser,
       interviewsEnabled, googleConnected, activeInterview, waUrl, delivery, notifyChannels, jobTitleGuess,
+      infoRequest,
       interviewerList: ivUsers.filter(u => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(u.username || '')),
     });
   } catch (err) {
     console.error('[Applicant Detail]', err.message);
     res.status(500).send('خطأ في تحميل بيانات المتقدم');
+  }
+});
+
+// ─── طلب استكمال بيانات المرشح (قالب واتساب) ─────────────────────────────────
+//  فعل يدوي صريح بضغطة زر — مستقل تماماً عن المقابلات ولا يمر بمفتاح الإشعار
+//  التلقائي. يُسجَّل في applicant_messages وفي التايملاين ليرى الموظف أنه أُرسل.
+const infoReqLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000, max: 40,
+  message: { error: 'طلبات كثيرة — انتظر قليلاً' },
+  standardHeaders: true, legacyHeaders: false,
+});
+
+router.post('/applicants/:id/info-request', infoReqLimiter, async (req, res) => {
+  try {
+    const applicant = await db.get(
+      'SELECT id, full_name, phone, region, city, landing_page FROM applicants WHERE id = ?', [req.params.id]
+    );
+    if (!applicant) return res.status(404).json({ error: 'المتقدم غير موجود' });
+
+    const settings = await db.getSettings();
+    const notify = require('../utils/notify');
+
+    const vars = {
+      jobTitle: String(req.body.jobTitle || '').trim().slice(0, 100),
+      project:  String(req.body.project  || '').trim().slice(0, 100),
+      region:   String(req.body.region   || '').trim().slice(0, 60),
+    };
+
+    const r = await notify.sendApplicantTemplate({
+      applicant, tplKey: 'inforeq', kind: 'info_request', vars, settings,
+      actor: req.session.adminName || req.session.adminUser,
+    });
+
+    if (r.status !== 'sent') {
+      return res.status(r.status === 'skipped' ? 409 : 502).json({ error: r.reason || 'تعذّر الإرسال' });
+    }
+
+    // أثر في ملف المتقدم — بنفس شكل الملاحظة اليدوية حتى يظهر في التايملاين
+    const line = `طلب استكمال بيانات عبر واتساب — وظيفة ${r.vars.job}`
+      + `${r.vars.project ? ` / مشروع ${r.vars.project}` : ''}${r.vars.region ? ` / ${r.vars.region}` : ''}`;
+    try {
+      await db.run(
+        'INSERT INTO applicant_notes (applicant_id, content, type, user_name) VALUES (?, ?, ?, ?)',
+        [applicant.id, line, 'follow_up', req.session.adminName || null]
+      );
+    } catch (e) { console.error('[InfoRequest] note:', e.message); }
+
+    try {
+      await db.logActivity(applicant.id, 'طلب استكمال بيانات', null, 'واتساب', req.session.adminName || null);
+    } catch (e) { console.error('[InfoRequest] activity:', e.message); }
+
+    await db.audit(req.session.adminId, req.session.adminUser, 'info_request', 'applicant',
+      applicant.id, applicant.full_name, line, req.ip);
+
+    res.json({ ok: true, sentTo: r.target, summary: line });
+  } catch (err) {
+    console.error('[InfoRequest]', err.message);
+    res.status(500).json({ error: 'خطأ غير متوقع' });
   }
 });
 
@@ -1075,10 +1141,12 @@ function validateInterviewSettings(b) {
 }
 
 // التحقق من إعداد قوالب واتساب — يُرجع رسالة خطأ أو null
+const TPL_KEYS = () => [...require('../utils/notify').KINDS, 'inforeq'];
+
 function validateNotifySettings(b) {
   const VARS = Object.keys(require('../utils/interviewMsg').VAR_LABELS);
   const CATS = ['UTILITY', 'MARKETING', 'AUTHENTICATION'];
-  for (const kind of require('../utils/notify').KINDS) {
+  for (const kind of TPL_KEYS()) {
     const nameKey = `wa_tpl_${kind}_name`;
     if (b[nameKey] !== undefined && String(b[nameKey]).trim()) {
       // أسماء قوالب واتساب: حروف صغيرة وأرقام وشرطة سفلية فقط
@@ -1128,8 +1196,8 @@ router.post('/settings', requireManager, async (req, res) => {
       const invalid = validateNotifySettings(req.body);
       if (invalid) return res.redirect('/admin/settings?err=' + encodeURIComponent(invalid) + '#notify');
 
-      const allowed = ['wa_params_shape', 'default_job_title'];
-      for (const kind of require('../utils/notify').KINDS) {
+      const allowed = ['wa_params_shape', 'default_job_title', 'default_project_name'];
+      for (const kind of TPL_KEYS()) {
         allowed.push(`wa_tpl_${kind}_name`, `wa_tpl_${kind}_lang`, `wa_tpl_${kind}_cat`, `wa_tpl_${kind}_vars`);
       }
       for (const key of allowed) {

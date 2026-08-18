@@ -54,26 +54,36 @@ const esc = (s) => String(s == null ? '' : s)
  * @param {{companyName?:string, reason?:string}} [opts]
  */
 function messageVars(applicant, interview, opts = {}) {
-  const company = opts.companyName || 'أرتال للحراسات الأمنية';
-  const date = arabicDate(interview.startMs);
-  const time = localTime(interview.startMs);
+  // القوالب غير المرتبطة بمقابلة (طلب استكمال بيانات مثلاً) تُنادى بلا موعد،
+  // فحقول التاريخ والوقت تبقى فارغة بدل أن ينهار البنّاء على startMs مفقود.
+  const iv = interview || {};
+  const has = Number.isFinite(iv.startMs);
+  const settings = opts.settings || {};
+  const date = has ? arabicDate(iv.startMs) : '';
+  const time = has ? localTime(iv.startMs) : '';
+
   return {
     name:     String(applicant?.full_name || '').trim(),
-    company,
-    job:      String(opts.jobTitle || '').trim() || deriveJobTitle(applicant, opts.settings || {}),
+    company:  opts.companyName || 'أرتال للحراسات الأمنية',
+    job:      String(opts.jobTitle || '').trim() || deriveJobTitle(applicant, settings),
+    project:  String(opts.project || '').trim() || String(settings.default_project_name || '').trim(),
+    region:   String(opts.region  || '').trim() || String(applicant?.region || '').trim(),
+    city:     String(applicant?.city || '').trim(),
     date,
     time,
-    datetime: `${date} الساعة ${time}`,
-    duration: String(interview.durationMin || ''),
-    link:     interview.meetLink || '',
-    interviewers: (interview.interviewers || []).map(p => p.name || p.email).join('، '),
+    datetime: has ? `${date} الساعة ${time}` : '',
+    duration: String(iv.durationMin || ''),
+    link:     iv.meetLink || '',
+    interviewers: (iv.interviewers || []).map(p => p.name || p.email).join('، '),
     reason:   String(opts.reason || '').trim(),
   };
 }
 
 const VAR_LABELS = {
-  name: 'اسم المتقدم', company: 'اسم الشركة', job: 'المسمّى الوظيفي', date: 'التاريخ', time: 'الوقت',
-  datetime: 'التاريخ والوقت', duration: 'المدة بالدقائق', link: 'رابط Meet',
+  name: 'اسم المتقدم', company: 'اسم الشركة', job: 'المسمّى الوظيفي',
+  project: 'المشروع', region: 'المنطقة', city: 'المدينة',
+  date: 'التاريخ', time: 'الوقت', datetime: 'التاريخ والوقت',
+  duration: 'المدة بالدقائق', link: 'رابط Meet',
   interviewers: 'أسماء المقابلين', reason: 'سبب الإلغاء',
 };
 
@@ -147,10 +157,26 @@ function buildCancelText(applicant, interview, opts = {}) {
   return lines.join('\n');
 }
 
+// النص المُعرَّض لطلب استكمال البيانات (ما يظهر للوكيل في Chatwoot).
+// النص الفعلي الذي يصل المتقدم هو نص القالب المعتمد.
+function buildInfoRequestText(applicant, _interview, opts = {}) {
+  const v = messageVars(applicant, null, opts);
+  return [
+    `السلام عليكم ${v.name}،`,
+    'معك شركة أرتال للحراسات الأمنية.',
+    `نرغب في استكمال بياناتك للنظر في ترشيحك لوظيفة ${v.job}`
+      + `${v.project ? ` ضمن مشروع ${v.project}` : ''}${v.region ? ` في منطقة ${v.region}` : ''}.`,
+    '',
+    'نرجو الإجابة عن أسئلة: مكان السكن، العمر، حالتك الوظيفية،',
+    'الحالة الصحية، والتسجيل في التأمينات.',
+  ].join('\n');
+}
+
 const WA_TEXT = {
   scheduled:   buildWhatsAppText,
   rescheduled: buildRescheduleText,
   cancelled:   buildCancelText,
+  info_request: buildInfoRequestText,
 };
 
 function buildWaUrl(phone, text) {
@@ -262,6 +288,6 @@ function buildEmailSubject(applicant, interview, opts = {}) {
 module.exports = {
   toIntlPhone, isEmail, deriveJobTitle,
   messageVars, VAR_LABELS, buildProcessedParams, sanitizeParam,
-  buildWhatsAppText, buildRescheduleText, buildCancelText, WA_TEXT, buildWaUrl,
+  buildWhatsAppText, buildRescheduleText, buildCancelText, buildInfoRequestText, WA_TEXT, buildWaUrl,
   buildEmailHtml, buildEmailText, buildEmailSubject,
 };

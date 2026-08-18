@@ -168,6 +168,80 @@ async function notifyInterview({ applicant, interview, kind, settings, actor, ch
   return result;
 }
 
+// ─── قوالب واتساب غير المرتبطة بمقابلة ───────────────────────────────────────
+/**
+ * إرسال قالب معتمد لمتقدم مباشرة (طلب استكمال بيانات …) وتسجيله في
+ * applicant_messages. لا يرمي — يُعيد { status, reason } دائماً.
+ *
+ * ⚠️ لا يفحص notify_whatsapp_enabled عمداً: ذاك المفتاح يحكم الإشعار
+ *    التلقائي عند الجدولة، بينما هذا فعل يدوي صريح من الموظف بضغطة زر.
+ *
+ * @param {object} a
+ * @param {object} a.applicant  { id, full_name, phone, region, landing_page }
+ * @param {string} a.tplKey     مفتاح إعدادات القالب (مثل 'inforeq')
+ * @param {string} a.kind       اسم النوع في السجل (مثل 'info_request')
+ * @param {object} [a.vars]     تجاوزات المتغيّرات { jobTitle, project, region }
+ */
+async function sendApplicantTemplate({ applicant, tplKey, kind, vars = {}, settings, actor }) {
+  // المحاولة في دالة داخلية ليصل كل مسار — بما فيه الخروج المبكر — إلى
+  // التسجيل أدناه. الـ return المباشر كان يتخطّى السجل ويُخفي محاولات skipped.
+  const attempt = async (out) => {
+    if (!chatwoot.isConfigured()) { out.reason = 'تكامل Chatwoot غير مهيأ'; return; }
+
+    const phone = chatwoot.toE164(applicant.phone);
+    if (!phone) { out.reason = 'لا يوجد رقم جوال صالح'; return; }
+    out.target = phone;
+
+    const tpl = templateFor(settings, tplKey);
+    if (!tpl.name) { out.reason = 'لم يُحدَّد اسم القالب في الإعدادات'; return; }
+
+    const opts = { companyName: settings.company_name, settings, ...vars };
+    const v = M.messageVars(applicant, null, opts);
+
+    // متغيّر فارغ يرفضه واتساب — نوقف قبل الإرسال برسالة مفهومة بدل خطأ Meta الغامض
+    const needed = String(tpl.vars || '').split(',').map(x => x.trim()).filter(Boolean);
+    const empty = needed.filter(k => !String(v[k] ?? '').trim());
+    if (empty.length) {
+      out.reason = `متغيّرات ناقصة: ${empty.map(k => M.VAR_LABELS[k] || k).join('، ')}`;
+      return;
+    }
+
+    const content = (M.WA_TEXT[kind] || M.buildInfoRequestText)(applicant, null, opts);
+    const r = await chatwoot.sendTemplate({
+      name: applicant.full_name, phone: applicant.phone, content,
+      template: {
+        name: tpl.name, language: tpl.language, category: tpl.category,
+        processed_params: M.buildProcessedParams(v, tpl.vars, tpl.shape),
+      },
+    });
+    out.status = 'sent';
+    out.ref = r.conversationId ? `conv:${r.conversationId}` : '';
+    out.vars = v;
+    console.log(`[Notify] ${kind} sent — applicant #${applicant.id}, conv ${r.conversationId}`);
+  };
+
+  const out = { status: 'skipped', reason: '' };
+  try {
+    await attempt(out);
+  } catch (e) {
+    out.status = 'failed';
+    out.reason = e.message || 'خطأ غير معروف';
+    console.error(`[Notify] ${kind} FAILED — applicant #${applicant.id}: ${out.reason}`);
+  }
+
+  try {
+    await db.run(
+      `INSERT INTO applicant_messages
+         (applicant_id, channel, kind, status, target, provider_ref, error, created_by)
+       VALUES (?, 'whatsapp', ?, ?, ?, ?, ?, ?)`,
+      [applicant.id, kind, out.status, clip(out.target, 160), clip(out.ref, 120),
+       clip(out.reason), clip(actor, 100)]
+    );
+  } catch (e) { console.error('[Notify] applicant log:', e.message); }
+
+  return out;
+}
+
 /**
  * آخر حالة لكل قناة في مقابلة — لعرض شارات «أُرسل / فشل» في بطاقة المتقدم.
  * لا يرمي: أي خطأ يُرجع كائناً فارغاً فتختفي الشارات وحدها.
@@ -189,4 +263,4 @@ async function deliveryFor(interviewId) {
   }
 }
 
-module.exports = { notifyInterview, deliveryFor, templateFor, KINDS };
+module.exports = { notifyInterview, sendApplicantTemplate, deliveryFor, templateFor, KINDS };

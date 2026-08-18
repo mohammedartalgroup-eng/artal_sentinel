@@ -457,6 +457,28 @@ async function initialize() {
       //  kind:    scheduled | rescheduled | cancelled
       //  status:  sent | failed | skipped   (skipped = لا رقم/بريد، أو القناة مطفأة)
 
+      // رسائل قوالب غير مرتبطة بموعد (طلب استكمال بيانات …).
+      //  لماذا جدول منفصل عن interview_messages؟ ذاك مفتاحه الأجنبي على
+      //  interviews ويُحذف بحذفها، وهذه الرسائل تخصّ المتقدم نفسه ويجب أن
+      //  تبقى في سجله حتى لو لم تُجدول له مقابلة قط.
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS applicant_messages (
+          id           INT AUTO_INCREMENT PRIMARY KEY,
+          applicant_id INT NOT NULL,
+          channel      VARCHAR(10)  NOT NULL,
+          kind         VARCHAR(30)  NOT NULL,
+          status       VARCHAR(12)  NOT NULL,
+          target       VARCHAR(160) DEFAULT NULL,
+          provider_ref VARCHAR(120) DEFAULT NULL,
+          error        VARCHAR(255) DEFAULT NULL,
+          created_by   VARCHAR(100) DEFAULT NULL,
+          created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (applicant_id) REFERENCES applicants(id) ON DELETE CASCADE,
+          INDEX idx_applicant (applicant_id),
+          INDEX idx_kind      (applicant_id, kind, id)
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+      `);
+
       // إعدادات المقابلات — 0=الأحد … 5=الجمعة … 6=السبت (الافتراضي: السبت–الخميس)
       const ivDefaults = [
         ['interviews_enabled',     'true'],
@@ -493,6 +515,13 @@ async function initialize() {
         ['wa_tpl_cancelled_lang',    'ar'],
         ['wa_tpl_cancelled_cat',     'UTILITY'],
         ['wa_tpl_cancelled_vars',    'name,date,time'],
+
+        // قالب طلب استكمال بيانات المرشح — مستقل عن المقابلات
+        ['default_project_name',     ''],
+        ['wa_tpl_inforeq_name',      'artal_candidate_info_request_ar'],
+        ['wa_tpl_inforeq_lang',      'ar'],
+        ['wa_tpl_inforeq_cat',       'UTILITY'],
+        ['wa_tpl_inforeq_vars',      'name,job,project,region'],
       ];
       for (const [k, v] of ivDefaults) {
         await conn.query('INSERT IGNORE INTO settings (`key`, value) VALUES (?, ?)', [k, v]);

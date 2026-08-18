@@ -446,6 +446,7 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
           </h2>
 
           <% const IV = (typeof activeInterview !== 'undefined') ? activeInterview : null; %>
+          <% const IR = (typeof infoRequest !== 'undefined' && infoRequest) ? infoRequest : { ready: false, defaultProject: '' }; %>
           <% if (!IV) { %>
             <% if (!googleConnected) { %>
             <div class="bg-[#f8f9fb] border border-[#e0e3e5] rounded-xl px-4 py-3.5 text-xs text-[#43474f] flex items-start gap-2">
@@ -460,11 +461,22 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
             <% } else { %>
             <div class="flex items-center justify-between gap-4 flex-wrap">
               <p class="text-xs text-[#43474f]">حدّد موعداً متاحاً وسيُنشأ اجتماع Google Meet تلقائياً.</p>
-              <button type="button" onclick="openInterviewModal()"
-                      class="bg-[#001736] text-white text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-[#002b5b] transition-colors flex items-center gap-2">
-                <span class="material-symbols-outlined text-base">event</span>
-                جدولة مقابلة
+              <div class="flex items-center gap-2 flex-wrap">
+                <% if (IR.ready && applicant.phone) { %>
+                <button type="button" onclick="openInfoRequest()"
+                      class="text-sm font-semibold px-4 py-2.5 rounded-xl border border-[#e0e3e5] text-[#43474f] hover:bg-[#f8f9fb] transition-colors flex items-center gap-2">
+                <svg viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4 text-[#25D366]">
+                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                </svg>
+                طلب استكمال البيانات
               </button>
+                <% } %>
+                <button type="button" onclick="openInterviewModal()"
+                        class="bg-[#001736] text-white text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-[#002b5b] transition-colors flex items-center gap-2">
+                  <span class="material-symbols-outlined text-base">event</span>
+                  جدولة مقابلة
+                </button>
+              </div>
             </div>
             <% } %>
           <% } else { %>
@@ -540,6 +552,13 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
                   <span class="material-symbols-outlined text-sm">event_busy</span>
                   إلغاء المقابلة
                 </button>
+                <% if (IR.ready && applicant.phone) { %>
+                <button type="button" onclick="openInfoRequest()"
+                        class="text-xs font-semibold px-3 py-2 rounded-xl border border-[#e0e3e5] text-[#43474f] hover:bg-white transition-colors flex items-center gap-1.5">
+                  <span class="material-symbols-outlined text-sm">quiz</span>
+                  طلب استكمال البيانات
+                </button>
+                <% } %>
               </div>
 
               <!-- حالة إشعار المتقدم — الفشل الصامت هنا يعني متقدماً لا يعرف موعده -->
@@ -1041,8 +1060,54 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
 </dialog>
 <% } %>
 
+<% if (typeof infoRequest !== 'undefined' && infoRequest.ready && applicant.phone) { %>
+<dialog id="ir-modal" style="border:none;border-radius:1rem;padding:0;max-width:460px;width:92vw;box-shadow:0 20px 60px rgba(0,0,0,.25);">
+  <div style="padding:1.5rem;font-family:'Inter',sans-serif;" dir="rtl">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.4rem;">
+      <h3 style="font-family:'Manrope',sans-serif;font-weight:700;color:#001736;font-size:1rem;margin:0;">طلب استكمال البيانات</h3>
+      <button type="button" onclick="closeInfoRequest()" style="background:none;border:none;cursor:pointer;color:#43474f;font-size:1.25rem;line-height:1;">&times;</button>
+    </div>
+    <p style="font-size:.72rem;color:#43474f;margin:0 0 1rem;line-height:1.7;">
+      تُرسل رسالة واتساب بقالب معتمد تطلب من المتقدم بيانات السكن والعمر والحالة الوظيفية والصحية والتأمينات.
+    </p>
+
+    <div id="ir-alert" style="display:none;border-radius:.75rem;padding:.65rem .9rem;font-size:.75rem;margin-bottom:.9rem;"></div>
+
+    <div style="margin-bottom:.85rem;">
+      <div style="font-size:.7rem;font-weight:700;color:#43474f;margin-bottom:.35rem;">الوظيفة</div>
+      <input type="text" id="ir-job" maxlength="100"
+             style="width:100%;border:1px solid #e0e3e5;border-radius:.75rem;padding:.6rem .8rem;font-size:.8rem;outline:none;font-family:'Inter',sans-serif;">
+    </div>
+    <div style="margin-bottom:.85rem;">
+      <div style="font-size:.7rem;font-weight:700;color:#43474f;margin-bottom:.35rem;">المشروع</div>
+      <input type="text" id="ir-project" maxlength="100" placeholder="اسم المشروع"
+             style="width:100%;border:1px solid #e0e3e5;border-radius:.75rem;padding:.6rem .8rem;font-size:.8rem;outline:none;font-family:'Inter',sans-serif;">
+    </div>
+    <div style="margin-bottom:.35rem;">
+      <div style="font-size:.7rem;font-weight:700;color:#43474f;margin-bottom:.35rem;">المنطقة</div>
+      <input type="text" id="ir-region" maxlength="60"
+             style="width:100%;border:1px solid #e0e3e5;border-radius:.75rem;padding:.6rem .8rem;font-size:.8rem;outline:none;font-family:'Inter',sans-serif;">
+    </div>
+    <p style="font-size:.65rem;color:#7594ca;margin:.5rem 0 0;">الحقول الثلاثة تظهر داخل نص الرسالة — لا يقبل واتساب أي حقل فارغ.</p>
+
+    <div style="display:flex;gap:.6rem;margin-top:1.2rem;">
+      <button type="button" id="ir-send" onclick="sendInfoRequest()"
+              style="flex:1;background:#001736;color:#fff;font-weight:700;padding:.8rem;border:none;border-radius:.75rem;cursor:pointer;font-size:.85rem;">
+        إرسال عبر واتساب
+      </button>
+      <button type="button" onclick="closeInfoRequest()"
+              style="padding:.8rem 1.2rem;background:#fff;color:#43474f;font-weight:600;border:1px solid #e0e3e5;border-radius:.75rem;cursor:pointer;font-size:.85rem;">
+        إلغاء
+      </button>
+    </div>
+  </div>
+</dialog>
+<% } %>
+
 <script>
 const APPLICANT_ID = <%= applicant.id %>;
+const IR_DEFAULT_PROJECT = <%- JSON.stringify(typeof infoRequest !== 'undefined' ? (infoRequest.defaultProject || '') : '') %>;
+const IR_REGION  = <%- JSON.stringify(applicant.region || '') %>;
 let selectedNoteType = 'note';
 
 // ─── بيانات المقابلة (تُحقن من الخادم) ─────────────────────────────────────
@@ -1314,6 +1379,63 @@ function confirmInterview() {
       btn.disabled = false;
       btn.textContent = ivRescheduleMode ? 'تأكيد الموعد الجديد' : 'تأكيد الموعد';
       ivAlert('تعذّر الاتصال بالخادم');
+    });
+}
+
+// ─── طلب استكمال البيانات ───────────────────────────────────────────────────
+function irAlert(msg) {
+  const el = document.getElementById('ir-alert');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.display = msg ? 'block' : 'none';
+  el.style.background = '#fef2f2'; el.style.color = '#b91c1c';
+}
+
+function openInfoRequest() {
+  const m = document.getElementById('ir-modal');
+  if (!m) return;
+  irAlert('');
+  document.getElementById('ir-job').value     = (IV_ACTIVE && IV_ACTIVE.jobTitle) || IV_JOB_GUESS || '';
+  document.getElementById('ir-project').value = IR_DEFAULT_PROJECT || '';
+  document.getElementById('ir-region').value  = IR_REGION || '';
+  m.showModal();
+  document.getElementById('ir-project').focus();
+}
+
+function closeInfoRequest() {
+  const m = document.getElementById('ir-modal');
+  if (m) m.close();
+}
+
+function sendInfoRequest() {
+  const job     = document.getElementById('ir-job').value.trim();
+  const project = document.getElementById('ir-project').value.trim();
+  const region  = document.getElementById('ir-region').value.trim();
+  // واتساب يرفض المتغيّر الفارغ — نمنعه هنا برسالة مفهومة بدل خطأ Meta الغامض
+  if (!job || !project || !region) { irAlert('الحقول الثلاثة مطلوبة'); return; }
+
+  const btn = document.getElementById('ir-send');
+  btn.disabled = true; btn.style.opacity = '.6'; btn.textContent = 'جارٍ الإرسال…';
+  irAlert('');
+
+  fetch(`/admin/applicants/${APPLICANT_ID}/info-request`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jobTitle: job, project, region }),
+  })
+    .then(async r => ({ status: r.status, data: await r.json().catch(() => ({})) }))
+    .then(({ status, data }) => {
+      if (status === 200 && data.ok) {
+        closeInfoRequest();
+        toast('أُرسل طلب استكمال البيانات', 'send');
+        setTimeout(() => location.reload(), 1200);
+        return;
+      }
+      irAlert(data.error || 'تعذّر الإرسال');
+      btn.disabled = false; btn.style.opacity = '1'; btn.textContent = 'إرسال عبر واتساب';
+    })
+    .catch(() => {
+      irAlert('تعذّر الاتصال بالخادم');
+      btn.disabled = false; btn.style.opacity = '1'; btn.textContent = 'إرسال عبر واتساب';
     });
 }
 
