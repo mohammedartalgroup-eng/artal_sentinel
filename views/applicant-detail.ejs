@@ -601,6 +601,24 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
                   </button>
                   <% } %>
                 </div>
+
+                <%
+                  // الأسباب كنص ظاهر: التلميح (title) لا يُعرض باللمس على الجوال،
+                  // وسبب عدم الوصول هو أهم معلومة في هذه البطاقة.
+                  const PROBLEMS = CHAN
+                    .map(c => ({ c, rec: DLV[c.key] }))
+                    .filter(x => x.rec && x.rec.status !== 'sent' && x.rec.error);
+                %>
+                <% if (PROBLEMS.length) { %>
+                <div class="mt-2 space-y-1">
+                  <% PROBLEMS.forEach(function (x) { %>
+                  <div class="flex items-start gap-1.5 text-[11px] <%= x.rec.status === 'failed' ? 'text-red-600' : 'text-[#43474f]' %>">
+                    <span class="material-symbols-outlined text-[13px] mt-px"><%= x.rec.status === 'failed' ? 'error' : 'info' %></span>
+                    <span><span class="font-semibold"><%= x.c.label %>:</span> <%= x.rec.error %></span>
+                  </div>
+                  <% }); %>
+                </div>
+                <% } %>
                 <% if (!NCH.whatsapp && !NCH.email) { %>
                 <p class="text-[10px] text-[#7594ca] mt-2">
                   الإرسال التلقائي غير مفعّل —
