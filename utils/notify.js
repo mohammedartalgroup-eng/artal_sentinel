@@ -178,9 +178,9 @@ async function notifyInterview({ applicant, interview, kind, settings, actor, ch
  *
  * @param {object} a
  * @param {object} a.applicant  { id, full_name, phone, region, landing_page }
- * @param {string} a.tplKey     مفتاح إعدادات القالب (مثل 'inforeq')
- * @param {string} a.kind       اسم النوع في السجل (مثل 'info_request')
- * @param {object} [a.vars]     تجاوزات المتغيّرات { jobTitle, project, region }
+ * @param {string} a.tplKey     مفتاح إعدادات القالب (مثل 'screening')
+ * @param {string} a.kind       اسم النوع في السجل (مثل 'screening')
+ * @param {object} [a.vars]     تجاوزات المتغيّرات { jobTitle, region, city }
  */
 async function sendApplicantTemplate({ applicant, tplKey, kind, vars = {}, settings, actor }) {
   // المحاولة في دالة داخلية ليصل كل مسار — بما فيه الخروج المبكر — إلى
@@ -206,7 +206,7 @@ async function sendApplicantTemplate({ applicant, tplKey, kind, vars = {}, setti
       return;
     }
 
-    const content = (M.WA_TEXT[kind] || M.buildInfoRequestText)(applicant, null, opts);
+    const content = (M.WA_TEXT[kind] || M.buildScreeningText)(applicant, null, opts);
     const r = await chatwoot.sendTemplate({
       name: applicant.full_name, phone: applicant.phone, content,
       template: {

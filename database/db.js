@@ -540,12 +540,6 @@ async function initialize() {
         ['wa_tpl_cancelled_vars',    'name,date,time'],
 
         // قالب طلب استكمال بيانات المرشح — مستقل عن المقابلات
-        ['default_project_name',     ''],
-        ['wa_tpl_inforeq_name',      'artal_candidate_info_request_ar'],
-        ['wa_tpl_inforeq_lang',      'ar'],
-        ['wa_tpl_inforeq_cat',       'UTILITY'],
-        ['wa_tpl_inforeq_vars',      'name,job,project,region'],
-
         // قالب التحقق من الجاهزية (التنقيب) — بزرَّي رد سريع
         ['wa_tpl_screening_name',    'artal_candidate_screening_ar'],
         ['wa_tpl_screening_lang',    'ar'],

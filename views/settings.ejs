@@ -485,23 +485,13 @@
           </div>
           <% }); %>
 
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
-            <div class="field">
-              <label class="block text-xs text-[#43474f] font-semibold uppercase tracking-wider mb-1.5">المسمّى الوظيفي الافتراضي</label>
-              <input type="text" name="default_job_title" maxlength="100" placeholder="حارس أمن"
-                     value="<%= settings.default_job_title || '' %>">
-              <p class="text-[10px] text-[#7594ca] mt-1.5 leading-relaxed">
-                يُستخدم حين يتعذّر استنتاج الوظيفة من صفحة التقديم، ويظهر مُعبَّأً مسبقاً ليعدّله الموظف.
-              </p>
-            </div>
-            <div class="field">
-              <label class="block text-xs text-[#43474f] font-semibold uppercase tracking-wider mb-1.5">المشروع الافتراضي</label>
-              <input type="text" name="default_project_name" maxlength="100" placeholder="اسم المشروع"
-                     value="<%= settings.default_project_name || '' %>">
-              <p class="text-[10px] text-[#7594ca] mt-1.5 leading-relaxed">
-                يُعبَّأ مسبقاً في نافذة طلب استكمال البيانات — وفّر على الموظف كتابته لكل متقدم.
-              </p>
-            </div>
+          <div class="field mb-5">
+            <label class="block text-xs text-[#43474f] font-semibold uppercase tracking-wider mb-1.5">المسمّى الوظيفي الافتراضي</label>
+            <input type="text" name="default_job_title" maxlength="100" placeholder="حارس أمن"
+                   value="<%= settings.default_job_title || '' %>">
+            <p class="text-[10px] text-[#7594ca] mt-1.5 leading-relaxed">
+              يُستخدم حين يتعذّر استنتاج الوظيفة من صفحة التقديم، ويظهر مُعبَّأً مسبقاً ليعدّله الموظف.
+            </p>
           </div>
 
           <div class="field">

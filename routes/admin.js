@@ -659,8 +659,8 @@ router.get('/applicants/:id', async (req, res) => {
       list: WT.available(settings, chatwoot.isConfigured()),
       fields: WT.FIELDS,
       defaults: {
+        name: applicant.full_name || '',
         job: jobTitleGuess,
-        project: settings.default_project_name || '',
         region: applicant.region || '',
         city: applicant.city || '',
       },
@@ -737,7 +737,7 @@ router.post('/applicants/:id/wa-template', waTplLimiter, async (req, res) => {
 
     // لا يُقبل من الواجهة إلا ما أعلنه القالب — حتى لا يحقن نموذجٌ حقلَ قالبٍ آخر
     const vars = {};
-    const MAP = { job: 'jobTitle', project: 'project', region: 'region', city: 'city' };
+    const MAP = { job: 'jobTitle', region: 'region', city: 'city' };
     for (const f of tpl.fields) {
       const raw = String(req.body[f] || '').trim().slice(0, WT.FIELDS[f]?.max || 100);
       if (raw) vars[MAP[f]] = raw;
@@ -1212,7 +1212,7 @@ router.post('/settings', requireManager, async (req, res) => {
       const invalid = validateNotifySettings(req.body);
       if (invalid) return res.redirect('/admin/settings?err=' + encodeURIComponent(invalid) + '#notify');
 
-      const allowed = ['wa_params_shape', 'default_job_title', 'default_project_name'];
+      const allowed = ['wa_params_shape', 'default_job_title'];
       for (const kind of TPL_KEYS()) {
         allowed.push(`wa_tpl_${kind}_name`, `wa_tpl_${kind}_lang`, `wa_tpl_${kind}_cat`, `wa_tpl_${kind}_vars`);
       }

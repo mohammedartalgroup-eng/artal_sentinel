@@ -1100,6 +1100,17 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
 
     <p style="font-size:.65rem;color:#7594ca;margin:.5rem 0 0;">تظهر هذه الحقول داخل نص الرسالة — لا يقبل واتساب أي حقل فارغ.</p>
 
+    <!-- معاينة ما سيصل المتقدم — تتحدّث فور تعديل الحقول -->
+    <div id="wt-preview-wrap" style="display:none;margin-top:1.1rem;">
+      <div style="font-size:.7rem;font-weight:700;color:#43474f;margin-bottom:.45rem;">ما سيصل المتقدم</div>
+      <div style="background:#e7f8d8;border:1px solid #cfeab4;border-radius:.9rem;padding:.8rem .9rem;">
+        <div id="wt-preview" style="font-size:.76rem;color:#111b21;line-height:1.85;white-space:pre-wrap;word-break:break-word;"></div>
+        <div id="wt-preview-footer" style="font-size:.66rem;color:#667781;margin-top:.6rem;"></div>
+        <div id="wt-preview-buttons" style="margin-top:.6rem;border-top:1px solid #cfeab4;padding-top:.5rem;display:flex;flex-direction:column;gap:.35rem;"></div>
+      </div>
+      <p style="font-size:.62rem;color:#7594ca;margin:.45rem 0 0;">النص المعتمد لدى ميتا هو ما يصل فعلاً — هذه معاينة مطابقة له.</p>
+    </div>
+
     <div style="display:flex;gap:.6rem;margin-top:1.2rem;">
       <button type="button" id="wt-send" onclick="sendWaTemplate()"
               style="flex:1;background:#001736;color:#fff;font-weight:700;padding:.8rem;border:none;border-radius:.75rem;cursor:pointer;font-size:.85rem;">
@@ -1118,6 +1129,7 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
 const APPLICANT_ID = <%= applicant.id %>;
 const WT_LIST     = <%- JSON.stringify(typeof waTemplates !== 'undefined' ? waTemplates.list : []) %>;
 const WT_DEFAULTS = <%- JSON.stringify(typeof waTemplates !== 'undefined' ? waTemplates.defaults : {}) %>;
+const WT_FIELDS   = <%- JSON.stringify(typeof waTemplates !== 'undefined' ? waTemplates.fields : {}) %>;
 let selectedNoteType = 'note';
 
 // ─── بيانات المقابلة (تُحقن من الخادم) ─────────────────────────────────────
@@ -1425,15 +1437,47 @@ function openWaTemplate(key) {
     }
   });
 
+  wtRenderPreview();
   m.showModal();
   const first = t.fields[0] && document.getElementById('wt-f-' + t.fields[0]);
   if (first) first.focus();
+}
+
+// المعاينة تُبنى من نص القالب المعتمد المحفوظ في السجل، بالقيم المكتوبة الآن
+function wtRenderPreview() {
+  const wrap = document.getElementById('wt-preview-wrap');
+  if (!wrap || !wtCurrent || !wtCurrent.preview) { if (wrap) wrap.style.display = 'none'; return; }
+
+  const vals = { name: WT_DEFAULTS.name || '' };
+  for (const f of wtCurrent.fields) {
+    const el = document.getElementById('wt-f-' + f);
+    vals[f] = (el && el.value.trim()) || WT_DEFAULTS[f] || `«${(WT_FIELDS[f] && WT_FIELDS[f].label) || f}»`;
+  }
+
+  document.getElementById('wt-preview').textContent =
+    wtCurrent.preview.replace(/\{(\w+)\}/g, (m, k) => vals[k] != null ? vals[k] : m);
+  document.getElementById('wt-preview-footer').textContent = wtCurrent.previewFooter || '';
+
+  const box = document.getElementById('wt-preview-buttons');
+  box.innerHTML = '';
+  (wtCurrent.previewButtons || []).forEach(label => {
+    const b = document.createElement('div');
+    b.textContent = label;
+    b.style.cssText = 'text-align:center;color:#0a7cff;font-size:.72rem;font-weight:600;padding:.3rem;background:#fff;border-radius:.5rem;';
+    box.appendChild(b);
+  });
+  box.style.display = (wtCurrent.previewButtons || []).length ? 'flex' : 'none';
+  wrap.style.display = 'block';
 }
 
 function closeWaTemplate() {
   const m = document.getElementById('wt-modal');
   if (m) m.close();
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.wt-field input').forEach(el => el.addEventListener('input', wtRenderPreview));
+});
 
 function sendWaTemplate() {
   if (!wtCurrent) return;
