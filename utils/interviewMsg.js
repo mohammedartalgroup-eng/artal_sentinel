@@ -172,11 +172,24 @@ function buildInfoRequestText(applicant, _interview, opts = {}) {
   ].join('\n');
 }
 
+// نص التحقق من الجاهزية (ما يراه الوكيل في Chatwoot)
+function buildScreeningText(applicant, _interview, opts = {}) {
+  const v = messageVars(applicant, null, opts);
+  return [
+    `مرحباً ${v.name}،`,
+    `بخصوص طلب توظيفك لدى ${v.company}${v.city ? ` في مدينة ${v.city}` : ''}.`,
+    '',
+    'شروط الترشيح: التفرّغ للعمل، حالة صحية تسمح بمهام الحراسة، وامتلاك سيارة.',
+    'سُئل عن جاهزيته عبر زرَّي «نعم، أنا جاهز» و«لا أرغب حالياً».',
+  ].join('\n');
+}
+
 const WA_TEXT = {
   scheduled:   buildWhatsAppText,
   rescheduled: buildRescheduleText,
   cancelled:   buildCancelText,
   info_request: buildInfoRequestText,
+  screening:    buildScreeningText,
 };
 
 function buildWaUrl(phone, text) {
@@ -288,6 +301,6 @@ function buildEmailSubject(applicant, interview, opts = {}) {
 module.exports = {
   toIntlPhone, isEmail, deriveJobTitle,
   messageVars, VAR_LABELS, buildProcessedParams, sanitizeParam,
-  buildWhatsAppText, buildRescheduleText, buildCancelText, buildInfoRequestText, WA_TEXT, buildWaUrl,
+  buildWhatsAppText, buildRescheduleText, buildCancelText, buildInfoRequestText, buildScreeningText, WA_TEXT, buildWaUrl,
   buildEmailHtml, buildEmailText, buildEmailSubject,
 };

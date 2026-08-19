@@ -339,8 +339,8 @@
         { key: 'scheduled',   label: 'عند جدولة مقابلة',   hint: 'الإشعار الأساسي — يحمل الموعد ورابط Meet' },
         { key: 'rescheduled', label: 'عند إعادة الجدولة',  hint: 'اتركه فارغاً لتعطيل واتساب في هذه الحالة' },
         { key: 'cancelled',   label: 'عند إلغاء المقابلة', hint: 'اتركه فارغاً لتعطيل واتساب في هذه الحالة' },
-        { key: 'inforeq',     label: 'طلب استكمال بيانات المرشح', hint: 'زر يدوي في صفحة المتقدم — مستقل عن المقابلات ولا يتأثر بمفتاح الإرسال التلقائي' },
-      ];
+      ].concat((typeof waTemplateList !== 'undefined' ? waTemplateList : [])
+        .map(function (t) { return { key: t.key, label: t.settingsLabel, hint: t.settingsHint }; }));
     %>
     <div class="bg-white rounded-2xl p-7" id="notify">
       <h2 class="font-bold text-[#001736] text-base mb-1 flex items-center gap-2">

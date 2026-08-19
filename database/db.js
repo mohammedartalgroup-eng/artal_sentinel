@@ -545,6 +545,12 @@ async function initialize() {
         ['wa_tpl_inforeq_lang',      'ar'],
         ['wa_tpl_inforeq_cat',       'UTILITY'],
         ['wa_tpl_inforeq_vars',      'name,job,project,region'],
+
+        // قالب التحقق من الجاهزية (التنقيب) — بزرَّي رد سريع
+        ['wa_tpl_screening_name',    'artal_candidate_screening_ar'],
+        ['wa_tpl_screening_lang',    'ar'],
+        ['wa_tpl_screening_cat',     'UTILITY'],
+        ['wa_tpl_screening_vars',    'name,city'],
       ];
       for (const [k, v] of ivDefaults) {
         await conn.query('INSERT IGNORE INTO settings (`key`, value) VALUES (?, ?)', [k, v]);

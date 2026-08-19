@@ -654,9 +654,16 @@ router.get('/applicants/:id', async (req, res) => {
     // طلب استكمال البيانات مستقل عن المقابلات — يُحسب خارج كتلتها حتى يبقى
     // الزر متاحاً لو تعطّلت ميزة المقابلات
     jobTitleGuess = require('../utils/interviewMsg').deriveJobTitle(applicant, settings);
-    const infoRequest = {
-      ready: chatwoot.isConfigured() && Boolean(String(settings.wa_tpl_inforeq_name || '').trim()),
-      defaultProject: settings.default_project_name || '',
+    const WT = require('../utils/waTemplates');
+    const waTemplates = {
+      list: WT.available(settings, chatwoot.isConfigured()),
+      fields: WT.FIELDS,
+      defaults: {
+        job: jobTitleGuess,
+        project: settings.default_project_name || '',
+        region: applicant.region || '',
+        city: applicant.city || '',
+      },
     };
     try {
       interviewsEnabled = db.INTERVIEWS_SCHEMA_OK && settings.interviews_enabled === 'true';
@@ -695,7 +702,7 @@ router.get('/applicants/:id', async (req, res) => {
       applicant, notes, activity, priorApps,
       STATUS_META, NOTE_TYPES, adminUser: req.session.adminUser,
       interviewsEnabled, googleConnected, activeInterview, waUrl, delivery, notifyChannels, jobTitleGuess,
-      infoRequest,
+      waTemplates,
       interviewerList: ivUsers.filter(u => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(u.username || '')),
     });
   } catch (err) {
@@ -704,17 +711,22 @@ router.get('/applicants/:id', async (req, res) => {
   }
 });
 
-// ─── طلب استكمال بيانات المرشح (قالب واتساب) ─────────────────────────────────
-//  فعل يدوي صريح بضغطة زر — مستقل تماماً عن المقابلات ولا يمر بمفتاح الإشعار
-//  التلقائي. يُسجَّل في applicant_messages وفي التايملاين ليرى الموظف أنه أُرسل.
-const infoReqLimiter = rateLimit({
+// ─── إرسال قالب واتساب يدوي للمتقدم ──────────────────────────────────────────
+//  مسار واحد لكل قوالب utils/waTemplates.js — فعل يدوي صريح لا يمر بمفتاح
+//  الإشعار التلقائي. يُسجَّل في applicant_messages وفي التايملاين ليرى الموظف
+//  أنه أُرسل سابقاً فلا يُكرّره على المتقدم.
+const waTplLimiter = rateLimit({
   windowMs: 10 * 60 * 1000, max: 40,
   message: { error: 'طلبات كثيرة — انتظر قليلاً' },
   standardHeaders: true, legacyHeaders: false,
 });
 
-router.post('/applicants/:id/info-request', infoReqLimiter, async (req, res) => {
+router.post('/applicants/:id/wa-template', waTplLimiter, async (req, res) => {
   try {
+    const WT = require('../utils/waTemplates');
+    const tpl = WT.get(String(req.body.template || ''));
+    if (!tpl) return res.status(400).json({ error: 'قالب غير معروف' });
+
     const applicant = await db.get(
       'SELECT id, full_name, phone, region, city, landing_page FROM applicants WHERE id = ?', [req.params.id]
     );
@@ -723,14 +735,16 @@ router.post('/applicants/:id/info-request', infoReqLimiter, async (req, res) => 
     const settings = await db.getSettings();
     const notify = require('../utils/notify');
 
-    const vars = {
-      jobTitle: String(req.body.jobTitle || '').trim().slice(0, 100),
-      project:  String(req.body.project  || '').trim().slice(0, 100),
-      region:   String(req.body.region   || '').trim().slice(0, 60),
-    };
+    // لا يُقبل من الواجهة إلا ما أعلنه القالب — حتى لا يحقن نموذجٌ حقلَ قالبٍ آخر
+    const vars = {};
+    const MAP = { job: 'jobTitle', project: 'project', region: 'region', city: 'city' };
+    for (const f of tpl.fields) {
+      const raw = String(req.body[f] || '').trim().slice(0, WT.FIELDS[f]?.max || 100);
+      if (raw) vars[MAP[f]] = raw;
+    }
 
     const r = await notify.sendApplicantTemplate({
-      applicant, tplKey: 'inforeq', kind: 'info_request', vars, settings,
+      applicant, tplKey: tpl.key, kind: tpl.kind, vars, settings,
       actor: req.session.adminName || req.session.adminUser,
     });
 
@@ -738,26 +752,28 @@ router.post('/applicants/:id/info-request', infoReqLimiter, async (req, res) => 
       return res.status(r.status === 'skipped' ? 409 : 502).json({ error: r.reason || 'تعذّر الإرسال' });
     }
 
-    // أثر في ملف المتقدم — بنفس شكل الملاحظة اليدوية حتى يظهر في التايملاين
-    const line = `طلب استكمال بيانات عبر واتساب — وظيفة ${r.vars.job}`
-      + `${r.vars.project ? ` / مشروع ${r.vars.project}` : ''}${r.vars.region ? ` / ${r.vars.region}` : ''}`;
+    const detail = tpl.fields
+      .map(f => { const v = r.vars[f === 'job' ? 'job' : f]; return v ? `${WT.FIELDS[f].label}: ${v}` : null; })
+      .filter(Boolean).join(' / ');
+    const line = `${tpl.noteLabel} عبر واتساب${detail ? ` — ${detail}` : ''}`;
+
     try {
       await db.run(
         'INSERT INTO applicant_notes (applicant_id, content, type, user_name) VALUES (?, ?, ?, ?)',
         [applicant.id, line, 'follow_up', req.session.adminName || null]
       );
-    } catch (e) { console.error('[InfoRequest] note:', e.message); }
+    } catch (e) { console.error('[WaTemplate] note:', e.message); }
 
     try {
-      await db.logActivity(applicant.id, 'طلب استكمال بيانات', null, 'واتساب', req.session.adminName || null);
-    } catch (e) { console.error('[InfoRequest] activity:', e.message); }
+      await db.logActivity(applicant.id, tpl.noteLabel, null, 'واتساب', req.session.adminName || null);
+    } catch (e) { console.error('[WaTemplate] activity:', e.message); }
 
-    await db.audit(req.session.adminId, req.session.adminUser, 'info_request', 'applicant',
+    await db.audit(req.session.adminId, req.session.adminUser, 'wa_template', 'applicant',
       applicant.id, applicant.full_name, line, req.ip);
 
     res.json({ ok: true, sentTo: r.target, summary: line });
   } catch (err) {
-    console.error('[InfoRequest]', err.message);
+    console.error('[WaTemplate]', err.message);
     res.status(500).json({ error: 'خطأ غير متوقع' });
   }
 });
@@ -1109,6 +1125,7 @@ router.get('/settings', requireManager, async (req, res) => {
       mailStatus: mailer.status(),
       chatwootStatus: chatwoot.status(),
       msgVars: require('../utils/interviewMsg').VAR_LABELS,
+      waTemplateList: Object.values(require('../utils/waTemplates').TEMPLATES),
     });
   } catch (err) {
     console.error('[Settings GET]', err.message);
@@ -1141,7 +1158,7 @@ function validateInterviewSettings(b) {
 }
 
 // التحقق من إعداد قوالب واتساب — يُرجع رسالة خطأ أو null
-const TPL_KEYS = () => [...require('../utils/notify').KINDS, 'inforeq'];
+const TPL_KEYS = () => [...require('../utils/notify').KINDS, ...require('../utils/waTemplates').keys()];
 
 function validateNotifySettings(b) {
   const VARS = Object.keys(require('../utils/interviewMsg').VAR_LABELS);
