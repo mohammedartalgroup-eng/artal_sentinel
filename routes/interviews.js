@@ -666,7 +666,7 @@ router.get('/interviews', requireInterviewsPage, async (req, res) => {
     const offset = (Math.min(page, totalPages) - 1) * PAGE_SIZE;
 
     const rows = await db.all(
-      `SELECT i.*, a.full_name, a.phone, a.status AS applicant_status
+      `SELECT i.*, a.full_name, a.phone, a.region, a.city, a.neighborhood, a.status AS applicant_status
          FROM interviews i
          JOIN applicants a ON a.id = i.applicant_id
          ${whereSql}
