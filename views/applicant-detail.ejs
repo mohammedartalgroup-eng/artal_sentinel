@@ -1406,6 +1406,7 @@ function confirmInterview() {
 
 // ─── قوالب واتساب اليدوية ───────────────────────────────────────────────────
 let wtCurrent = null;
+let wtLive = null;   // نص القالب كما قرأه الخادم من Chatwoot
 
 function wtAlert(msg) {
   const el = document.getElementById('wt-alert');
@@ -1437,8 +1438,19 @@ function openWaTemplate(key) {
     }
   });
 
+  wtLive = null;
   wtRenderPreview();
   m.showModal();
+
+  // النص الحقيقي من Chatwoot — أدق من النسخة المحفوظة عندنا، فإن وصل حلّ محلّها
+  fetch(`/admin/wa-template/${t.key}/body`)
+    .then(async r => ({ ok: r.ok, d: await r.json().catch(() => ({})) }))
+    .then(({ ok, d }) => {
+      if (!wtCurrent || wtCurrent.key !== t.key) return;
+      if (ok && d.ok) { wtLive = d; wtRenderPreview(); }
+      else if (d.error) wtAlert(d.error);
+    })
+    .catch(() => {});
   const first = t.fields[0] && document.getElementById('wt-f-' + t.fields[0]);
   if (first) first.focus();
 }
@@ -1454,11 +1466,20 @@ function wtRenderPreview() {
     vals[f] = (el && el.value.trim()) || WT_DEFAULTS[f] || `«${(WT_FIELDS[f] && WT_FIELDS[f].label) || f}»`;
   }
 
-  document.getElementById('wt-preview').textContent =
-    wtCurrent.preview.replace(/\{(\w+)\}/g, (m, k) => vals[k] != null ? vals[k] : m);
-  document.getElementById('wt-preview-footer').textContent = wtCurrent.previewFooter || '';
+  let text;
+  if (wtLive && wtLive.body) {
+    // {{1}} {{2}} … تُملأ بترتيب المتغيّرات المحفوظ في الإعدادات
+    text = wtLive.body.replace(/\{\{\s*(\d+)\s*\}\}/g, (m, n) => {
+      const key = wtLive.varOrder[Number(n) - 1];
+      return (key && vals[key] != null) ? vals[key] : m;
+    });
+  } else {
+    text = wtCurrent.preview.replace(/\{(\w+)\}/g, (m, k) => vals[k] != null ? vals[k] : m);
+  }
+  document.getElementById('wt-preview').textContent = text;
+  document.getElementById('wt-preview-footer').textContent = wtLive ? '' : (wtCurrent.previewFooter || '');
 
-  const box = document.getElementById('wt-preview-buttons');
+  const box = document.getElementById('wt-preview-buttons');   // أزرار الرد لا ترد في نص Chatwoot
   box.innerHTML = '';
   (wtCurrent.previewButtons || []).forEach(label => {
     const b = document.createElement('div');

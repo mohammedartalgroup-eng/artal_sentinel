@@ -721,6 +721,39 @@ const waTplLimiter = rateLimit({
   standardHeaders: true, legacyHeaders: false,
 });
 
+// نص القالب المعتمد كما هو في Chatwoot — تقرأه النافذة عند فتحها لتعرض
+// معاينة مطابقة للواقع بدل نسخة مكتوبة عندنا تتقادم بعد أي تعديل في ميتا.
+router.get('/wa-template/:key/body', async (req, res) => {
+  try {
+    const WT = require('../utils/waTemplates');
+    const tpl = WT.get(String(req.params.key || ''));
+    if (!tpl) return res.status(404).json({ error: 'قالب غير معروف' });
+    if (!chatwoot.isConfigured()) return res.status(409).json({ error: 'تكامل Chatwoot غير مهيأ' });
+
+    const settings = await db.getSettings();
+    const cfgTpl = require('../utils/notify').templateFor(settings, tpl.key);
+    if (!cfgTpl.name) return res.status(409).json({ error: 'لم يُحدَّد اسم القالب في الإعدادات' });
+
+    const found = await chatwoot.findTemplate(cfgTpl.name, cfgTpl.language);
+    if (!found) {
+      return res.status(409).json({
+        error: `القالب «${cfgTpl.name}» غير موجود في قوالب Chatwoot — اضغط «Sync Templates» على صندوق واتساب`,
+      });
+    }
+
+    res.json({
+      ok: true,
+      name: cfgTpl.name,
+      body: String(found.body || ''),
+      varOrder: cfgTpl.vars.split(',').map(x => x.trim()).filter(Boolean),
+      varCount: chatwoot.templateVarCount(found),
+    });
+  } catch (err) {
+    console.error('[WaTemplate body]', err.message);
+    res.status(502).json({ error: 'تعذّر قراءة القالب من Chatwoot' });
+  }
+});
+
 router.post('/applicants/:id/wa-template', waTplLimiter, async (req, res) => {
   try {
     const WT = require('../utils/waTemplates');

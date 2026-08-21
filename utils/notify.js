@@ -41,6 +41,43 @@ function msgOpts(interview, settings) {
   };
 }
 
+/**
+ * يبني نص الرسالة من القالب المعتمد في Chatwoot نفسه، ويتحقق من عدد
+ * المتغيّرات قبل الإرسال.
+ *
+ * لماذا من Chatwoot لا من نص مكتوب عندنا؟ لأن أي نسخة يدوية تتقادم لحظة
+ * تعديل القالب في ميتا، فيقرأ الموظف نصاً ويصل المتقدم نصٌ آخر. وكذلك
+ * يمنع الخطأ #132000 قبل وقوعه بدل تفسير رسالة غامضة بعده.
+ *
+ * لا يرمي: تعذّر القراءة يُرجع { ok:true } بالنص الاحتياطي، فانقطاع مؤقت
+ * في Chatwoot لا يمنع محاولة الإرسال.
+ *
+ * @returns {{ok:boolean, reason?:string, content?:string}}
+ */
+async function resolveTemplateBody(tpl, params, fallbackText) {
+  try {
+    const found = await chatwoot.findTemplate(tpl.name, tpl.language);
+    if (!found) {
+      return {
+        ok: false,
+        reason: `القالب «${tpl.name}» غير موجود في قوالب Chatwoot — اضغط «Sync Templates» على صندوق واتساب بعد اعتماده في Twilio/Meta`,
+      };
+    }
+    const need = chatwoot.templateVarCount(found);
+    const have = Object.keys(params || {}).length;
+    if (need !== have) {
+      return {
+        ok: false,
+        reason: `عدد المتغيّرات لا يطابق القالب: يحتاج ${need} ونرسل ${have} — صحّح «ترتيب المتغيّرات» في الإعدادات`,
+      };
+    }
+    return { ok: true, content: chatwoot.renderTemplate(found, params) };
+  } catch (e) {
+    console.error('[Notify] template lookup:', e.message);
+    return { ok: true, content: fallbackText };   // انقطاع مؤقت — لا نمنع الإرسال
+  }
+}
+
 async function log({ interviewId, applicantId, channel, kind, status, target, ref, error, actor }) {
   try {
     await db.run(
@@ -69,16 +106,20 @@ async function sendWhatsApp({ applicant, interview, kind, settings, actor }) {
   const tpl = templateFor(settings, kind);
   if (!tpl.name) { out.reason = `لم يُحدَّد قالب واتساب لإشعار «${kind}»`; return out; }
 
-  const opts    = msgOpts(interview, settings);
-  const vars    = M.messageVars(applicant, interview, opts);
-  const content = (M.WA_TEXT[kind] || M.buildWhatsAppText)(applicant, interview, opts);
+  const opts   = msgOpts(interview, settings);
+  const vars   = M.messageVars(applicant, interview, opts);
+  const params = M.buildProcessedParams(vars, tpl.vars, tpl.shape);
+  const fallback = (M.WA_TEXT[kind] || M.buildWhatsAppText)(applicant, interview, opts);
+
+  const body = await resolveTemplateBody(tpl, params, fallback);
+  if (!body.ok) { out.reason = body.reason; return out; }
 
   try {
     const r = await chatwoot.sendTemplate({
-      name: applicant.full_name, phone: applicant.phone, content,
+      name: applicant.full_name, phone: applicant.phone, content: body.content,
       template: {
         name: tpl.name, language: tpl.language, category: tpl.category,
-        processed_params: M.buildProcessedParams(vars, tpl.vars, tpl.shape),
+        processed_params: params,
       },
     });
     out.status = 'sent';
@@ -206,12 +247,17 @@ async function sendApplicantTemplate({ applicant, tplKey, kind, vars = {}, setti
       return;
     }
 
-    const content = (M.WA_TEXT[kind] || M.buildScreeningText)(applicant, null, opts);
+    const params = M.buildProcessedParams(v, tpl.vars, tpl.shape);
+    const fallback = (M.WA_TEXT[kind] || M.buildScreeningText)(applicant, null, opts);
+
+    const body = await resolveTemplateBody(tpl, params, fallback);
+    if (!body.ok) { out.reason = body.reason; return; }
+
     const r = await chatwoot.sendTemplate({
-      name: applicant.full_name, phone: applicant.phone, content,
+      name: applicant.full_name, phone: applicant.phone, content: body.content,
       template: {
         name: tpl.name, language: tpl.language, category: tpl.category,
-        processed_params: M.buildProcessedParams(v, tpl.vars, tpl.shape),
+        processed_params: params,
       },
     });
     out.status = 'sent';

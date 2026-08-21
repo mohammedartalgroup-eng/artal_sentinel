@@ -108,6 +108,52 @@ function sourceIdFor(contact, inboxId) {
   return mine?.source_id || null;
 }
 
+// ─── القوالب المتزامنة ───────────────────────────────────────────────────────
+//  Chatwoot يحتفظ بنسخة من قوالب Twilio المعتمدة على الصندوق نفسه، وتُحدَّث
+//  بزر «Sync Templates». نقرأها لسببين:
+//   • بناء نص الرسالة من القالب المعتمد نفسه بدل نسخة مكتوبة يدوياً تتقادم.
+//   • التحقق من عدد المتغيّرات قبل الإرسال، فلا نقع في الخطأ #132000.
+//  قالب غير مزامَن ⇒ يرفضه Chatwoot بـ «Template not found»، ونكشفه مبكراً
+//  برسالة عربية تشرح الحل بدل خطأ غامض بعد الإرسال.
+
+let tplCache = { at: 0, list: null };
+const TPL_TTL_MS = 5 * 60 * 1000;
+
+async function listTemplates({ fresh = false } = {}) {
+  if (!fresh && tplCache.list && Date.now() - tplCache.at < TPL_TTL_MS) return tplCache.list;
+  const c = cfg();
+  const data = await cwfetch(`/inboxes/${c.inbox}`, { idempotent: true, op: 'inbox' });
+  const box = data?.payload || data || {};
+  const list = box?.content_templates?.templates || [];
+  tplCache = { at: Date.now(), list };
+  return list;
+}
+
+const tplName = (t) => String(t?.name || t?.friendly_name || '').trim();
+
+/** يبحث بالاسم واللغة — واللغة اختيارية لأن بعض الحسابات تسجّل لغة واحدة فقط */
+async function findTemplate(name, language, opts = {}) {
+  const want = String(name || '').trim();
+  if (!want) return null;
+  const list = await listTemplates(opts);
+  const byName = list.filter(t => tplName(t) === want);
+  if (!byName.length) return null;
+  const lang = String(language || '').trim();
+  return byName.find(t => String(t.language || '').trim() === lang) || byName[0];
+}
+
+/** عدد المتغيّرات الفريدة في نص القالب — مصدر الحقيقة لعدّ processed_params */
+function templateVarCount(tpl) {
+  const found = String(tpl?.body || '').match(/\{\{\s*(\d+)\s*\}\}/g) || [];
+  return new Set(found.map(x => x.replace(/\D/g, ''))).size;
+}
+
+/** نص القالب بعد تعبئة {{n}} من processed_params — هو ما يصل المتقدم فعلاً */
+function renderTemplate(tpl, params) {
+  const p = params || {};
+  return String(tpl?.body || '').replace(/\{\{\s*(\d+)\s*\}\}/g, (m, n) => (p[n] != null ? p[n] : m));
+}
+
 // ─── جهة الاتصال ─────────────────────────────────────────────────────────────
 /**
  * يبحث عن جهة الاتصال بالرقم، وينشئها إن لم توجد، ويضمن ارتباطها بصندوقنا.
@@ -235,4 +281,7 @@ async function sendTemplate({ name, phone, content, template }) {
   return { conversationId: conv?.id || null, messageId: null };
 }
 
-module.exports = { ChatwootError, isConfigured, status, toE164, ensureContact, sendTemplate };
+module.exports = {
+  ChatwootError, isConfigured, status, toE164, ensureContact, sendTemplate,
+  listTemplates, findTemplate, templateVarCount, renderTemplate,
+};
