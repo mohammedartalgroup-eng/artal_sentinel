@@ -447,9 +447,11 @@ async function initialize() {
         console.log('[DB] Migration: added column job_title to interviews');
       }
 
-      // الموقع المرشَّح — يكتبه الموظف عند الجدولة، ويظهر في قائمة المقابلات.
-      // لا يُشتق من بيانات المتقدم: هو قرار توظيفي (أين نرشّحه للعمل) لا
-      // معلومة عنه، وقد يختلف عن منطقته ومدينته تماماً.
+      // «المشروع المرشح» في الواجهة — يكتبه الموظف عند الجدولة ويراه المقابِل
+      // في صفحة المقابلات. لا يُشتق من بيانات المتقدم: هو قرار توظيفي (أين
+      // نرشّحه للعمل) لا معلومة عنه، وقد يختلف عن منطقته ومدينته تماماً.
+      // (اسم العمود candidate_site تاريخي — لم يُعَد تسميته تفادياً لترحيل
+      //  لا يضيف شيئاً؛ الواجهة كلها تقول «المشروع المرشح».)
       const [ivSiteCols] = await conn.query("SHOW COLUMNS FROM interviews LIKE 'candidate_site'");
       if (ivSiteCols.length === 0) {
         await conn.query("ALTER TABLE interviews ADD COLUMN candidate_site VARCHAR(120) DEFAULT NULL");
