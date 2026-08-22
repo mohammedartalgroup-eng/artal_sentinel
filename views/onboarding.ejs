@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>استكمال ملف الموظف — أرتال للحراسة الأمنية</title>
+  <link rel="icon" type="image/png" href="/images/icon.png">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#001736">
+
+  <!-- أيقونات مُجزَّأة على المستخدمة فعلاً — نفس نهج صفحة التقديم (لا 1.1MB) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&icon_names=account_balance,arrow_forward,autorenew,badge,check_circle,directions_car,error,home_pin,photo_camera,radio_button_unchecked,task_alt,upload_file,warning&display=swap" onload="this.onload=null;this.rel='stylesheet'"><noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&icon_names=account_balance,arrow_forward,autorenew,badge,check_circle,directions_car,error,home_pin,photo_camera,radio_button_unchecked,task_alt,upload_file,warning&display=swap"></noscript>
+
+  <!--
+    ⚠️ هذه الصفحة تحمل تنسيقها بنفسها (بلا Tailwind المُجمَّع مسبقاً) عمداً:
+       ملف public/css/tailwind.css مبني من قوالب النظام القائم، وإعادة بنائه
+       لأجل صفحة تجريبية تعني تغيير ملف تُحمّله كل صفحات النظام. صفحة معزولة
+       = تنسيق معزول، ولا مخاطرة على واجهة تعمل اليوم.
+  -->
+  <style>
+    :root{
+      --navy:#001736; --navy-soft:#264778; --muted:#43474f; --line:#e0e3e5;
+      --bg:#f2f4f6; --card:#ffffff; --green:#15803d; --green-bg:#dcfce7;
+      --amber:#a16207; --amber-bg:#fef3c7; --red:#ba1a1a; --red-bg:#ffdad6;
+      --gold:#e2c382;
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0}
+    body{background:var(--bg);color:var(--navy);font-family:system-ui,-apple-system,'Segoe UI',Tahoma,sans-serif;
+         font-size:15px;line-height:1.7;-webkit-tap-highlight-color:transparent}
+    .material-symbols-outlined{font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24;
+         font-size:20px;line-height:1;vertical-align:middle}
+    .wrap{max-width:560px;margin:0 auto;padding:0 16px 56px}
+    .hidden{display:none !important}
+
+    header.top{background:var(--navy);color:#fff;padding:14px 16px;display:flex;align-items:center;gap:10px;
+         position:sticky;top:0;z-index:20}
+    header.top img{height:26px}
+    header.top .t{font-size:14px;font-weight:600}
+
+    /* ── ترويسة الترحيب والتقدّم ───────────────────────────── */
+    .hero{background:var(--navy);color:#fff;padding:4px 16px 28px;margin-bottom:-18px}
+    .hero h1{font-size:20px;margin:6px 0 4px;font-weight:700}
+    .hero p{margin:0;color:#b8c9d3;font-size:13.5px}
+    .bar{height:8px;border-radius:99px;background:rgba(255,255,255,.15);margin-top:16px;overflow:hidden}
+    .bar > i{display:block;height:100%;border-radius:99px;background:var(--gold);transition:width .45s ease}
+    .bar-meta{display:flex;justify-content:space-between;font-size:12px;color:#b8c9d3;margin-top:7px}
+
+    /* ── بطاقات المستندات ──────────────────────────────────── */
+    .cards{display:flex;flex-direction:column;gap:10px;margin-top:26px}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;
+          display:flex;align-items:center;gap:12px;width:100%;text-align:right;cursor:pointer;
+          font:inherit;color:inherit;transition:box-shadow .18s,transform .18s}
+    .card:hover{box-shadow:0 6px 18px rgba(0,23,54,.07)}
+    .card:active{transform:scale(.995)}
+    .card .ico{width:42px;height:42px;border-radius:12px;background:#eef2f7;color:var(--navy-soft);
+          display:flex;align-items:center;justify-content:center;flex:none}
+    .card .txt{flex:1;min-width:0}
+    .card .txt b{display:block;font-size:15px;font-weight:600}
+    .card .txt span{font-size:12.5px;color:var(--muted)}
+    .chip{font-size:11.5px;font-weight:600;padding:4px 10px;border-radius:99px;white-space:nowrap;flex:none}
+    .chip.ok{background:var(--green-bg);color:var(--green)}
+    .chip.wait{background:#eceef0;color:var(--muted)}
+    .chip.warn{background:var(--amber-bg);color:var(--amber)}
+    .chip.bad{background:var(--red-bg);color:var(--red)}
+    .card.done .ico{background:var(--green-bg);color:var(--green)}
+
+    .note{font-size:12.5px;color:var(--muted);text-align:center;margin-top:22px;line-height:1.9}
+
+    /* ── شاشة المستند ──────────────────────────────────────── */
+    .back{display:inline-flex;align-items:center;gap:6px;background:none;border:0;font:inherit;
+          color:var(--navy);padding:14px 0;cursor:pointer}
+    .panel{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px}
+    .panel h2{font-size:17px;margin:0 0 6px}
+    .panel .hint{font-size:13px;color:var(--muted);margin:0 0 16px}
+
+    .drop{border:2px dashed #c4c6d0;border-radius:16px;padding:22px 14px;text-align:center;background:#fafbfc}
+    .drop .material-symbols-outlined{font-size:30px;color:var(--navy-soft)}
+    .drop p{margin:8px 0 14px;font-size:13px;color:var(--muted)}
+    .btns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:0;border-radius:12px;
+         padding:11px 18px;font:inherit;font-weight:600;font-size:14px;cursor:pointer}
+    .btn.primary{background:var(--navy);color:#fff}
+    .btn.ghost{background:#eef2f7;color:var(--navy)}
+    .btn.wide{width:100%;padding:14px}
+    .btn:disabled{opacity:.55;cursor:default}
+
+    .status{display:flex;align-items:center;gap:9px;font-size:13.5px;padding:12px 14px;border-radius:12px;margin-top:14px}
+    .status.load{background:#eef2f7;color:var(--navy-soft)}
+    .status.ok{background:var(--green-bg);color:var(--green)}
+    .status.warn{background:var(--amber-bg);color:var(--amber)}
+    .status.bad{background:var(--red-bg);color:var(--red)}
+    .spin{animation:spin 1s linear infinite;display:inline-block}
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    .thumb{margin-top:14px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#f8f9fb}
+    .thumb img{display:block;width:100%;max-height:220px;object-fit:contain}
+    .thumb .file{padding:12px 14px;font-size:13px;color:var(--muted)}
+
+    .fields{margin-top:18px;display:flex;flex-direction:column;gap:14px}
+    .f label{display:block;font-size:12.5px;font-weight:600;margin-bottom:6px}
+    .f label .req{color:var(--red)}
+    .f input{width:100%;border:1.5px solid var(--line);border-radius:12px;padding:12px 13px;font:inherit;
+             font-size:15px;background:#fff;color:var(--navy)}
+    .f input:focus{outline:none;border-color:var(--navy-soft)}
+    .f.bad input{border-color:var(--red);background:#fffafa}
+    .f.good input{border-color:#86c9a0}
+    .f .msg{font-size:12px;margin-top:5px;color:var(--muted);min-height:16px}
+    .f.bad .msg{color:var(--red)}
+    .f.good .msg{color:var(--green)}
+    .src{font-size:11px;color:#747780;font-weight:400}
+
+    #toast{position:fixed;bottom:18px;right:50%;transform:translate(50%,120%);background:var(--navy);color:#fff;
+           padding:11px 18px;border-radius:12px;font-size:13.5px;transition:transform .3s;z-index:50}
+    #toast.show{transform:translate(50%,0)}
+  </style>
+</head>
+<body>
+
+<header class="top">
+  <img src="/images/icon.png" alt="أرتال">
+  <span class="t">استكمال ملف الموظف</span>
+</header>
+
+<!-- ═══ قائمة المستندات ═══ -->
+<section id="view-list">
+  <div class="hero">
+    <div class="wrap" style="padding-bottom:0">
+      <h1>أهلاً <%= firstName %> 👋</h1>
+      <p>نحتاج بعض المستندات لاستكمال ملفك الوظيفي. لست مضطراً لإنهائها الآن — كل ما ترفعه يُحفَظ فوراً.</p>
+      <div class="bar"><i id="bar-fill" style="width:<%= progress %>%"></i></div>
+      <div class="bar-meta">
+        <span id="bar-text">تم إكمال <%= completed %> من <%= totalRequired %></span>
+        <span id="bar-pct"><%= progress %>%</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="cards" id="cards"></div>
+    <p class="note">
+      بياناتك تُستخدم لإنشاء ملفك الوظيفي في شركة أرتال للحراسات الأمنية فقط.<br>
+      لأي استفسار تواصل مع فريق التوظيف.
+    </p>
+  </div>
+</section>
+
+<!-- ═══ شاشة مستند واحد ═══ -->
+<section id="view-doc" class="hidden">
+  <div class="wrap">
+    <button class="back" onclick="showList()">
+      <span class="material-symbols-outlined">arrow_forward</span> رجوع للقائمة
+    </button>
+
+    <div class="panel">
+      <h2 id="d-title"></h2>
+      <p class="hint" id="d-hint"></p>
+
+      <div class="drop" id="d-drop">
+        <span class="material-symbols-outlined">upload_file</span>
+        <p id="d-droptext">صوّر المستند أو اختره من جهازك — صورة واضحة كاملة الأطراف.</p>
+        <div class="btns">
+          <button class="btn primary" onclick="pick(true)">
+            <span class="material-symbols-outlined">photo_camera</span> التقاط صورة
+          </button>
+          <button class="btn ghost" onclick="pick(false)">اختيار ملف</button>
+        </div>
+      </div>
+
+      <div id="d-status" class="hidden"></div>
+      <div id="d-thumb" class="thumb hidden"></div>
+      <div id="d-fields" class="fields"></div>
+
+      <div id="d-actions" class="hidden" style="margin-top:20px;display:flex;flex-direction:column;gap:10px">
+        <button class="btn primary wide" id="d-confirm" onclick="confirmDoc()">تأكيد وحفظ</button>
+        <button class="btn ghost wide" onclick="pick(false)">إعادة رفع المستند</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<input type="file" id="filein" accept="image/*,application/pdf" class="hidden">
+<div id="toast"></div>
+
+<script>
+// ─── الحالة ───────────────────────────────────────────────────────────────────
+const TOKEN     = <%- JSON.stringify(token) %>;
+const AUTO_READ = <%- autoRead ? 'true' : 'false' %>;
+let STEPS       = <%- JSON.stringify(steps).replace(/</g, '\\u003c') %>;
+let current     = null;   // نوع المستند المفتوح حالياً
+
+const $ = (id) => document.getElementById(id);
+const ICONS = { pending:'radio_button_unchecked', extracted:'warning', confirmed:'task_alt' };
+
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._h);
+  t._h = setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+// ─── القائمة ─────────────────────────────────────────────────────────────────
+function chipFor(s) {
+  if (s.status === 'confirmed' && s.review === 'red') return ['bad', 'يحتاج إعادة رفع'];
+  if (s.status === 'confirmed') return ['ok', 'مكتمل'];
+  if (s.status === 'extracted' && s.review === 'red') return ['bad', 'مستند غير مطابق'];
+  if (s.status === 'extracted') return ['warn', 'راجِع البيانات'];
+  return [s.required ? 'wait' : 'wait', s.required ? 'مطلوب' : 'اختياري'];
+}
+
+function renderList() {
+  $('cards').innerHTML = STEPS.map(s => {
+    const [cls, label] = chipFor(s);
+    const done = s.status === 'confirmed' && s.review !== 'red';
+    return `
+      <button class="card ${done ? 'done' : ''}" onclick="openDoc('${s.type}')">
+        <span class="ico"><span class="material-symbols-outlined">${done ? 'check_circle' : s.icon}</span></span>
+        <span class="txt">
+          <b>${s.label}</b>
+          <span>${s.required ? 'مطلوب لإكمال الملف' : 'اختياري'}</span>
+        </span>
+        <span class="chip ${cls}">${label}</span>
+      </button>`;
+  }).join('');
+
+  const req = STEPS.filter(s => s.required);
+  const done = req.filter(s => s.status === 'confirmed').length;
+  const pct = req.length ? Math.round(done / req.length * 100) : 0;
+  $('bar-fill').style.width = pct + '%';
+  $('bar-text').textContent = 'تم إكمال ' + done + ' من ' + req.length;
+  $('bar-pct').textContent = pct + '%';
+}
+
+function showList() {
+  current = null;
+  $('view-doc').classList.add('hidden');
+  $('view-list').classList.remove('hidden');
+  renderList();
+  window.scrollTo(0, 0);
+}
+
+// ─── شاشة المستند ────────────────────────────────────────────────────────────
+function step(type) { return STEPS.find(s => s.type === type); }
+
+function openDoc(type) {
+  current = type;
+  const s = step(type);
+  $('view-list').classList.add('hidden');
+  $('view-doc').classList.remove('hidden');
+  $('d-title').textContent = s.label;
+  $('d-hint').textContent = s.hint;
+  renderDoc();
+  window.scrollTo(0, 0);
+}
+
+function renderDoc() {
+  const s = step(current);
+  const hasFile = s.hasFile;
+
+  $('d-drop').classList.toggle('hidden', hasFile);
+  $('d-thumb').classList.toggle('hidden', !hasFile);
+  $('d-actions').classList.toggle('hidden', !hasFile);
+
+  if (hasFile) {
+    $('d-thumb').innerHTML = /\.pdf$/i.test(s.fileName || '')
+      ? `<div class="file">📄 ${s.fileName || 'ملف PDF'}</div>`
+      : `<img src="/onboarding/${TOKEN}/file/${s.docId}" alt="${s.label}">`;
+  }
+
+  // الحالة: أخضر/أصفر/أحمر — بلا نسب ثقة، فهي معلومة تقنية لا تخصّ المرشح.
+  const st = $('d-status');
+  st.classList.remove('hidden');
+  if (!hasFile) {
+    st.classList.add('hidden');
+  } else if (s.review === 'red') {
+    st.className = 'status bad';
+    st.innerHTML = `<span class="material-symbols-outlined">error</span><span>${s.warnings[0] || 'المستند لا يبدو مطابقاً للمطلوب — أعد الرفع.'}</span>`;
+  } else if (s.status === 'confirmed') {
+    st.className = 'status ok';
+    st.innerHTML = '<span class="material-symbols-outlined">check_circle</span><span>تم الحفظ. يمكنك تعديل البيانات أو إعادة الرفع في أي وقت.</span>';
+  } else if (s.warnings.length) {
+    st.className = 'status warn';
+    st.innerHTML = `<span class="material-symbols-outlined">warning</span><span>${s.warnings[0]}</span>`;
+  } else {
+    st.className = 'status ok';
+    st.innerHTML = '<span class="material-symbols-outlined">task_alt</span><span>هذه البيانات التي وجدناها — راجعها ثم أكّد.</span>';
+  }
+
+  renderFields(s);
+  $('d-confirm').textContent = s.status === 'confirmed' ? 'حفظ التعديلات' : 'تأكيد وحفظ';
+}
+
+function renderFields(s) {
+  if (!s.hasFile) { $('d-fields').innerHTML = ''; return; }
+  $('d-fields').innerHTML = s.fields.map(f => {
+    const cls = f.value ? (f.valid ? 'good' : 'bad') : '';
+    const msg = f.value && !f.valid ? (f.error || 'قيمة غير صحيحة')
+              : (f.type === 'date' ? 'يوم/شهر/سنة — نقبل الهجري والميلادي' : '');
+    const mode = ['digits4','digits5','digits10','saudi_id'].includes(f.type) ? 'numeric' : 'text';
+    return `
+      <div class="f ${cls}" id="f-${f.key}">
+        <label for="i-${f.key}">${f.label}${f.required ? ' <span class="req">*</span>' : ''}
+          ${f.source === 'ai' ? '<span class="src">— مُستنتج، تأكّد منه</span>' : ''}</label>
+        <input id="i-${f.key}" inputmode="${mode}" value="${(f.value || '').replace(/"/g, '&quot;')}"
+               onchange="saveField('${f.key}')" onblur="saveField('${f.key}')">
+        <div class="msg">${msg}</div>
+      </div>`;
+  }).join('');
+}
+
+// ─── الرفع ───────────────────────────────────────────────────────────────────
+function pick(camera) {
+  const input = $('filein');
+  if (camera) input.setAttribute('capture', 'environment'); else input.removeAttribute('capture');
+  input.value = '';
+  input.click();
+}
+
+$('filein').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file || !current) return;
+
+  const st = $('d-status');
+  st.classList.remove('hidden');
+  st.className = 'status load';
+  st.innerHTML = '<span class="material-symbols-outlined spin">autorenew</span><span>'
+    + (AUTO_READ ? 'جاري رفع المستند وقراءته…' : 'جاري رفع المستند…') + '</span>';
+  $('d-drop').classList.add('hidden');
+
+  // doc_type يُضاف قبل الملف عمداً: multer يقرأ الحقول بالترتيب، واسم الملف
+  // على القرص يُبنى منه.
+  const fd = new FormData();
+  fd.append('doc_type', current);
+  fd.append('file', file);
+
+  try {
+    const r = await fetch(`/onboarding/${TOKEN}/upload`, { method: 'POST', body: fd });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'تعذّر الرفع');
+    STEPS = STEPS.map(s => s.type === j.step.type ? j.step : s);
+    renderDoc();
+  } catch (err) {
+    st.className = 'status bad';
+    st.innerHTML = `<span class="material-symbols-outlined">error</span><span>${err.message}</span>`;
+    $('d-drop').classList.remove('hidden');
+  }
+});
+
+// ─── الحفظ التلقائي لكل حقل ──────────────────────────────────────────────────
+async function saveField(key) {
+  const input = $('i-' + key);
+  const s = step(current);
+  const f = s.fields.find(x => x.key === key);
+  if (!input || !f) return;
+  const val = input.value.trim();
+  if (val === (f.lastSent ?? f.value)) return;      // لا نداء بلا تغيير
+  f.lastSent = val;
+
+  try {
+    const r = await fetch(`/onboarding/${TOKEN}/field`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ doc_type: current, field: key, value: val }),
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'تعذّر الحفظ');
+
+    f.value = j.value; f.valid = j.valid; f.error = j.error; f.source = 'user';
+    const box = $('f-' + key);
+    box.className = 'f ' + (val ? (j.valid ? 'good' : 'bad') : '');
+    box.querySelector('.msg').textContent = val && !j.valid ? (j.error || 'قيمة غير صحيحة')
+      : (f.type === 'date' && j.value ? 'سيُحفَظ كـ ' + j.value : '');
+    if (j.valid && j.value && j.value !== val) input.value = j.value;   // القيمة المُطبَّعة
+  } catch (err) {
+    toast(err.message);
+  }
+}
+
+// ─── التأكيد ─────────────────────────────────────────────────────────────────
+async function confirmDoc() {
+  const btn = $('d-confirm');
+  btn.disabled = true;
+  try {
+    const r = await fetch(`/onboarding/${TOKEN}/confirm`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ doc_type: current }),
+    });
+    const j = await r.json();
+    if (!r.ok) {
+      if (j.missing?.length) {
+        j.missing.forEach(k => $('f-' + k)?.classList.add('bad'));
+        $('f-' + j.missing[0])?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      throw new Error(j.error || 'تعذّر التأكيد');
+    }
+    const s = step(current);
+    s.status = 'confirmed';
+    toast(j.progress >= 100 ? 'اكتمل ملفك — شكراً لك 🎉' : 'تم الحفظ ✓');
+    showList();
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ─── الإقلاع: نفتح مباشرةً على أول مستند ناقص لمن سبق أن بدأ ────────────────
+renderList();
+(function resume() {
+  const started = STEPS.some(s => s.hasFile);
+  const pendingReview = STEPS.find(s => s.hasFile && s.status !== 'confirmed');
+  if (started && pendingReview) openDoc(pendingReview.type);
+})();
+</script>
+</body>
+</html>

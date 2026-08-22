@@ -72,7 +72,9 @@ function messageVars(applicant, interview, opts = {}) {
     time,
     datetime: has ? `${date} الساعة ${time}` : '',
     duration: String(iv.durationMin || ''),
-    link:     iv.meetLink || '',
+    // الرابط: من الموعد (Meet) أو مُمرَّراً من المُستدعي (رابط استكمال الملف).
+    // قالب واحد لا يعرف أيّهما — والمُرسِل هو من يقرّر ما يضع في {link}.
+    link:     iv.meetLink || String(opts.link || '').trim(),
     interviewers: (iv.interviewers || []).map(p => p.name || p.email).join('، '),
     reason:   String(opts.reason || '').trim(),
   };
@@ -82,7 +84,7 @@ const VAR_LABELS = {
   name: 'اسم المتقدم', company: 'اسم الشركة', job: 'المسمّى الوظيفي',
   region: 'المنطقة', city: 'المدينة',
   date: 'التاريخ', time: 'الوقت', datetime: 'التاريخ والوقت',
-  duration: 'المدة بالدقائق', link: 'رابط Meet',
+  duration: 'المدة بالدقائق', link: 'الرابط (Meet أو استكمال الملف)',
   interviewers: 'أسماء المقابلين', reason: 'سبب الإلغاء',
 };
 
@@ -168,11 +170,26 @@ function buildScreeningText(applicant, _interview, opts = {}) {
   ].join('\n');
 }
 
+// نص رابط استكمال الملف (ما يراه الوكيل في Chatwoot)
+function buildOnboardingText(applicant, _interview, opts = {}) {
+  const v = messageVars(applicant, null, opts);
+  return [
+    `مرحباً ${v.name} 👋`,
+    `تم ترشيحك لوظيفة ${v.job} لدى ${v.company}.`,
+    '',
+    'لاستكمال ملفك الوظيفي، افتح الرابط التالي وارفع المستندات المطلوبة من جوالك مباشرة:',
+    v.link,
+    '',
+    'الرابط خاص بك وحدك ولا يُشارك مع أحد، وصالح لمدة 30 يوماً. تستطيع رفعها على دفعات — كل مستند يُحفظ فور رفعه.',
+  ].join('\n');
+}
+
 const WA_TEXT = {
   scheduled:   buildWhatsAppText,
   rescheduled: buildRescheduleText,
   cancelled:   buildCancelText,
   screening:    buildScreeningText,
+  onboarding:   buildOnboardingText,
 };
 
 function buildWaUrl(phone, text) {
@@ -284,6 +301,6 @@ function buildEmailSubject(applicant, interview, opts = {}) {
 module.exports = {
   toIntlPhone, isEmail, deriveJobTitle,
   messageVars, VAR_LABELS, buildProcessedParams, sanitizeParam,
-  buildWhatsAppText, buildRescheduleText, buildCancelText, buildScreeningText, WA_TEXT, buildWaUrl,
+  buildWhatsAppText, buildRescheduleText, buildCancelText, buildScreeningText, buildOnboardingText, WA_TEXT, buildWaUrl,
   buildEmailHtml, buildEmailText, buildEmailSubject,
 };

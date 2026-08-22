@@ -1,0 +1,581 @@
+/**
+ * onboarding.js — «استكمال ملف الموظف» (ميزة تجريبية تعمل جانبياً).
+ *
+ * تعمل بجوار نظام التوظيف لا داخله:
+ *   • رابط عام مستقل      /onboarding/<token>        — لا علاقة له بـ /apply.
+ *   • واجهة إدارية مستقلة  /admin/onboarding/view/:id — صفحة منفصلة يفتحها زر
+ *     صغير في صفحة تفاصيل المتقدم.
+ *   • جداول مستقلة، مجلد رفع مستقل، ولا كتابة إطلاقاً في جدول applicants.
+ *
+ * لماذا لا نكتب في applicants؟ لأن هذه بيانات مرشَّحة لم يعتمدها بشر بعد:
+ * النموذج يقترح، والقواعد تتحقق، والمرشح يؤكّد، ثم يقرّر HR نقلها. حتى ذلك
+ * الحين هي «بيانات رحلة» لا «بيانات موظف» — وخلط الاثنين هو ما يجعل أخطاء
+ * الاستخراج تتسرّب إلى النظام الرسمي بلا رجعة.
+ */
+
+const express = require('express');
+const crypto  = require('crypto');
+const path    = require('path');
+const fs      = require('fs');
+const rateLimit = require('express-rate-limit');
+
+const ob      = require('../database/onboarding-db');
+const db      = ob.db;
+const rules   = require('../utils/docRules');
+const ocr     = require('../utils/visionOcr');
+const ai      = require('../utils/aiExtract');
+const { processDocument } = require('../utils/docPipeline');
+const upload  = require('../middleware/onboardingUpload');
+
+const OB_ROOT = upload.OB_ROOT;
+const LINK_DAYS = 30;
+
+const publicRouter = express.Router();
+const adminRouter  = express.Router();
+
+// السيدبار ودوال تنسيق التاريخ تأتي عادةً من وسيط داخل routes/admin.js، وهذا
+// الراوتر يُركَّب مستقلاً حتى لا نلمس ذلك الملف — فنضبط نفس المتغيرات هنا.
+const RYD = 'Asia/Riyadh';
+adminRouter.use((req, res, next) => {
+  res.locals.adminUser = req.session?.adminUser;
+  res.locals.adminName = req.session?.adminName || req.session?.adminUser;
+  res.locals.adminRole = req.session?.adminRole || 'employee';
+  res.locals.fmtDate = (d) => d ? new Date(d).toLocaleDateString('ar-SA', { timeZone: RYD }) : '—';
+  res.locals.fmtTime = (d) => d ? new Date(d).toLocaleTimeString('ar-SA', { timeZone: RYD, hour: '2-digit', minute: '2-digit' }) : '—';
+  res.locals.fmtDateTime = (d) => d ? `${res.locals.fmtDate(d)} ${res.locals.fmtTime(d)}` : '—';
+  next();
+});
+
+// مفتاح إيقاف كامل: ONBOARDING_ENABLED=false في .env يُطفئ الميزة بلا نشر كود.
+function featureOn() {
+  return ob.state.ok && process.env.ONBOARDING_ENABLED !== 'false';
+}
+
+// ─── أدوات مشتركة ────────────────────────────────────────────────────────────
+
+function newToken() {
+  return crypto.randomBytes(24).toString('base64url');   // 32 حرفاً
+}
+
+function requiredList(session) {
+  const list = String(session.required_docs || '').split(',').filter(Boolean);
+  return list.filter(t => rules.DOC_KEYS.includes(t));
+}
+
+// المستندات المطلوبة تُحسب من الوظيفة لا من قائمة ثابتة: رخصة القيادة تُطلب
+// ممن سُجّل أنه يقودها فقط، وإجبار الجميع عليها يعطّل رحلة لا علاقة لها بها.
+function defaultRequired(applicant) {
+  const base = ['id_iqama', 'national_address', 'iban'];
+  if (applicant?.has_license) base.push('driving_license');
+  return base.join(',');
+}
+
+function publicLink(req, token) {
+  const base = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+  return `${base.replace(/\/$/, '')}/onboarding/${token}`;
+}
+
+async function loadDocs(sessionId) {
+  const [docs, fields] = await Promise.all([
+    db.all('SELECT * FROM onboarding_documents WHERE session_id = ? AND is_current = 1', [sessionId]),
+    db.all('SELECT * FROM onboarding_fields WHERE session_id = ?', [sessionId]),
+  ]);
+  const byType = {};
+  for (const d of docs) byType[d.doc_type] = d;
+  const fieldsByType = {};
+  for (const f of fields) (fieldsByType[f.doc_type] ||= {})[f.field_key] = f;
+  return { byType, fieldsByType };
+}
+
+// حالة كل مستند كما تراها الواجهتان (المرشح وHR) — مصدر واحد للحقيقة.
+function buildSteps(session, byType, fieldsByType) {
+  const required = requiredList(session);
+  return rules.DOC_KEYS.map(type => {
+    const def = rules.DOC_TYPES[type];
+    const doc = byType[type] || null;
+    const saved = fieldsByType[type] || {};
+    return {
+      type,
+      label: def.label,
+      icon: def.icon,
+      hint: def.hint,
+      required: required.includes(type),
+      status: doc ? doc.status : 'pending',
+      review: doc ? doc.review : null,
+      warnings: doc?.warnings ? JSON.parse(doc.warnings || '[]') : [],
+      docId: doc?.id || null,
+      hasFile: Boolean(doc),
+      fileName: doc?.original_name || null,
+      aiUsed: Boolean(doc?.ai_used),
+      hrNote: doc?.hr_note || null,
+      fields: def.fields.map(f => ({
+        key: f.key, label: f.label, required: f.required, type: f.type,
+        value: saved[f.key]?.value ?? '',
+        raw: saved[f.key]?.raw_value ?? '',
+        valid: saved[f.key] ? Boolean(saved[f.key].valid) : null,
+        error: saved[f.key]?.error || null,
+        source: saved[f.key]?.source || null,
+        confidence: saved[f.key]?.confidence ?? null,
+      })),
+    };
+  });
+}
+
+async function recomputeProgress(session) {
+  const required = requiredList(session);
+  const done = await db.all(
+    "SELECT doc_type FROM onboarding_documents WHERE session_id = ? AND is_current = 1 AND status = 'confirmed'",
+    [session.id]
+  );
+  const doneTypes = new Set(done.map(d => d.doc_type));
+  const completed = required.filter(t => doneTypes.has(t)).length;
+  const progress = required.length ? Math.round((completed / required.length) * 100) : 0;
+  const status = progress >= 100 ? 'submitted' : 'in_progress';
+  await db.run(
+    'UPDATE onboarding_sessions SET progress = ?, status = ?, completed_at = ? WHERE id = ?',
+    [progress, status, progress >= 100 ? new Date() : null, session.id]
+  );
+  return { progress, completed, total: required.length, status };
+}
+
+// كتابة حقل واحد — upsert لأن المرشح قد يصحّح نفس الحقل عشر مرات.
+async function saveField(sessionId, docType, key, rawValue, source, confidence) {
+  const v = rules.validate(docType, key, rawValue);
+  await db.run(
+    `INSERT INTO onboarding_fields (session_id, doc_type, field_key, raw_value, value, source, confidence, valid, error)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       raw_value = VALUES(raw_value), value = VALUES(value), source = VALUES(source),
+       confidence = VALUES(confidence), valid = VALUES(valid), error = VALUES(error)`,
+    [sessionId, docType, key, String(rawValue ?? '').slice(0, 255), String(v.value ?? '').slice(0, 255),
+     source, confidence ?? null, v.ok ? 1 : 0, v.error]
+  );
+  return v;
+}
+
+// ─── حدود المعدل — الرابط عام، فالحماية ليست اختيارية ───────────────────────
+const pageLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 200, standardHeaders: true, legacyHeaders: false,
+});
+const uploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 40,
+  message: { error: 'محاولات رفع كثيرة — انتظر قليلاً ثم أعد المحاولة' },
+  standardHeaders: true, legacyHeaders: false,
+});
+
+// ─── التحقق من الرابط ────────────────────────────────────────────────────────
+
+// مصدر واحد للحقيقة في صلاحية الرابط — تستخدمه الصفحة (فترد صفحة) وواجهات
+// JSON (فترد رسالة)، فلا تتفرّع قواعد الانتهاء والإبطال في مكانين.
+async function findSession(token) {
+  if (!/^[A-Za-z0-9_-]{20,64}$/.test(String(token || ''))) return { code: 404, error: 'رابط غير صالح' };
+  const s = await db.get('SELECT * FROM onboarding_sessions WHERE token = ?', [token]);
+  if (!s) return { code: 404, error: 'رابط غير صالح' };
+  if (s.revoked_at) return { code: 410, error: 'تم إيقاف هذا الرابط' };
+  if (s.expires_at && new Date(s.expires_at) < new Date()) return { code: 410, error: 'انتهت صلاحية الرابط' };
+  return { session: s };
+}
+
+async function resolveToken(req, res, next) {
+  if (!featureOn()) return res.status(503).json({ error: 'الخدمة غير متاحة حالياً' });
+  try {
+    const r = await findSession(req.params.token);
+    if (r.error) return res.status(r.code).json({ error: r.error });
+    req.obSession = r.session;
+    next();
+  } catch (err) {
+    console.error('[Onboarding token]', err.message);
+    res.status(500).json({ error: 'خطأ في فتح الملف' });
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  الواجهة العامة — المرشح
+// ═══════════════════════════════════════════════════════════════════════════
+
+publicRouter.get('/:token', pageLimiter, async (req, res) => {
+  if (!featureOn()) {
+    return res.status(503).render('onboarding-error', {
+      title: 'الخدمة غير متاحة', message: 'ميزة استكمال الملف غير مفعّلة حالياً.',
+    });
+  }
+  try {
+    const r = await findSession(req.params.token);
+    if (r.error) {
+      return res.status(r.code).render('onboarding-error', {
+        title: r.code === 410 ? 'انتهت صلاحية الرابط' : 'رابط غير صالح',
+        message: r.code === 410
+          ? `${r.error} — تواصل مع فريق التوظيف لإرسال رابط جديد.`
+          : 'تأكد من نسخ الرابط كاملاً، أو تواصل مع فريق التوظيف.',
+      });
+    }
+    const s = r.session;
+    const applicant = await db.get('SELECT id, full_name, phone, id_number FROM applicants WHERE id = ?', [s.applicant_id]);
+    if (!applicant) {
+      return res.status(404).render('onboarding-error', { title: 'رابط غير صالح', message: 'لم نجد الملف المرتبط بهذا الرابط.' });
+    }
+    if (!s.opened_at) await db.run('UPDATE onboarding_sessions SET opened_at = NOW() WHERE id = ?', [s.id]);
+
+    const { byType, fieldsByType } = await loadDocs(s.id);
+    const steps = buildSteps(s, byType, fieldsByType);
+    const required = requiredList(s);
+    const completed = steps.filter(st => st.required && st.status === 'confirmed').length;
+
+    res.render('onboarding', {
+      token: s.token,
+      firstName: String(applicant.full_name || '').split(' ')[0] || '',
+      steps,
+      progress: s.progress,
+      completed,
+      totalRequired: required.length,
+      lastStep: s.last_step,
+      autoRead: ocr.isConfigured(),
+    });
+  } catch (err) {
+    console.error('[Onboarding page]', err.message);
+    res.status(500).render('onboarding-error', { title: 'خطأ غير متوقع', message: 'يرجى إعادة المحاولة بعد قليل.' });
+  }
+});
+
+// رفع مستند — الحفظ أولاً ثم القراءة. لو انقطع الاتصال بعد الرفع مباشرةً
+// يبقى الملف والسجل، ويستأنف المرشح من حيث توقّف.
+publicRouter.post('/:token/upload', uploadLimiter, resolveToken, (req, res, next) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.message || 'تعذّر رفع الملف' });
+    next();
+  });
+}, async (req, res) => {
+  const s = req.obSession;
+  try {
+    const docType = String(req.body.doc_type || '');
+    if (!rules.DOC_KEYS.includes(docType)) return res.status(400).json({ error: 'نوع مستند غير معروف' });
+    if (!req.file) return res.status(400).json({ error: 'لم يصل أي ملف' });
+
+    // النسخة السابقة تبقى في السجل للتدقيق ولا تُعتبر المستند الحالي.
+    await db.run('UPDATE onboarding_documents SET is_current = 0 WHERE session_id = ? AND doc_type = ?', [s.id, docType]);
+
+    const ins = await db.run(
+      `INSERT INTO onboarding_documents
+         (session_id, applicant_id, doc_type, status, file_name, original_name, mime, size_bytes)
+       VALUES (?, ?, ?, 'uploaded', ?, ?, ?, ?)`,
+      [s.id, s.applicant_id, docType, req.file.filename,
+       String(req.file.originalname || '').slice(0, 250), req.file.mimetype, req.file.size]
+    );
+    await db.run('UPDATE onboarding_sessions SET last_step = ?, status = ? WHERE id = ?', [docType, 'in_progress', s.id]);
+
+    const applicant = await db.get('SELECT id_number FROM applicants WHERE id = ?', [s.applicant_id]);
+    const out = await processDocument({
+      docType, filePath: path.join(OB_ROOT, String(s.applicant_id), req.file.filename),
+      mime: req.file.mimetype, applicant,
+    });
+
+    await db.run(
+      `UPDATE onboarding_documents SET status = 'extracted', review = ?, ocr_text = ?, ocr_provider = ?,
+              ocr_conf = ?, ai_used = ?, ai_provider = ?, ai_model = ?, warnings = ?
+         WHERE id = ?`,
+      [out.review, out.ocrText, out.ocrProvider, out.ocrConf,
+       out.aiUsed ? 1 : 0, out.aiProvider, out.aiModel,
+       JSON.stringify(out.warnings.slice(0, 5)), ins.insertId]
+    );
+
+    // حقول الاستخراج تُكتب فوراً — «التالي» ليس هو الحفظ في هذه الرحلة.
+    for (const [key, f] of Object.entries(out.fields)) {
+      await saveField(s.id, docType, key, f.raw, f.source, f.confidence);
+    }
+
+    // إعادة رفع مستند سبق تأكيده تُنزله من «مكتمل» — والتقدّم يجب أن يتبعه فوراً،
+    // وإلا رأى المرشح 100% على ملف صار ناقصاً.
+    const p = await recomputeProgress(s);
+
+    const { byType, fieldsByType } = await loadDocs(s.id);
+    const step = buildSteps(s, byType, fieldsByType).find(x => x.type === docType);
+    res.json({ ok: true, step, progress: p.progress, autoRead: ocr.isConfigured() });
+  } catch (err) {
+    console.error('[Onboarding upload]', err.message);
+    res.status(500).json({ error: 'تعذّرت معالجة المستند — حاول مرة أخرى' });
+  }
+});
+
+// حفظ حقل واحد فور تعديله (autosave) — لا انتظار لزر «التالي».
+publicRouter.patch('/:token/field', pageLimiter, resolveToken, async (req, res) => {
+  try {
+    const { doc_type: docType, field, value } = req.body || {};
+    if (!rules.DOC_KEYS.includes(String(docType))) return res.status(400).json({ error: 'نوع مستند غير معروف' });
+    if (!rules.fieldDef(docType, String(field))) return res.status(400).json({ error: 'حقل غير معروف' });
+
+    const v = await saveField(req.obSession.id, docType, String(field), String(value ?? ''), 'user', 1);
+    await db.run('UPDATE onboarding_sessions SET last_step = ? WHERE id = ?', [docType, req.obSession.id]);
+    res.json({ ok: true, value: v.value, valid: v.ok, error: v.error });
+  } catch (err) {
+    console.error('[Onboarding field]', err.message);
+    res.status(500).json({ error: 'تعذّر الحفظ' });
+  }
+});
+
+// تأكيد مستند — لا يمرّ إلا إذا اجتازت كل الحقول المطلوبة التحقق المحلي.
+publicRouter.post('/:token/confirm', pageLimiter, resolveToken, async (req, res) => {
+  try {
+    const s = req.obSession;
+    const docType = String(req.body?.doc_type || '');
+    if (!rules.DOC_KEYS.includes(docType)) return res.status(400).json({ error: 'نوع مستند غير معروف' });
+
+    const doc = await db.get(
+      'SELECT * FROM onboarding_documents WHERE session_id = ? AND doc_type = ? AND is_current = 1',
+      [s.id, docType]
+    );
+    if (!doc) return res.status(400).json({ error: 'ارفع المستند أولاً' });
+
+    const rows = await db.all('SELECT * FROM onboarding_fields WHERE session_id = ? AND doc_type = ?', [s.id, docType]);
+    const map = Object.fromEntries(rows.map(r => [r.field_key, { valid: Boolean(r.valid) }]));
+    const missing = rules.missingRequired(docType, map);
+    if (missing.length) {
+      return res.status(422).json({
+        error: 'بعض الحقول المطلوبة ناقصة أو غير صحيحة',
+        missing,
+      });
+    }
+
+    await db.run("UPDATE onboarding_fields SET user_confirmed = 1 WHERE session_id = ? AND doc_type = ?", [s.id, docType]);
+    // مستند غير مقبول (أحمر) يبقى أحمر حتى بعد التأكيد — قرار قبوله لـ HR.
+    await db.run(
+      "UPDATE onboarding_documents SET status = 'confirmed', review = ? WHERE id = ?",
+      [doc.review === 'red' ? 'red' : (doc.review || 'green'), doc.id]
+    );
+
+    const p = await recomputeProgress(s);
+    res.json({ ok: true, ...p });
+  } catch (err) {
+    console.error('[Onboarding confirm]', err.message);
+    res.status(500).json({ error: 'تعذّر التأكيد' });
+  }
+});
+
+// عرض الملف المرفوع لصاحبه (معاينة داخل الرحلة)
+publicRouter.get('/:token/file/:docId', pageLimiter, resolveToken, async (req, res) => {
+  try {
+    const doc = await db.get('SELECT * FROM onboarding_documents WHERE id = ? AND session_id = ?',
+      [req.params.docId, req.obSession.id]);
+    if (!doc || !/^[A-Za-z0-9._-]+$/.test(doc.file_name)) return res.status(404).end();
+    res.sendFile(path.join(OB_ROOT, String(doc.applicant_id), doc.file_name), (err) => {
+      if (err && !res.headersSent) res.status(404).end();
+    });
+  } catch (err) {
+    res.status(500).end();
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  الواجهة الإدارية — HR
+//  (تُركَّب خلف requireAuth في server.js — لا مسار هنا مفتوح للعموم)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ملخّص خفيف للبطاقة الصغيرة داخل صفحة تفاصيل المتقدم.
+// تُستدعى من المتصفح: لو رجعت 503 أو 404 تُخفي البطاقة نفسها ولا يتغيّر شيء
+// في الصفحة القائمة — وهذا هو سبب كونها fetch لا بيانات مُمرَّرة من الخادم.
+adminRouter.get('/summary/:applicantId', async (req, res) => {
+  if (!featureOn()) return res.status(503).json({ enabled: false });
+  try {
+    const s = await db.get(
+      'SELECT * FROM onboarding_sessions WHERE applicant_id = ? ORDER BY id DESC LIMIT 1',
+      [req.params.applicantId]
+    );
+    // هل زر «إرسال بواتساب» متاح؟ (Chatwoot مهيأ + اسم القالب محفوظ)
+    const settings = await db.getSettings().catch(() => ({}));
+    const waReady = require('../utils/waTemplates')
+      .ready(settings, 'onboarding', require('../utils/chatwoot').isConfigured());
+
+    if (!s) return res.json({ enabled: true, exists: false, waReady });
+
+    const { byType, fieldsByType } = await loadDocs(s.id);
+    const steps = buildSteps(s, byType, fieldsByType);
+    const required = requiredList(s);
+    res.json({
+      enabled: true, exists: true, waReady,
+      sessionId: s.id,
+      status: s.status,
+      progress: s.progress,
+      revoked: Boolean(s.revoked_at),
+      expired: Boolean(s.expires_at && new Date(s.expires_at) < new Date()),
+      link: publicLink(req, s.token),
+      openedAt: s.opened_at,
+      completed: steps.filter(x => x.required && x.status === 'confirmed').length,
+      totalRequired: required.length,
+      needsReview: steps.filter(x => x.hasFile && x.review !== 'green').length,
+      steps: steps.map(x => ({ type: x.type, label: x.label, required: x.required, status: x.status, review: x.review })),
+    });
+  } catch (err) {
+    console.error('[Onboarding summary]', err.message);
+    res.status(500).json({ enabled: false });
+  }
+});
+
+// إنشاء الرابط (أو إرجاع الحالي إن كان ساري المفعول)
+// إنشاء الجلسة أو إعادة استخدام السارية — يشترك فيها زر «إنشاء الرابط» وزر
+// «إرسال بواتساب»، فلا يُنشئ الثاني رابطاً ثانياً يُبطل ما نسخه الموظف للتو.
+async function ensureSession(req, applicant) {
+  const live = await db.get(
+    'SELECT * FROM onboarding_sessions WHERE applicant_id = ? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > NOW()) ORDER BY id DESC LIMIT 1',
+    [applicant.id]
+  );
+  if (live) return { token: live.token, reused: true };
+
+  const token = newToken();
+  const expires = new Date(Date.now() + LINK_DAYS * 86400000);
+  await db.run(
+    `INSERT INTO onboarding_sessions (applicant_id, token, status, required_docs, expires_at, created_by)
+     VALUES (?, ?, 'not_started', ?, ?, ?)`,
+    [applicant.id, token, defaultRequired(applicant), expires, req.session?.adminName || req.session?.adminUser || null]
+  );
+  // التدقيق يمرّ بنفس مسار النظام — إنشاء رابط يفتح ملفاً شخصياً حدثٌ يُسجَّل.
+  db.audit(req.session?.adminId, req.session?.adminUser || 'system', 'onboarding_link',
+    'applicant', applicant.id, applicant.full_name, `صلاحية ${LINK_DAYS} يوماً`, req.ip).catch(() => {});
+  return { token, reused: false };
+}
+
+adminRouter.post('/create/:applicantId', async (req, res) => {
+  if (!featureOn()) return res.status(503).json({ error: 'الميزة غير مفعّلة' });
+  try {
+    const applicant = await db.get('SELECT id, full_name, phone, has_license FROM applicants WHERE id = ?', [req.params.applicantId]);
+    if (!applicant) return res.status(404).json({ error: 'المتقدم غير موجود' });
+    const { token, reused } = await ensureSession(req, applicant);
+    res.json({ ok: true, link: publicLink(req, token), reused });
+  } catch (err) {
+    console.error('[Onboarding create]', err.message);
+    res.status(500).json({ error: 'تعذّر إنشاء الرابط' });
+  }
+});
+
+// إرسال الرابط للمرشح بقالب واتساب المعتمد.
+//  لماذا مسار خاص بدل /admin/applicants/:id/wa-template العام؟ لأن متغيّر
+//  {link} لا يكتبه موظف: يُولَّد هنا من جلسة الاستكمال. تمرير رابط من الواجهة
+//  يعني أن أي أحد يستطيع إرسال أي رابط لمتقدم باسم الشركة — وهذا لا يُقبل.
+const sendLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000, max: 30,
+  message: { error: 'طلبات كثيرة — انتظر قليلاً' },
+  standardHeaders: true, legacyHeaders: false,
+});
+
+adminRouter.post('/send/:applicantId', sendLimiter, async (req, res) => {
+  if (!featureOn()) return res.status(503).json({ error: 'الميزة غير مفعّلة' });
+  try {
+    const WT = require('../utils/waTemplates');
+    const notify = require('../utils/notify');
+    const chatwoot = require('../utils/chatwoot');
+    const tpl = WT.get('onboarding');
+
+    const applicant = await db.get(
+      'SELECT id, full_name, phone, region, city, landing_page, has_license FROM applicants WHERE id = ?',
+      [req.params.applicantId]
+    );
+    if (!applicant) return res.status(404).json({ error: 'المتقدم غير موجود' });
+    if (!chatwoot.isConfigured()) return res.status(409).json({ error: 'تكامل Chatwoot غير مهيأ' });
+
+    const settings = await db.getSettings();
+    if (!WT.ready(settings, 'onboarding', true)) {
+      return res.status(409).json({ error: 'لم يُحدَّد اسم قالب الاستكمال في الإعدادات' });
+    }
+
+    const { token, reused } = await ensureSession(req, applicant);
+    const link = publicLink(req, token);
+    const job = String(req.body?.job || '').trim().slice(0, 100);
+
+    const r = await notify.sendApplicantTemplate({
+      applicant, tplKey: 'onboarding', kind: 'onboarding',
+      vars: { link, ...(job ? { jobTitle: job } : {}) },
+      settings, actor: req.session?.adminName || req.session?.adminUser,
+    });
+    if (r.status !== 'sent') {
+      return res.status(r.status === 'skipped' ? 409 : 502).json({ error: r.reason || 'تعذّر الإرسال' });
+    }
+
+    // يُسجَّل في ملف المتقدم كبقية المراسلات — حتى لا يُرسله موظف آخر مرتين.
+    const line = `${tpl.noteLabel} عبر واتساب${reused ? '' : ' (رابط جديد)'}`;
+    db.run('INSERT INTO applicant_notes (applicant_id, content, type, user_name) VALUES (?, ?, ?, ?)',
+      [applicant.id, line, 'follow_up', req.session?.adminName || null]).catch(e => console.error('[Onboarding send] note:', e.message));
+    db.logActivity(applicant.id, tpl.noteLabel, null, 'واتساب', req.session?.adminName || null)
+      .catch(e => console.error('[Onboarding send] activity:', e.message));
+    db.audit(req.session?.adminId, req.session?.adminUser || 'system', 'onboarding_send',
+      'applicant', applicant.id, applicant.full_name, line, req.ip).catch(() => {});
+
+    res.json({ ok: true, link, sentTo: r.target });
+  } catch (err) {
+    console.error('[Onboarding send]', err.message);
+    res.status(500).json({ error: 'خطأ غير متوقع' });
+  }
+});
+
+adminRouter.post('/revoke/:sessionId', async (req, res) => {
+  if (!featureOn()) return res.status(503).json({ error: 'الميزة غير مفعّلة' });
+  try {
+    await db.run('UPDATE onboarding_sessions SET revoked_at = NOW() WHERE id = ?', [req.params.sessionId]);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'تعذّر الإيقاف' });
+  }
+});
+
+// الصفحة الإدارية الكاملة — البيانات والمرفقات الجديدة
+adminRouter.get('/view/:applicantId', async (req, res) => {
+  if (!featureOn()) return res.status(503).send('ميزة استكمال الملف غير مفعّلة');
+  try {
+    const applicant = await db.get('SELECT * FROM applicants WHERE id = ?', [req.params.applicantId]);
+    if (!applicant) return res.status(404).send('المتقدم غير موجود');
+
+    const s = await db.get('SELECT * FROM onboarding_sessions WHERE applicant_id = ? ORDER BY id DESC LIMIT 1', [applicant.id]);
+    let steps = [], history = [];
+    if (s) {
+      const { byType, fieldsByType } = await loadDocs(s.id);
+      steps = buildSteps(s, byType, fieldsByType);
+      history = await db.all(
+        'SELECT id, doc_type, status, review, original_name, created_at FROM onboarding_documents WHERE session_id = ? AND is_current = 0 ORDER BY id DESC',
+        [s.id]
+      );
+    }
+    res.render('onboarding-admin', {
+      applicant, session: s, steps, history,
+      link: s ? publicLink(req, s.token) : null,
+      DOC_TYPES: rules.DOC_TYPES,
+      engine: { ocr: ocr.isConfigured(), ai: ai.isConfigured(), aiProvider: ai.provider(), aiModel: ai.model() },
+      waReady: require('../utils/waTemplates')
+        .ready(await db.getSettings().catch(() => ({})), 'onboarding', require('../utils/chatwoot').isConfigured()),
+    });
+  } catch (err) {
+    console.error('[Onboarding admin]', err.message);
+    res.status(500).send('خطأ في تحميل ملف الاستكمال');
+  }
+});
+
+adminRouter.get('/file/:docId', async (req, res) => {
+  if (!featureOn()) return res.status(503).end();
+  try {
+    const doc = await db.get('SELECT * FROM onboarding_documents WHERE id = ?', [req.params.docId]);
+    if (!doc || !/^[A-Za-z0-9._-]+$/.test(doc.file_name)) return res.status(404).end();
+    const p = path.join(OB_ROOT, String(doc.applicant_id), doc.file_name);
+    if (!fs.existsSync(p)) return res.status(404).end();
+    res.sendFile(p, (err) => { if (err && !res.headersSent) res.status(404).end(); });
+  } catch (err) {
+    res.status(500).end();
+  }
+});
+
+// قرار HR على مستند — الاستثناءات وحدها تصل إلى إنسان، وهذا مكان تسجيلها.
+adminRouter.post('/doc/:docId/review', async (req, res) => {
+  if (!featureOn()) return res.status(503).json({ error: 'الميزة غير مفعّلة' });
+  try {
+    const review = String(req.body?.review || '');
+    if (!['green', 'yellow', 'red'].includes(review)) return res.status(400).json({ error: 'قيمة غير صالحة' });
+    const note = String(req.body?.note || '').slice(0, 250) || null;
+    const doc = await db.get('SELECT * FROM onboarding_documents WHERE id = ?', [req.params.docId]);
+    if (!doc) return res.status(404).json({ error: 'المستند غير موجود' });
+
+    await db.run('UPDATE onboarding_documents SET review = ?, hr_note = ? WHERE id = ?', [review, note, doc.id]);
+    db.audit(req.session?.adminId, req.session?.adminUser || 'system', 'onboarding_review',
+      'applicant', doc.applicant_id, null, `${rules.DOC_TYPES[doc.doc_type]?.label || doc.doc_type} → ${review}`, req.ip).catch(() => {});
+    res.json({ ok: true, review });
+  } catch (err) {
+    console.error('[Onboarding review]', err.message);
+    res.status(500).json({ error: 'تعذّر الحفظ' });
+  }
+});
+
+module.exports = { publicRouter, adminRouter, featureOn };

@@ -41,6 +41,36 @@ const TEMPLATES = {
     previewFooter: 'أرتال للحراسات الأمنية',
     previewButtons: ['نعم، أنا جاهز', 'لا أرغب حالياً'],
   },
+
+  onboarding: {
+    key: 'onboarding',
+    kind: 'onboarding',
+    label: 'إرسال رابط الاستكمال',
+    icon: 'folder_shared',
+    title: 'رابط استكمال ملف الموظف',
+    desc: 'تُرسل بعد اعتماد المرشح. تحمل رابطاً سرياً يرفع منه مستنداته (الهوية، العنوان الوطني، الآيبان…) من جواله.',
+    settingsLabel: 'رابط استكمال ملف الموظف',
+    settingsHint: 'يُرسَل من بطاقة «ملف الاستكمال» في صفحة المتقدم — الرابط يُولَّد في الخادم ولا يُكتب يدوياً',
+    fields: ['job'],
+    noteLabel: 'إرسال رابط استكمال الملف',
+
+    // ⚠️ standalone: لا يظهر ضمن أزرار القوالب العامة في بطاقة المقابلة.
+    //    سببه أن متغيّر الرابط يُولَّد في الخادم (جلسة استكمال جديدة أو قائمة)،
+    //    والمسار العام /wa-template لا يعرف كيف يبنيه — فيُرسَل من مساره الخاص
+    //    /admin/onboarding/send/:id وحده. الإعدادات تعرضه كبقية القوالب.
+    standalone: true,
+
+    preview: [
+      'مرحباً {name} 👋',
+      'تم ترشيحك لوظيفة {job} لدى شركة أرتال للحراسات الأمنية المدنية الخاصة.',
+      '',
+      'لاستكمال ملفك الوظيفي، افتح الرابط التالي وارفع المستندات المطلوبة من جوالك مباشرة:',
+      '{link}',
+      '',
+      'الرابط خاص بك وحدك ولا يُشارك مع أحد، وصالح لمدة 30 يوماً. تستطيع رفعها على دفعات — كل مستند يُحفظ فور رفعه.',
+    ].join('\n'),
+    previewFooter: 'أرتال للحراسات الأمنية',
+  },
 };
 
 // وصف الحقول التي يعبّئها الموظف — مصدر التعبئة المسبقة واسم الحقل في الواجهة
@@ -57,8 +87,14 @@ const get  = (k) => TEMPLATES[k] || null;
 function available(settings, chatwootReady) {
   if (!chatwootReady) return [];
   return keys()
+    .filter(k => !TEMPLATES[k].standalone)
     .filter(k => String(settings[`wa_tpl_${k}_name`] || '').trim())
     .map(k => TEMPLATES[k]);
 }
 
-module.exports = { TEMPLATES, FIELDS, keys, get, available };
+/** هل القالب جاهز للإرسال؟ (اسمه محفوظ في الإعدادات وChatwoot مهيأ) */
+function ready(settings, key, chatwootReady) {
+  return Boolean(chatwootReady && String(settings[`wa_tpl_${key}_name`] || '').trim());
+}
+
+module.exports = { TEMPLATES, FIELDS, keys, get, available, ready };

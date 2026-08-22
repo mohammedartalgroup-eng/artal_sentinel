@@ -143,6 +143,9 @@ uploads/cv/*
 !uploads/cv/.gitkeep
 uploads/id_images/*
 !uploads/id_images/.gitkeep
+# مستندات استكمال الملف (ميزة تجريبية) — هوية وعناوين وحسابات بنكية
+uploads/onboarding/*
+!uploads/onboarding/.gitkeep
 # ملف البيئة إن أُنشئ
 .env
 # سكريبتات التطوير المحلي — لا ترفع للسيرفر أبداً

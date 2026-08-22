@@ -352,6 +352,99 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
           </div>
         </div>
 
+        <!-- ═══ ملف الاستكمال (ميزة تجريبية معزولة) ═══════════════════
+             البطاقة تبدأ مخفية وتملأ نفسها من /admin/onboarding/summary.
+             لماذا fetch لا بيانات من الخادم؟ حتى لا يُعدَّل مسار صفحة المتقدم
+             في routes/admin.js: لو تعطّلت الميزة أو أُطفئت، يفشل النداء
+             وتبقى البطاقة مخفية — والصفحة كما هي اليوم بالضبط. -->
+        <div class="bg-white rounded-2xl p-6" id="ob-mini" style="display:none">
+          <h2 class="font-bold text-[#001736] text-sm mb-4 flex items-center gap-2">
+            <span class="material-symbols-outlined text-base">folder_shared</span>
+            ملف الاستكمال
+            <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#eceef0] text-[#43474f]">تجريبي</span>
+          </h2>
+          <div id="ob-mini-body"></div>
+        </div>
+
+        <script>
+        // ─── بطاقة ملف الاستكمال ─────────────────────────────────────────────
+        (async function () {
+          const wrap = document.getElementById('ob-mini');
+          const body = document.getElementById('ob-mini-body');
+          const id = <%= applicant.id %>;
+          try {
+            const r = await fetch('/admin/onboarding/summary/' + id);
+            if (!r.ok) return;                       // الميزة مطفأة — تبقى البطاقة مخفية
+            const d = await r.json();
+            if (!d.enabled) return;
+
+            // زر الإرسال يظهر فقط إذا كان قالب واتساب جاهزاً — وإلا بقي
+            // زر إنشاء الرابط وحده (ينسخه الموظف ويرسله بنفسه).
+            const sendBtn = d.waReady
+              ? '<button onclick="obSend(' + id + ',this)" class="w-full text-sm font-semibold py-2.5 rounded-xl bg-[#001736] text-white flex items-center justify-center gap-2">'
+                + '<span class="material-symbols-outlined text-base">send</span> إرسال رابط الاستكمال بواتساب</button>'
+              : '';
+
+            if (!d.exists) {
+              body.innerHTML =
+                '<p class="text-xs text-[#43474f] mb-3 leading-relaxed">'
+                + 'رابط سري يرفع منه المرشح هويته وعنوانه الوطني وشهادة الآيبان — تُقرأ آلياً وتظهر لك هنا.</p>'
+                + sendBtn
+                + '<button onclick="obCreate(' + id + ')" class="w-full text-sm font-semibold py-2.5 rounded-xl '
+                + (d.waReady ? 'bg-[#eef2f7] text-[#001736] mt-2' : 'bg-[#001736] text-white') + '">'
+                + (d.waReady ? 'إنشاء الرابط فقط (بلا إرسال)' : 'إنشاء رابط الاستكمال') + '</button>';
+            } else {
+              const chips = d.steps.filter(s => s.required).map(s => {
+                const done = s.status === 'confirmed' && s.review !== 'red';
+                const bad  = s.review === 'red';
+                const cls  = done ? 'bg-green-100 text-green-700' : (bad ? 'bg-red-100 text-red-700' : 'bg-[#eceef0] text-[#43474f]');
+                return '<span class="text-[11px] font-medium px-2 py-1 rounded-lg ' + cls + '">'
+                     + (done ? '✓ ' : (bad ? '⚠ ' : '')) + s.label + '</span>';
+              }).join('');
+              body.innerHTML =
+                '<div class="flex items-center justify-between text-xs text-[#43474f] mb-1.5">'
+                + '<span>' + d.completed + ' من ' + d.totalRequired + ' مستندات</span><span>' + d.progress + '%</span></div>'
+                + '<div style="height:8px;background:#eceef0;border-radius:99px;overflow:hidden">'
+                + '<div style="height:100%;border-radius:99px;background:#001736;width:' + d.progress + '%"></div></div>'
+                + '<div class="flex flex-wrap gap-1.5 mt-3">' + chips + '</div>'
+                + (d.needsReview ? '<div class="text-[11px] text-[#a16207] mt-2">' + d.needsReview + ' مستند يحتاج مراجعتك</div>' : '')
+                + (d.revoked ? '<div class="text-[11px] text-[#ba1a1a] mt-2">الرابط موقوف</div>' : '')
+                + '<a href="/admin/onboarding/view/' + id + '" class="block text-center w-full text-sm font-semibold py-2.5 rounded-xl bg-[#eef2f7] text-[#001736] mt-3">'
+                + 'فتح الملف والمرفقات</a>'
+                + (d.waReady && !d.revoked ? '<button onclick="obSend(' + id + ',this)" class="w-full text-sm font-semibold py-2.5 rounded-xl border border-[#e0e3e5] text-[#43474f] mt-2 flex items-center justify-center gap-2">'
+                    + '<span class="material-symbols-outlined text-base text-[#25D366]">send</span> إعادة إرسال الرابط بواتساب</button>' : '');
+            }
+            wrap.style.display = '';
+          } catch (e) { /* الصفحة تعمل بدونها */ }
+        })();
+
+        // الإرسال يُنشئ الجلسة إن لم تكن موجودة ثم يرسل القالب المعتمد —
+        // الرابط يُبنى في الخادم ولا يمرّ عبر المتصفح إطلاقاً.
+        async function obSend(id, btn) {
+          if (!confirm('إرسال رابط استكمال الملف للمرشح عبر واتساب؟')) return;
+          const old = btn.innerHTML;
+          btn.disabled = true;
+          btn.textContent = 'جارٍ الإرسال…';
+          try {
+            const r = await fetch('/admin/onboarding/send/' + id, { method: 'POST' });
+            const j = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(j.error || 'تعذّر الإرسال');
+            location.reload();
+          } catch (e) {
+            alert(e.message);
+            btn.disabled = false;
+            btn.innerHTML = old;
+          }
+        }
+
+        async function obCreate(id) {
+          const r = await fetch('/admin/onboarding/create/' + id, { method: 'POST' });
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok) return alert(j.error || 'تعذّر إنشاء الرابط');
+          location.href = '/admin/onboarding/view/' + id;
+        }
+        </script>
+
         <!-- External System Check -->
         <div class="bg-white rounded-2xl p-6" id="ext-check-card">
           <h2 class="font-bold text-[#001736] text-sm mb-4 flex items-center gap-2">

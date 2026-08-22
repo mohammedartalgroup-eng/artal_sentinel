@@ -27,6 +27,16 @@ try {
 } catch (e) {
   console.error('[Hooks] تعذّر تحميل مسار الـ hooks — الموقع يعمل طبيعياً:', e.message);
 }
+// ميزة «استكمال ملف الموظف» — تجريبية وتعمل جانبياً.
+// نفس نمط عزل الـ hooks: تُحمَّل داخل try/catch، وأي خطأ فيها يُسجَّل ولا يمنع
+// إقلاع النظام. غيابها لا يغيّر شيئاً في التقديم ولا في لوحة التحكم.
+let onboardingRouter = null;
+try {
+  onboardingRouter = require('./routes/onboarding');
+} catch (e) {
+  console.error('[Onboarding] تعذّر تحميل ميزة استكمال الملف — الموقع يعمل طبيعياً:', e.message);
+}
+
 const seoCities     = jobsRouter.CITIES;   // بيانات المدن مضمّنة داخل الراوتر (تُرفَع مع الكود)
 
 const app = express();
@@ -41,7 +51,7 @@ app.use(helmet({
 // إخفاء X-Powered-By يتم تلقائياً بواسطة helmet
 
 // Ensure upload directories exist
-['uploads/cv', 'uploads/id_images'].forEach(dir => {
+['uploads/cv', 'uploads/id_images', 'uploads/onboarding'].forEach(dir => {
   const full = path.join(__dirname, dir);
   if (!fs.existsSync(full)) fs.mkdirSync(full, { recursive: true });
 });
@@ -106,6 +116,14 @@ app.use('/admin',  adminRouter);
 app.use('/data',   regionsRouter);   // بيانات المناطق — مضمّنة في الكود لا تحتاج ملف
 app.use('/jobs',   jobsRouter);      // صفحات هبوط المدن لمحركات البحث (SEO)
 if (hooksRouter) app.use('/api/hooks', hooksRouter);   // إشعارات التوظيف الواردة من نظام أرتال
+
+// استكمال ملف الموظف — رابط عام للمرشح، وواجهة إدارية خلف تسجيل الدخول.
+// ⚠️ يُركَّب بعد راوتر /admin لا قبله: ذاك لا يعرف /admin/onboarding فيمرّرها،
+//    وهكذا لا نعدّل routes/admin.js بحرف واحد.
+if (onboardingRouter) {
+  app.use('/onboarding', onboardingRouter.publicRouter);
+  app.use('/admin/onboarding', require('./middleware/auth'), onboardingRouter.adminRouter);
+}
 
 // Static fallback (for any other assets in public/)
 app.use(express.static(path.join(__dirname, 'public')));

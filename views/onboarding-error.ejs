@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %> — أرتال للحراسة الأمنية</title>
+  <link rel="icon" type="image/png" href="/images/icon.png">
+  <meta name="robots" content="noindex, nofollow">
+  <style>
+    :root { --navy:#001736; --muted:#43474f; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+           background:#f2f4f6; color:var(--navy); font-family:system-ui,-apple-system,'Segoe UI',sans-serif; padding:24px; }
+    .card { background:#fff; border-radius:20px; padding:40px 28px; max-width:420px; width:100%;
+            text-align:center; box-shadow:0 8px 30px rgba(0,23,54,.08); }
+    .icon { font-size:44px; line-height:1; margin-bottom:16px; }
+    h1 { font-size:20px; margin:0 0 10px; }
+    p  { color:var(--muted); font-size:14px; line-height:1.9; margin:0; }
+    img { height:38px; margin-bottom:22px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img src="/images/icon.png" alt="أرتال">
+    <div class="icon">🔗</div>
+    <h1><%= title %></h1>
+    <p><%= message %></p>
+  </div>
+</body>
+</html>
