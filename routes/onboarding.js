@@ -583,6 +583,74 @@ adminRouter.get('/file/:docId', async (req, res) => {
   }
 });
 
+// إعادة الاستخراج على الملف المحفوظ — بلا إعادة رفع.
+//  قواعد الاستخراج تتحسّن مع الوقت (تصحيح التقاط التواريخ مثلاً)، والمستندات
+//  المرفوعة قبلها تبقى تحمل قيماً قديمة. هذا الزر يعيد تشغيل المسار كاملاً على
+//  نفس الصورة المحفوظة.
+//
+//  ⚠️ القاعدة الحاكمة: ما كتبه المرشح بيده (source = user) لا يُدهس أبداً — إنسان
+//     صحّح آلة، وإعادة تشغيل الآلة لا تُلغي تصحيحه. وما جاء من قراءة آلية أو
+//     نموذج أو قاعدة فهو ملك للاستخراج ويُحدَّث. ولا تُكتب قيمة جديدة إلا إن
+//     اجتازت التحقق — فإعادة الاستخراج لا تستطيع أن تُفسد حقلاً صحيحاً.
+const reextractLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000, max: 30,
+  message: { error: 'طلبات كثيرة — انتظر قليلاً' },
+  standardHeaders: true, legacyHeaders: false,
+});
+
+adminRouter.post('/doc/:docId/reextract', reextractLimiter, async (req, res) => {
+  if (!featureOn()) return res.status(503).json({ error: 'الميزة غير مفعّلة' });
+  try {
+    const doc = await db.get('SELECT * FROM onboarding_documents WHERE id = ?', [req.params.docId]);
+    if (!doc) return res.status(404).json({ error: 'المستند غير موجود' });
+    if (!/^[A-Za-z0-9._-]+$/.test(doc.file_name)) return res.status(400).json({ error: 'اسم ملف غير صالح' });
+
+    const filePath = path.join(OB_ROOT, String(doc.applicant_id), doc.file_name);
+    if (!fs.existsSync(filePath)) return res.status(410).json({ error: 'الملف الأصلي غير موجود على الخادم' });
+
+    const applicant = await db.get('SELECT id_number FROM applicants WHERE id = ?', [doc.applicant_id]);
+    const out = await processDocument({ docType: doc.doc_type, filePath, mime: doc.mime, applicant });
+
+    const before = await db.all(
+      'SELECT field_key, value, source FROM onboarding_fields WHERE session_id = ? AND doc_type = ?',
+      [doc.session_id, doc.doc_type]
+    );
+    const prev = Object.fromEntries(before.map(f => [f.field_key, f]));
+
+    const changed = [];
+    for (const [key, f] of Object.entries(out.fields)) {
+      if (!f.valid) continue;                              // لا تُفسد حقلاً بقيمة فاشلة
+      if (prev[key]?.source === 'user') continue;          // تصحيح المرشح مقدَّس
+      if (String(prev[key]?.value || '') === String(f.value)) continue;
+      await saveField(doc.session_id, doc.doc_type, key, f.raw, f.source, f.confidence);
+      changed.push({
+        key,
+        label: rules.fieldDef(doc.doc_type, key)?.label || key,
+        from: prev[key]?.value || '',
+        to: f.value,
+      });
+    }
+
+    await db.run(
+      `UPDATE onboarding_documents SET review = ?, ocr_text = ?, ocr_provider = ?, ocr_conf = ?,
+              ai_used = ?, ai_provider = ?, ai_model = ?, warnings = ?
+         WHERE id = ?`,
+      [out.review, out.ocrText, out.ocrProvider, out.ocrConf,
+       out.aiUsed ? 1 : 0, out.aiProvider, out.aiModel,
+       JSON.stringify(out.warnings.slice(0, 5)), doc.id]
+    );
+
+    db.audit(req.session?.adminId, req.session?.adminUser || 'system', 'onboarding_reextract',
+      'applicant', doc.applicant_id, null,
+      `${rules.DOC_TYPES[doc.doc_type]?.label || doc.doc_type} — ${changed.length} حقل تغيّر`, req.ip).catch(() => {});
+
+    res.json({ ok: true, changed, review: out.review, aiUsed: out.aiUsed, ocrError: out.ocrError });
+  } catch (err) {
+    console.error('[Onboarding reextract]', err.message);
+    res.status(500).json({ error: 'تعذّرت إعادة الاستخراج' });
+  }
+});
+
 // قرار HR على مستند — الاستثناءات وحدها تصل إلى إنسان، وهذا مكان تسجيلها.
 adminRouter.post('/doc/:docId/review', async (req, res) => {
   if (!featureOn()) return res.status(503).json({ error: 'الميزة غير مفعّلة' });

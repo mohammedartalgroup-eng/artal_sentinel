@@ -148,6 +148,10 @@
                 <a class="ob-btn s" target="_blank" rel="noopener" href="/admin/onboarding/file/<%= s.docId %>">
                   <span class="material-symbols-outlined" style="font-size:18px">visibility</span> المرفق
                 </a>
+                <!-- يعيد تشغيل القراءة على نفس الملف — لا يمسّ ما صحّحه المرشح بيده -->
+                <button class="ob-btn s" onclick="reextract(<%= s.docId %>, this)">
+                  <span class="material-symbols-outlined" style="font-size:18px">autorenew</span> إعادة الاستخراج
+                </button>
               <% } %>
             </div>
           </div>
@@ -218,6 +222,29 @@
 
 <script>
 const APPLICANT_ID = <%= applicant.id %>;
+
+async function reextract(docId, btn) {
+  if (!confirm('إعادة قراءة المستند بالقواعد الحالية؟\nالقيم التي صحّحها المرشح بنفسه لن تتغيّر.')) return;
+  const old = btn.innerHTML;
+  btn.disabled = true; btn.textContent = 'جارٍ القراءة…';
+  try {
+    const r = await fetch('/admin/onboarding/doc/' + docId + '/reextract', { method: 'POST' });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || 'تعذّرت إعادة الاستخراج');
+    if (!j.changed.length) {
+      alert('لا جديد — القيم الحالية مطابقة لما تقرؤه القواعد الآن.'
+        + (j.ocrError ? '\n\nتنبيه: ' + j.ocrError : ''));
+      btn.disabled = false; btn.innerHTML = old;
+      return;
+    }
+    alert('تحدّث ' + j.changed.length + ' حقل:\n\n'
+      + j.changed.map(c => '• ' + c.label + ': ' + (c.from || '—') + '  ←  ' + c.to).join('\n'));
+    location.reload();
+  } catch (e) {
+    alert(e.message);
+    btn.disabled = false; btn.innerHTML = old;
+  }
+}
 
 async function obSend(btn) {
   if (!confirm('إرسال رابط استكمال الملف للمرشح عبر واتساب؟')) return;
