@@ -173,7 +173,7 @@
                       <% } %>
                     </td>
                     <td class="ob-src">
-                      <%= { ocr:'قراءة آلية', ai:'نموذج لغوي', user:'أدخله المرشح' }[f.source] || '—' %>
+                      <%= { ocr:'قراءة آلية', ai:'نموذج لغوي', user:'أدخله المرشح', rule:'قاعدة النظام' }[f.source] || '—' %>
                       <% if (f.confidence) { %><br><%= Math.round(f.confidence * 100) %>%<% } %>
                     </td>
                     <td class="ob-src"><%= f.raw && f.raw !== f.value ? f.raw : '—' %></td>

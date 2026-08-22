@@ -48,14 +48,22 @@ async function processDocument({ docType, filePath, mime, applicant }) {
 
   // ── 2) القواعد المحلية ─────────────────────────────────────────────────────
   const parsed = rules.parse(docType, text);
+  // المصدر الافتراضي «قراءة آلية» — إلا ما جاء بمصدره (قيمة مشتقة بقاعدة مثلاً)
   result.fields = Object.fromEntries(
-    Object.entries(parsed.fields).map(([k, v]) => [k, { ...v, source: 'ocr' }])
+    Object.entries(parsed.fields).map(([k, v]) => [k, { source: 'ocr', ...v }])
   );
   result.warnings.push(...parsed.warnings);
   result.typeMatch = parsed.typeMatch;
 
   // ── 3) النموذج اللغوي — للناقص وحده ────────────────────────────────────────
-  const missing = rules.missingRequired(docType, result.fields);
+  //  المطلوب الناقص + الحقول المُعلَّمة aiAssist (اختيارية لكن تركها فارغة يعني
+  //  إدخالاً يدوياً على المرشح). ما عداها لا يستدعي النموذج إطلاقاً.
+  const missingReq = rules.missingRequired(docType, result.fields);
+  const missingAssist = def.fields
+    .filter(f => f.aiAssist && !f.required)
+    .filter(f => !result.fields[f.key]?.valid)
+    .map(f => f.key);
+  const missing = [...new Set([...missingReq, ...missingAssist])];
   if (missing.length && ai.isConfigured()) {
     try {
       const askFor = def.fields.filter(f => missing.includes(f.key)).map(f => ({ key: f.key, label: f.label }));
@@ -79,6 +87,16 @@ async function processDocument({ docType, filePath, mime, applicant }) {
     } catch (e) {
       result.aiError = e.message;
       console.error('[Onboarding AI]', docType, e.message);
+    }
+  }
+
+  // ── 3.5) المشتقات — بعد استقرار القيم أياً كان مصدرها ──────────────────────
+  for (const [key, f] of Object.entries({ ...result.fields })) {
+    if (!f.valid) continue;
+    for (const d of rules.derivedFrom(docType, key, f.value)) {
+      if (result.fields[d.key]?.valid) continue;      // لا نلغي قيمة صحيحة قائمة
+      const v = rules.validate(docType, d.key, d.value);
+      result.fields[d.key] = { raw: d.value, value: v.value, valid: v.ok, error: v.error, confidence: 1, source: 'rule' };
     }
   }
 

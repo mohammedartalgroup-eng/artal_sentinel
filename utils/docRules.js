@@ -127,7 +127,11 @@ const DOC_TYPES = {
     hint: 'صوّر وجه الهوية الوطنية أو الإقامة كاملاً — بلا انعكاس ضوء ولا أطراف مقطوعة.',
     fields: [
       { key: 'id_number',   label: 'رقم الهوية / الإقامة', type: 'saudi_id', required: true },
-      { key: 'name_ar',     label: 'الاسم كما في المستند',  type: 'name',     required: true },
+      { key: 'name_ar',     label: 'الاسم بالعربية',        type: 'name',     required: true },
+      // aiAssist: حقل غير مطلوب لكنه يستحق نداء النموذج إن عجزت القواعد عنه.
+      // الاسم الإنجليزي يُطبع بتخطيط حرّ على البطاقة (سطر، فاصلة، حرف أوسط)،
+      // فالتقاطه بقاعدة وحدها يفشل أحياناً — وتركه فارغاً يعني إدخالاً يدوياً.
+      { key: 'name_en',     label: 'الاسم بالإنجليزية',     type: 'name_en',  required: false, aiAssist: true },
       { key: 'nationality', label: 'الجنسية',               type: 'text',     required: false },
       { key: 'birth_date',  label: 'تاريخ الميلاد',         type: 'date',     required: false },
       { key: 'expiry_date', label: 'تاريخ الانتهاء',        type: 'date',     required: true },
@@ -238,6 +242,14 @@ function validate(docType, key, raw) {
       if (v.length < 4) return { ok: false, value: v, error: 'الاسم قصير جداً' };
       return { ok: true, value: v, error: null };
     }
+    case 'name_en': {
+      // حروف لاتينية فقط — الاسم الإنجليزي على الهوية يُكتب بفاصلة وحرف أوسط
+      // (ALRUWAILI, SAUD ZAKI S) فنسمح بالفاصلة والنقطة والشرطة.
+      const v = s.replace(/\s+/g, ' ').trim().replace(/[^A-Za-z ,.'-]/g, '').trim();
+      if (v.length < 4) return { ok: false, value: v, error: 'الاسم الإنجليزي قصير جداً' };
+      if (!/[A-Za-z]{2}/.test(v)) return { ok: false, value: v, error: 'يجب أن يكون بحروف إنجليزية' };
+      return { ok: true, value: v, error: null };
+    }
     default: {
       const v = s.replace(/\s+/g, ' ').trim();
       return { ok: true, value: v.slice(0, 200), error: null };
@@ -273,6 +285,78 @@ function afterLabel(lines, labels, { maxLen = 80 } = {}) {
   return null;
 }
 
+// هل يحمل هذا النص تاريخاً ميلادياً؟ (سنة بين 1900 و2100)
+function isGregorianToken(t) {
+  return (normalizeDigits(t).match(/\d{4}/g) || []).some(y => +y >= 1900 && +y <= 2100);
+}
+
+const DATE_RE = /\d{1,4}\s*[\/\-.]\s*\d{1,2}\s*[\/\-.]\s*\d{1,4}/g;
+
+/**
+ * تاريخ من منطقة التسمية — والميلادي يفوز على الهجري دائماً.
+ *
+ * ⚠️ لماذا؟ الهوية السعودية تطبع التاريخين معاً، وتحويلنا للهجري بجدول أم
+ *    القرى قد يخالف تحويل الأحوال المدنية بيوم أو أربعة. ما دام الميلادي
+ *    مطبوعاً على البطاقة فهو الحقيقة، ولا معنى لأن نحسب ما هو مكتوب أمامنا.
+ */
+function pickDate(lines, labels) {
+  const zones = [];
+  for (const lab of labels) {
+    for (let i = 0; i < lines.length; i++) {
+      const idx = lines[i].toUpperCase().indexOf(lab.toUpperCase());
+      if (idx === -1) continue;
+      zones.push([lines[i].slice(idx + lab.length), lines[i + 1] || '', lines[i + 2] || ''].join(' '));
+    }
+  }
+  const all = zones.flatMap(z => z.match(DATE_RE) || []);
+  return all.find(isGregorianToken) || all[0] || null;
+}
+
+// سطور «ليست اسماً» على وجه الهوية/الإقامة — تُستبعد قبل التقاط الاسم اللاتيني
+const EN_STOP = [
+  'KINGDOM', 'SAUDI', 'ARABIA', 'IDENTITY', 'NATIONAL', 'CARD', 'RESIDENT', 'RESIDENCE',
+  'PERMIT', 'MINISTRY', 'INTERIOR', 'DATE', 'BIRTH', 'EXPIRY', 'EXPIRES', 'ISSUE',
+  'NATIONALITY', 'OCCUPATION', 'SEX', 'MALE', 'FEMALE', 'PLACE', 'NUMBER', 'SERIAL',
+];
+
+/** الاسم اللاتيني: أطول سطر لاتيني خالٍ من الأرقام وكلمات الترويسة */
+function pickLatinName(lines) {
+  const cands = lines
+    .map(l => l.replace(/[^A-Za-z ,.'-]/g, ' ').replace(/\s+/g, ' ').trim())
+    .filter(l => l.length >= 6 && l.length <= 60)
+    .filter(l => (l.match(/[A-Za-z]/g) || []).length >= 5)
+    .filter(l => !EN_STOP.some(w => l.toUpperCase().includes(w)))
+    .filter(l => (l.match(/ /g) || []).length >= 1);   // اسم من كلمتين فأكثر
+  return cands.sort((a, b) => b.length - a.length)[0] || null;
+}
+
+const AR_STOP = [
+  'المملكة', 'العربية', 'السعودية', 'الهوية', 'الوطنية', 'الإقامة', 'اقامة', 'رخصة',
+  'تاريخ', 'الميلاد', 'الانتهاء', 'الرقم', 'مكان', 'الجنسية', 'وزارة', 'الداخلية',
+  'الأحوال', 'المدنية', 'بطاقة', 'صالحة', 'المهنة', 'الصلاحية',
+];
+
+/** اسم عربي بلا تسمية — أطول سطر عربي ليس من كلمات الترويسة */
+function pickArabicName(lines) {
+  const cands = lines
+    .filter(l => (l.match(/[ء-ي]/g) || []).length >= 6)
+    .filter(l => !/\d/.test(l))
+    .filter(l => !AR_STOP.some(w => l.includes(w)))
+    .filter(l => (l.match(/ /g) || []).length >= 1)
+    .map(l => l.trim());
+  return cands.sort((a, b) => b.length - a.length)[0] || null;
+}
+
+/**
+ * الجنسية المشتقة من رقم الهوية: الخانة الأولى 1 = مواطن سعودي.
+ * بطاقة الهوية الوطنية لا تحمل حقل «الجنسية» أصلاً، فالاشتقاق هنا ليس تخميناً
+ * بل قراءة لما يعنيه الرقم نفسه. الإقامة (2) تُترك لما هو مكتوب عليها.
+ */
+function nationalityFromId(idValue) {
+  const d = normalizeDigits(idValue || '').replace(/\D/g, '');
+  return /^1\d{9}$/.test(d) && saudiIdValid(d) ? 'سعودي' : null;
+}
+
 function parse(docType, rawText) {
   const text = normalizeText(rawText || '');
   const upper = text.toUpperCase();
@@ -285,6 +369,12 @@ function parse(docType, rawText) {
     if (out[key]) return;                       // أول التقاط يفوز (الأدق أولاً)
     const v = validate(docType, key, value);
     out[key] = { raw: String(value).trim(), value: v.value, valid: v.ok, error: v.error, confidence };
+  };
+
+  // للقيم المشتقة بيقين حسابي — تدهس ما التقطه النص لأنها ليست تخميناً
+  const put2 = (key, value, confidence, source) => {
+    const v = validate(docType, key, value);
+    out[key] = { raw: String(value).trim(), value: v.value, valid: v.ok, error: v.error, confidence, source };
   };
 
   // هل المستند من النوع المتوقَّع؟
@@ -300,9 +390,15 @@ function parse(docType, rawText) {
       .map(x => x.replace(/\D/g, '')).filter(x => x.length === 10);
     put('id_number', cands.find(saudiIdValid) || afterLabel(lines, ['رقم الهوية', 'رقم الإقامة', 'ID NUMBER', 'IQAMA']), 0.97);
     put('name_ar', afterLabel(lines, ['الاسم', 'اسم', 'NAME']), 0.8);
+    put('name_ar', pickArabicName(lines), 0.7);      // احتياط: مستند بلا تسمية
+    put('name_en', pickLatinName(lines), 0.85);
     put('nationality', afterLabel(lines, ['الجنسية', 'NATIONALITY'], { maxLen: 30 }), 0.85);
-    put('expiry_date', afterLabel(lines, ['تاريخ الانتهاء', 'الانتهاء', 'EXPIRY', 'EXPIRES']), 0.85);
-    put('birth_date', afterLabel(lines, ['تاريخ الميلاد', 'الميلاد', 'DATE OF BIRTH', 'BIRTH']), 0.85);
+    // التسميات اللاتينية أولاً: DOB/DOE تحملان الميلادي على الهوية السعودية
+    put('expiry_date', pickDate(lines, ['DOE', 'EXPIRY', 'EXPIRES', 'تاريخ الانتهاء', 'الانتهاء']), 0.9);
+    put('birth_date',  pickDate(lines, ['DOB', 'DATE OF BIRTH', 'BIRTH', 'تاريخ الميلاد', 'الميلاد']), 0.9);
+    // الجنسية من الرقم — تُكتب فقط إن لم يجدها الاستخراج على المستند
+    const natFromId = nationalityFromId(out.id_number?.value);
+    if (natFromId && !out.nationality?.valid) put2('nationality', natFromId, 1, 'rule');
   }
 
   if (docType === 'national_address') {
@@ -363,8 +459,27 @@ function reviewLevel(docType, fields, typeMatch) {
   return missingRequired(docType, fields).length === 0 ? 'green' : 'yellow';
 }
 
+/**
+ * حقول تُشتق تلقائياً بعد تغيّر حقل آخر (تعديل يدوي أو استخراج).
+ * يُرجع [{key, value}] — والمُستدعي يقرّر متى يكتبها (لا يدهس قيمة كتبها المرشح).
+ */
+const DERIVES = { id_iqama: { id_number: ['nationality'] } };
+
+/** ما الحقول التي «يملكها» هذا الحقل — ليعرف المُستدعي ما يجب تنظيفه إن بطل الاشتقاق */
+function derivedKeys(docType, key) {
+  return DERIVES[docType]?.[key] || [];
+}
+
+function derivedFrom(docType, key, value) {
+  if (docType === 'id_iqama' && key === 'id_number') {
+    const nat = nationalityFromId(value);
+    if (nat) return [{ key: 'nationality', value: nat }];
+  }
+  return [];
+}
+
 module.exports = {
-  DOC_TYPES, DOC_KEYS, fieldDef,
+  DOC_TYPES, DOC_KEYS, fieldDef, derivedFrom, derivedKeys, nationalityFromId,
   normalizeDigits, normalizeText, digitsOnlyFix, normalizeDate, hijriToGregorian,
   saudiIdValid, ibanValid,
   parse, validate, needsAi, missingRequired, reviewLevel,

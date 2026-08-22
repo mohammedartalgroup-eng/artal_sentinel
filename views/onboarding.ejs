@@ -374,6 +374,17 @@ async function saveField(key) {
     box.querySelector('.msg').textContent = val && !j.valid ? (j.error || 'قيمة غير صحيحة')
       : (f.type === 'date' && j.value ? 'سيُحفَظ كـ ' + j.value : '');
     if (j.valid && j.value && j.value !== val) input.value = j.value;   // القيمة المُطبَّعة
+
+    // حقول ملأها النظام تبعاً لهذا الحقل (الجنسية بعد رقم الهوية)
+    (j.also || []).forEach(a => {
+      const el = $('i-' + a.key);
+      if (!el) return;
+      el.value = a.value;
+      const b = $('f-' + a.key);
+      if (b) { b.className = 'f ' + (a.valid ? 'good' : 'bad'); b.querySelector('.msg').textContent = ''; }
+      const af = s.fields.find(x => x.key === a.key);
+      if (af) { af.value = a.value; af.valid = a.valid; af.source = 'rule'; }
+    });
   } catch (err) {
     toast(err.message);
   }

@@ -305,7 +305,32 @@ publicRouter.patch('/:token/field', pageLimiter, resolveToken, async (req, res) 
 
     const v = await saveField(req.obSession.id, docType, String(field), String(value ?? ''), 'user', 1);
     await db.run('UPDATE onboarding_sessions SET last_step = ? WHERE id = ?', [docType, req.obSession.id]);
-    res.json({ ok: true, value: v.value, valid: v.ok, error: v.error });
+
+    // حقول تُشتق من هذا الحقل (الجنسية من رقم الهوية).
+    //  • قيمة كتبها المرشح أو قرأها OCR لا يدهسها النظام أبداً.
+    //  • أما ما كتبه النظام نفسه (source = rule) فهو ملك للاشتقاق: يُصحَّح إن
+    //    تغيّر الرقم، ويُمحى إن صار الرقم إقامة (2…) فلا تبقى «سعودي» معلّقة.
+    const also = [];
+    if (v.ok) {
+      const wanted = Object.fromEntries(
+        rules.derivedFrom(docType, String(field), v.value).map(d => [d.key, d.value])
+      );
+      for (const key of rules.derivedKeys(docType, String(field))) {
+        const cur = await db.get(
+          'SELECT value, valid, source FROM onboarding_fields WHERE session_id = ? AND doc_type = ? AND field_key = ?',
+          [req.obSession.id, docType, key]
+        );
+        const ownedByUser = cur && cur.source !== 'rule' && String(cur.value || '').trim();
+        if (ownedByUser) continue;
+
+        const next = wanted[key] ?? '';
+        if (String(cur?.value || '') === next) continue;
+        const dv = await saveField(req.obSession.id, docType, key, next, 'rule', next ? 1 : null);
+        also.push({ key, value: dv.value, valid: dv.ok });
+      }
+    }
+
+    res.json({ ok: true, value: v.value, valid: v.ok, error: v.error, also });
   } catch (err) {
     console.error('[Onboarding field]', err.message);
     res.status(500).json({ error: 'تعذّر الحفظ' });
