@@ -447,6 +447,15 @@ async function initialize() {
         console.log('[DB] Migration: added column job_title to interviews');
       }
 
+      // الموقع المرشَّح — يكتبه الموظف عند الجدولة، ويظهر في قائمة المقابلات.
+      // لا يُشتق من بيانات المتقدم: هو قرار توظيفي (أين نرشّحه للعمل) لا
+      // معلومة عنه، وقد يختلف عن منطقته ومدينته تماماً.
+      const [ivSiteCols] = await conn.query("SHOW COLUMNS FROM interviews LIKE 'candidate_site'");
+      if (ivSiteCols.length === 0) {
+        await conn.query("ALTER TABLE interviews ADD COLUMN candidate_site VARCHAR(120) DEFAULT NULL");
+        console.log('[DB] Migration: added column candidate_site to interviews');
+      }
+
       const [ivErrCols] = await conn.query("SHOW COLUMNS FROM interviews LIKE 'last_error'");
       if (ivErrCols.length === 0) {
         await conn.query("ALTER TABLE interviews ADD COLUMN last_error VARCHAR(255) DEFAULT NULL");

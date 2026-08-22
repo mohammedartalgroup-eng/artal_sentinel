@@ -151,7 +151,7 @@
               <th class="px-5 py-3 text-right font-semibold">الموعد</th>
               <th class="px-5 py-3 text-right font-semibold">المتقدم</th>
               <th class="px-5 py-3 text-right font-semibold">الجوال</th>
-              <th class="px-5 py-3 text-right font-semibold">المنطقة / المدينة</th>
+              <th class="px-5 py-3 text-right font-semibold">المشروع المرشح</th>
               <th class="px-5 py-3 text-right font-semibold">المقابلون</th>
               <th class="px-5 py-3 text-right font-semibold">الحالة</th>
               <th class="px-5 py-3 text-right font-semibold">الرابط</th>
@@ -171,12 +171,10 @@
               </td>
               <td class="px-5 py-3.5 text-xs text-[#43474f] font-mono" dir="ltr"><%= r.phone || '—' %></td>
               <td class="px-5 py-3.5 text-[#43474f]">
-                <% if (r.region) { %>
-                  <div class="text-xs text-[#7594ca] font-medium"><%= r.region %></div>
-                <% } %>
-                <div><%= r.city || '—' %></div>
-                <% if (r.neighborhood) { %>
-                  <div class="text-xs text-[#9ca3af]"><%= r.neighborhood %></div>
+                <% if (r.candidate_site) { %>
+                  <span class="text-xs font-medium"><%= r.candidate_site %></span>
+                <% } else { %>
+                  <span class="text-[#c4c6d0]">—</span>
                 <% } %>
               </td>
               <td class="px-5 py-3.5">

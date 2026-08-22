@@ -1058,6 +1058,13 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
     </div>
 
     <div style="margin-top:1rem;">
+      <div style="font-size:.7rem;font-weight:700;color:#43474f;letter-spacing:.04em;margin-bottom:.4rem;">الموقع المرشح</div>
+      <input type="text" id="iv-site" maxlength="120" placeholder="الموقع المرشح للعمل فيه"
+             style="width:100%;border:1px solid #e0e3e5;border-radius:.75rem;padding:.6rem .8rem;font-size:.8rem;outline:none;font-family:'Inter',sans-serif;">
+      <div style="font-size:.65rem;color:#7594ca;margin-top:.3rem;">يظهر في عمود «المشروع المرشح» بصفحة المقابلات.</div>
+    </div>
+
+    <div style="margin-top:1rem;">
       <div style="font-size:.7rem;font-weight:700;color:#43474f;letter-spacing:.04em;margin-bottom:.4rem;">ملاحظة (اختياري)</div>
       <textarea id="iv-note" rows="2" placeholder="تُضاف إلى وصف الاجتماع وملف المتقدم"
                 style="width:100%;border:1px solid #e0e3e5;border-radius:.75rem;padding:.6rem .8rem;font-size:.8rem;resize:none;outline:none;font-family:'Inter',sans-serif;"></textarea>
@@ -1340,6 +1347,9 @@ function openInterviewModal(reschedule = false) {
 
   const jobEl = document.getElementById('iv-job');
   if (jobEl) jobEl.value = (IV_ACTIVE && IV_ACTIVE.jobTitle) || IV_JOB_GUESS || '';
+
+  const siteEl = document.getElementById('iv-site');
+  if (siteEl) siteEl.value = (IV_ACTIVE && IV_ACTIVE.candidateSite) || '';
   else if (IV_PEOPLE.some(p => p.username === IV_CURRENT_USR)) ivSelectedPeople.add(IV_CURRENT_USR);
 
   renderPeople();
@@ -1368,6 +1378,7 @@ function confirmInterview() {
     slotKey: ivSelectedSlot,
     interviewers: [...ivSelectedPeople],
     jobTitle: (document.getElementById('iv-job').value || '').trim(),
+    candidateSite: (document.getElementById('iv-site').value || '').trim(),
     note: document.getElementById('iv-note').value.trim(),
   };
 

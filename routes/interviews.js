@@ -142,6 +142,7 @@ function publicInterview(row, rowsByEmail = {}) {
     timeLabel: S.localTime(startMs),
     durationMin: row.duration_min,
     jobTitle: row.job_title || '',
+    candidateSite: row.candidate_site || '',
     meetLink: row.meet_link,
     htmlLink: row.html_link,
     status: row.status,
@@ -270,15 +271,17 @@ router.post('/applicants/:id/interview', requireInterviews, scheduleLimiter, asy
     // فيغلب اختيار الموظف، وإلا يُشتق من صفحة الوظيفة التي قدّم منها
     const jobTitle = String(req.body.jobTitle || '').trim().slice(0, 100)
       || deriveJobTitle(applicant, req.ivSettings);
+    const candidateSite = String(req.body.candidateSite || '').trim().slice(0, 120);
 
     // 1) الصف هو القفل — يُؤخذ قبل نداء Google ويبقى محجوزاً طوال الرحلة
     try {
       const ins = await db.run(
         `INSERT INTO interviews
-           (applicant_id, start_at, end_at, start_local, duration_min, slot_key, status, interviewers, job_title, created_by, created_by_id)
-         VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`,
+           (applicant_id, start_at, end_at, start_local, duration_min, slot_key, status, interviewers, job_title, candidate_site, created_by, created_by_id)
+         VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)`,
         [applicant.id, new Date(startMs), new Date(endMs), S.localStamp(startMs), rules.durationMin,
-         slotKey, emails.join(','), jobTitle, req.session.adminName || null, req.session.adminId || null]
+         slotKey, emails.join(','), jobTitle, candidateSite || null,
+         req.session.adminName || null, req.session.adminId || null]
       );
       insertId = ins.insertId;
     } catch (e) {
@@ -375,7 +378,7 @@ router.post('/applicants/:id/interview', requireInterviews, scheduleLimiter, asy
 
     const iv = {
       id: insertId, startMs, endMs, startLocal: S.localStamp(startMs), dateLabel, timeLabel,
-      durationMin: rules.durationMin, jobTitle, meetLink: ev.meetLink, htmlLink: ev.htmlLink,
+      durationMin: rules.durationMin, jobTitle, candidateSite, meetLink: ev.meetLink, htmlLink: ev.htmlLink,
       status: 'scheduled', pendingLink: !ev.meetLink,
       interviewers: emails.map(e => ({ email: e, name: nameByEmail[e] || e })),
     };
@@ -428,10 +431,14 @@ router.patch('/interviews/:iid', requireInterviews, scheduleLimiter, async (req,
 
     // القفل أولاً: الفهرس الفريد يمنع التصادم مع حجز متزامن
     try {
+      // الحقل اختياري في إعادة الجدولة: غيابه يُبقي القيمة القديمة كما هي
+      const site = req.body.candidateSite === undefined
+        ? row.candidate_site
+        : (String(req.body.candidateSite || '').trim().slice(0, 120) || null);
       const upd = await db.run(
-        `UPDATE interviews SET slot_key = ?, start_at = ?, end_at = ?, start_local = ?, duration_min = ?, interviewers = ?
+        `UPDATE interviews SET slot_key = ?, start_at = ?, end_at = ?, start_local = ?, duration_min = ?, interviewers = ?, candidate_site = ?
          WHERE id = ? AND status = 'scheduled'`,
-        [slotKey, new Date(startMs), new Date(endMs), S.localStamp(startMs), rules.durationMin, emails.join(','), row.id]
+        [slotKey, new Date(startMs), new Date(endMs), S.localStamp(startMs), rules.durationMin, emails.join(','), site, row.id]
       );
       if (upd.affectedRows === 0) return res.status(409).json({ error: 'تغيّرت حالة المقابلة — حدّث الصفحة' });
     } catch (e) {
@@ -666,7 +673,7 @@ router.get('/interviews', requireInterviewsPage, async (req, res) => {
     const offset = (Math.min(page, totalPages) - 1) * PAGE_SIZE;
 
     const rows = await db.all(
-      `SELECT i.*, a.full_name, a.phone, a.region, a.city, a.neighborhood, a.status AS applicant_status
+      `SELECT i.*, a.full_name, a.phone, a.status AS applicant_status
          FROM interviews i
          JOIN applicants a ON a.id = i.applicant_id
          ${whereSql}
