@@ -58,9 +58,12 @@ async function resolveTemplateBody(tpl, params, fallbackText) {
   try {
     const found = await chatwoot.findTemplate(tpl.name, tpl.language);
     if (!found) {
+      // ذكر الأسماء الموجودة يحوّل الخطأ من لغز إلى خطوة واحدة: انسخ الاسم الصحيح
+      const names = await chatwoot.templateNames();
+      const hint = names.length ? ` — الموجود لديك: ${names.slice(0, 6).join('، ')}` : '';
       return {
         ok: false,
-        reason: `القالب «${tpl.name}» غير موجود في قوالب Chatwoot — اضغط «Sync Templates» على صندوق واتساب بعد اعتماده في Twilio/Meta`,
+        reason: `القالب «${tpl.name}» غير موجود في قوالب Chatwoot${hint}`,
       };
     }
     const need = chatwoot.templateVarCount(found);

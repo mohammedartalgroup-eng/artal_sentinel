@@ -133,13 +133,32 @@ const tplName = (t) => String(t?.name || t?.friendly_name || '').trim();
 
 /** يبحث بالاسم واللغة — واللغة اختيارية لأن بعض الحسابات تسجّل لغة واحدة فقط */
 async function findTemplate(name, language, opts = {}) {
-  const want = String(name || '').trim();
+  const want = String(name || '').trim().toLowerCase();
   if (!want) return null;
-  const list = await listTemplates(opts);
-  const byName = list.filter(t => tplName(t) === want);
+
+  const match = (list) => list.filter(t => tplName(t).toLowerCase() === want);
+
+  let byName = match(await listTemplates(opts));
+
+  // ⚠️ القالب المعتمد للتو: النسخة المخبّأة عمرها خمس دقائق، وهي بالضبط
+  //    اللحظة التي يضغط فيها الموظف الزر بعد «Sync Templates». عدم العثور
+  //    عليه ليس نتيجةً نهائية — نُعيد الجلب متجاوزين المخبّأ قبل أن نيأس.
+  if (!byName.length && !opts.fresh) {
+    byName = match(await listTemplates({ fresh: true }));
+  }
   if (!byName.length) return null;
+
   const lang = String(language || '').trim();
   return byName.find(t => String(t.language || '').trim() === lang) || byName[0];
+}
+
+/** أسماء القوالب المتزامنة — لرسائل الخطأ: «الموجود عندك هو…» */
+async function templateNames() {
+  try {
+    return (await listTemplates()).map(tplName).filter(Boolean);
+  } catch (e) {
+    return [];
+  }
 }
 
 /** عدد المتغيّرات الفريدة في نص القالب — مصدر الحقيقة لعدّ processed_params */
@@ -283,5 +302,5 @@ async function sendTemplate({ name, phone, content, template }) {
 
 module.exports = {
   ChatwootError, isConfigured, status, toE164, ensureContact, sendTemplate,
-  listTemplates, findTemplate, templateVarCount, renderTemplate,
+  listTemplates, findTemplate, templateNames, templateVarCount, renderTemplate,
 };
