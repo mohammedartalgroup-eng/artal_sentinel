@@ -38,10 +38,20 @@ const storage = multer.diskStorage({
   },
 });
 
+const IMAGES = ['.jpg', '.jpeg', '.png', '.webp', '.heic'];
+
 function fileFilter(req, file, cb) {
   const ext = path.extname(file.originalname).toLowerCase();
-  if (ALLOWED.includes(ext)) return cb(null, true);
-  cb(new Error('نوع الملف غير مدعوم — استخدم صورة (JPG/PNG) أو PDF'));
+  if (!ALLOWED.includes(ext)) {
+    return cb(new Error('نوع الملف غير مدعوم — استخدم صورة (JPG/PNG) أو PDF'));
+  }
+  // الصورة الشخصية تُطبع على بطاقة العمل — ملف PDF لا يصلح لها.
+  // (doc_type يصل قبل الملف في نموذج الرفع، فهو متاح هنا)
+  const type = String(req.body.doc_type || '');
+  if (type === 'personal_photo' && !IMAGES.includes(ext)) {
+    return cb(new Error('الصورة الشخصية يجب أن تكون صورة (JPG أو PNG) لا ملف PDF'));
+  }
+  cb(null, true);
 }
 
 module.exports = multer({

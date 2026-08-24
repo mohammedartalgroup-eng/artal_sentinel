@@ -65,7 +65,9 @@ function requiredList(session) {
 // المستندات المطلوبة تُحسب من الوظيفة لا من قائمة ثابتة: رخصة القيادة تُطلب
 // ممن سُجّل أنه يقودها فقط، وإجبار الجميع عليها يعطّل رحلة لا علاقة لها بها.
 function defaultRequired(applicant) {
-  const base = ['id_iqama', 'national_address', 'iban'];
+  // السيرة الذاتية والشهادة الدراسية اختياريتان: الأولى مرفقة بالطلب غالباً،
+  // والثانية لا تُشترط لكل وظيفة. والصورة الشخصية مطلوبة — منها بطاقة العمل.
+  const base = ['personal_photo', 'id_iqama', 'national_address', 'iban'];
   if (applicant?.has_license) base.push('driving_license');
   return base.join(',');
 }
@@ -94,11 +96,17 @@ function buildSteps(session, byType, fieldsByType, opts = {}) {
     const def = rules.DOC_TYPES[type];
     const doc = byType[type] || null;
     const saved = fieldsByType[type] || {};
+    // السيرة الذاتية المرفقة بطلب التوظيف تُحتسب موجودة — لا معنى لأن نطلب من
+    // المرشح رفع ما رفعه قبل أسبوع. ويبقى بوسعه استبدالها بنسخة محدَّثة.
+    const existingUrl = (type === 'cv' && !doc && opts.cvUrl) ? opts.cvUrl : null;
+
     return {
       type,
       label: def.label,
       icon: def.icon,
       hint: def.hint,
+      attachmentOnly: Boolean(def.attachmentOnly),
+      existingUrl,
       required: required.includes(type),
       status: doc ? doc.status : 'pending',
       review: doc ? doc.review : null,
@@ -235,14 +243,16 @@ publicRouter.get('/:token', pageLimiter, async (req, res) => {
       });
     }
     const s = r.session;
-    const applicant = await db.get('SELECT id, full_name, phone, id_number FROM applicants WHERE id = ?', [s.applicant_id]);
+    const applicant = await db.get('SELECT id, full_name, phone, id_number, cv_path FROM applicants WHERE id = ?', [s.applicant_id]);
     if (!applicant) {
       return res.status(404).render('onboarding-error', { title: 'رابط غير صالح', message: 'لم نجد الملف المرتبط بهذا الرابط.' });
     }
     if (!s.opened_at) await db.run('UPDATE onboarding_sessions SET opened_at = NOW() WHERE id = ?', [s.id]);
 
     const { byType, fieldsByType } = await loadDocs(s.id);
-    const steps = buildSteps(s, byType, fieldsByType);
+    const steps = buildSteps(s, byType, fieldsByType, {
+      cvUrl: applicant.cv_path ? `/onboarding/${s.token}/cv` : null,
+    });
     const required = requiredList(s);
     const completed = steps.filter(st => st.required && st.status === 'confirmed').length;
 
@@ -314,7 +324,10 @@ publicRouter.post('/:token/upload', uploadLimiter, resolveToken, (req, res, next
     const p = await recomputeProgress(s);
 
     const { byType, fieldsByType } = await loadDocs(s.id);
-    const step = buildSteps(s, byType, fieldsByType).find(x => x.type === docType);
+    const cv = await db.get('SELECT cv_path FROM applicants WHERE id = ?', [s.applicant_id]);
+    const step = buildSteps(s, byType, fieldsByType, {
+      cvUrl: cv?.cv_path ? `/onboarding/${s.token}/cv` : null,
+    }).find(x => x.type === docType);
     res.json({ ok: true, step, progress: p.progress, autoRead: ocr.isConfigured() });
   } catch (err) {
     console.error('[Onboarding upload]', err.message);
@@ -399,6 +412,23 @@ publicRouter.post('/:token/confirm', pageLimiter, resolveToken, async (req, res)
   } catch (err) {
     console.error('[Onboarding confirm]', err.message);
     res.status(500).json({ error: 'تعذّر التأكيد' });
+  }
+});
+
+// السيرة الذاتية المرفقة بطلب التوظيف — يعرضها صاحبها من داخل الرحلة.
+//  تُخدَّم من مجلد التقديم لا من مجلد الاستكمال، ولا تُنسخ: نسخة واحدة تكفي،
+//  والمرشح يرى ما رفعه فعلاً لا صورةً عنه.
+publicRouter.get('/:token/cv', pageLimiter, resolveToken, async (req, res) => {
+  try {
+    const a = await db.get('SELECT cv_path FROM applicants WHERE id = ?', [req.obSession.applicant_id]);
+    const name = a?.cv_path || '';
+    if (!name || !/^[A-Za-z0-9._-]+$/.test(name)) return res.status(404).end();
+    const CV_ROOT = process.env.UPLOADS_PATH || path.join(__dirname, '..', 'uploads');
+    res.sendFile(path.join(CV_ROOT, 'cv', name), (err) => {
+      if (err && !res.headersSent) res.status(404).end();
+    });
+  } catch (err) {
+    res.status(500).end();
   }
 });
 
@@ -580,7 +610,10 @@ adminRouter.get('/view/:applicantId', async (req, res) => {
     let steps = [], history = [], profile = [];
     if (s) {
       const { byType, fieldsByType } = await loadDocs(s.id);
-      steps = buildSteps(s, byType, fieldsByType, { withOcr: true });
+      steps = buildSteps(s, byType, fieldsByType, {
+        withOcr: true,
+        cvUrl: applicant.cv_path ? `/admin/files/cv/${applicant.cv_path}` : null,
+      });
       profile = buildProfile(fieldsByType);
       history = await db.all(
         'SELECT id, doc_type, status, review, original_name, created_at FROM onboarding_documents WHERE session_id = ? AND is_current = 0 ORDER BY id DESC',

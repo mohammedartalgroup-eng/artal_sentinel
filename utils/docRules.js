@@ -170,6 +170,19 @@ function normalizeDate(raw) {
 // والحساب البنكي، والرخصة أخيراً لأنها مشروطة بالوظيفة لا بالشخص.
 
 const DOC_TYPES = {
+  // ── مرفقات بلا استخراج ────────────────────────────────────────────────────
+  // attachmentOnly: ملف يُحفظ ويُراجَع بالعين، لا حقول فيه ولا قراءة آلية.
+  // إرسالها إلى OCR إنفاقٌ بلا مقابل: لا شيء فيها يُستخرج ولا شيء يُتحقق منه.
+  personal_photo: {
+    label: 'الصورة الشخصية',
+    icon: 'account_circle',
+    hint: 'صورة حديثة وواضحة للوجه بخلفية فاتحة — تُستخدم في بطاقة العمل والتصاريح.',
+    attachmentOnly: true,
+    imagesOnly: true,
+    fields: [],
+    markers: [],
+  },
+
   id_iqama: {
     label: 'الهوية / الإقامة',
     icon: 'badge',
@@ -237,6 +250,24 @@ const DOC_TYPES = {
       { key: 'name_en',        label: 'الاسم بالإنجليزية', type: 'name_en',  required: false, aiAssist: true, cross: 'name_en' },
     ],
     markers: ['رخصة قيادة', 'رخصة القيادة', 'DRIVING LICENSE', 'DRIVING LICENCE', 'DRIVER LICENSE'],
+  },
+
+  cv: {
+    label: 'السيرة الذاتية',
+    icon: 'description',
+    hint: 'إن كانت سيرتك مرفقة بطلب التوظيف فلا حاجة لرفعها ثانيةً — ارفع نسخة جديدة إن تغيّرت.',
+    attachmentOnly: true,
+    fields: [],
+    markers: [],
+  },
+
+  education_certificate: {
+    label: 'الشهادة الدراسية',
+    icon: 'school',
+    hint: 'صوّر أعلى شهادة حصلت عليها (ثانوية، دبلوم، بكالوريوس…).',
+    attachmentOnly: true,
+    fields: [],
+    markers: [],
   },
 };
 
@@ -503,6 +534,11 @@ function pickValue(lines, labels, { digits = 0, min = 3, lookahead = 3, preferAr
 }
 
 function parse(docType, rawText) {
+  // مرفق بلا حقول: لا شيء يُستخرج ولا شيء يُتحقق منه
+  if (DOC_TYPES[docType]?.attachmentOnly) {
+    return { fields: {}, warnings: [], typeMatch: 'unknown', expired: false };
+  }
+
   const text = normalizeText(rawText || '');
   const upper = text.toUpperCase();
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);

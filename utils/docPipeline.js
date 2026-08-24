@@ -21,6 +21,12 @@ async function processDocument({ docType, filePath, mime, applicant }) {
     review: 'yellow',
   };
 
+  // ── 0) مرفق بلا استخراج: لا OCR ولا نموذج — الحفظ والمراجعة بالعين ────────
+  if (def.attachmentOnly) {
+    result.review = 'green';
+    return result;
+  }
+
   // ── 1) القراءة ─────────────────────────────────────────────────────────────
   let text = '';
   try {

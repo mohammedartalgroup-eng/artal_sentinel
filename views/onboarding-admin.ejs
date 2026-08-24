@@ -179,7 +179,12 @@
               </div>
             </div>
             <div class="flex items-center gap-2 flex-wrap">
-              <% if (!s.hasFile) { %>
+              <% if (!s.hasFile && s.existingUrl) { %>
+                <span class="ob-chip g">مرفقة بطلب التوظيف</span>
+                <a class="ob-btn s" target="_blank" rel="noopener" href="<%= s.existingUrl %>">
+                  <span class="material-symbols-outlined" style="font-size:18px">visibility</span> المرفق
+                </a>
+              <% } else if (!s.hasFile) { %>
                 <span class="ob-chip n">لم يُرفع</span>
               <% } else { %>
                 <span class="ob-chip <%= s.review === 'green' ? 'g' : (s.review === 'red' ? 'r' : 'y') %>">
@@ -204,6 +209,7 @@
               </div>
             <% } %>
 
+            <% if (s.fields.length) { %>
             <div class="mt-3 overflow-x-auto">
               <table class="ob-tbl">
                 <thead><tr><th>الحقل</th><th>القيمة</th><th>المصدر</th><th>القيمة كما قُرئت</th></tr></thead>
@@ -227,6 +233,9 @@
                 </tbody>
               </table>
             </div>
+            <% } else { %>
+            <div class="mt-3 text-xs text-[#43474f]">مرفق للمراجعة بالعين — لا حقول تُستخرج منه.</div>
+            <% } %>
 
             <% if (s.ocrText) { %>
             <!-- أداة التشخيص: ما قرأه Vision فعلاً قبل أن تعمل عليه القواعد -->

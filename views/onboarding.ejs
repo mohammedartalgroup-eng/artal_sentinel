@@ -69,6 +69,9 @@
 
     .note{font-size:12.5px;color:var(--muted);text-align:center;margin-top:22px;line-height:1.9}
 
+    .have{border:1px solid #86c9a0;background:#f2fbf5;border-radius:16px;padding:16px 14px}
+    .have .hh{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:var(--green)}
+
     .conflict{margin-top:26px;background:var(--amber-bg);border:1px solid #f3d58a;border-radius:16px;padding:14px 16px}
     .conflict .ch{display:flex;align-items:center;gap:7px;font-weight:700;font-size:13.5px;color:var(--amber);margin-bottom:8px}
     .conflict .cl{font-size:13px;color:#7a4d05;line-height:1.9}
@@ -175,6 +178,15 @@
       <h2 id="d-title"></h2>
       <p class="hint" id="d-hint"></p>
 
+      <!-- ملف موجود من طلب التوظيف — لا نطلب رفع ما رُفع سابقاً -->
+      <div class="have hidden" id="d-have">
+        <div class="hh"><span class="material-symbols-outlined">check_circle</span> <span id="d-have-text"></span></div>
+        <div class="btns" style="justify-content:flex-start;margin-top:12px">
+          <a class="btn ghost" id="d-have-view" target="_blank" rel="noopener">عرض الملف</a>
+          <button class="btn primary" onclick="pick(false)">رفع نسخة جديدة</button>
+        </div>
+      </div>
+
       <div class="drop" id="d-drop">
         <span class="material-symbols-outlined">upload_file</span>
         <p id="d-droptext">صوّر المستند أو اختره من جهازك — صورة واضحة كاملة الأطراف.</p>
@@ -223,6 +235,7 @@ function toast(msg) {
 function chipFor(s) {
   if (s.status === 'confirmed' && s.review === 'red') return ['bad', 'يحتاج إعادة رفع'];
   if (s.status === 'confirmed') return ['ok', 'مكتمل'];
+  if (s.existingUrl) return ['ok', 'موجودة من طلبك'];
   if (s.status === 'extracted' && s.review === 'red') return ['bad', 'مستند غير مطابق'];
   if (s.status === 'extracted') return ['warn', 'راجِع البيانات'];
   return [s.required ? 'wait' : 'wait', s.required ? 'مطلوب' : 'اختياري'];
@@ -231,13 +244,13 @@ function chipFor(s) {
 function renderList() {
   $('cards').innerHTML = STEPS.map(s => {
     const [cls, label] = chipFor(s);
-    const done = s.status === 'confirmed' && s.review !== 'red';
+    const done = (s.status === 'confirmed' && s.review !== 'red') || Boolean(s.existingUrl);
     return `
       <button class="card ${done ? 'done' : ''}" onclick="openDoc('${s.type}')">
         <span class="ico"><span class="material-symbols-outlined">${done ? 'check_circle' : s.icon}</span></span>
         <span class="txt">
           <b>${s.label}</b>
-          <span>${s.required ? 'مطلوب لإكمال الملف' : 'اختياري'}</span>
+          <span>${s.existingUrl ? 'مرفقة بطلب التوظيف' : (s.required ? 'مطلوب لإكمال الملف' : 'اختياري')}</span>
         </span>
         <span class="chip ${cls}">${label}</span>
       </button>`;
@@ -276,8 +289,14 @@ function openDoc(type) {
 function renderDoc() {
   const s = step(current);
   const hasFile = s.hasFile;
+  const haveOld = Boolean(s.existingUrl) && !hasFile;
 
-  $('d-drop').classList.toggle('hidden', hasFile);
+  $('d-have').classList.toggle('hidden', !haveOld);
+  if (haveOld) {
+    $('d-have-text').textContent = 'لدينا ' + s.label + ' المرفقة بطلب التوظيف.';
+    $('d-have-view').href = s.existingUrl;
+  }
+  $('d-drop').classList.toggle('hidden', hasFile || haveOld);
   $('d-thumb').classList.toggle('hidden', !hasFile);
   $('d-actions').classList.toggle('hidden', !hasFile);
 
@@ -301,6 +320,9 @@ function renderDoc() {
   } else if (s.warnings.length) {
     st.className = 'status warn';
     st.innerHTML = `<span class="material-symbols-outlined">warning</span><span>${s.warnings[0]}</span>`;
+  } else if (!s.fields.length) {
+    st.className = 'status ok';
+    st.innerHTML = '<span class="material-symbols-outlined">task_alt</span><span>تم رفع الملف — تأكّد من وضوحه ثم أكّد.</span>';
   } else {
     st.className = 'status ok';
     st.innerHTML = '<span class="material-symbols-outlined">task_alt</span><span>هذه البيانات التي وجدناها — راجعها ثم أكّد.</span>';
