@@ -437,6 +437,30 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
           }
         }
 
+        // روابط داخل الملاحظات قابلة للنقر.
+        //  يعمل على textContent ويبني عناصر <a> برمجياً — لا innerHTML ولا مجال
+        //  لحقن HTML من نصّ ملاحظة كتبها مستخدم.
+        (function linkifyNotes() {
+          document.querySelectorAll('.note-text').forEach(el => {
+            const t = el.textContent;
+            if (!/https?:\/\//.test(t)) return;
+            const frag = document.createDocumentFragment();
+            let last = 0;
+            t.replace(/https?:\/\/[^\s<>"']+/g, (m, i) => {
+              if (i > last) frag.append(t.slice(last, i));
+              const a = document.createElement('a');
+              a.href = m; a.textContent = m;
+              a.target = '_blank'; a.rel = 'noopener';
+              a.className = 'text-[#405f91] underline break-all';
+              frag.append(a);
+              last = i + m.length;
+              return m;
+            });
+            if (last < t.length) frag.append(t.slice(last));
+            el.replaceChildren(frag);
+          });
+        })();
+
         async function obCreate(id) {
           const r = await fetch('/admin/onboarding/create/' + id, { method: 'POST' });
           const j = await r.json().catch(() => ({}));

@@ -541,10 +541,13 @@ adminRouter.post('/send/:applicantId', sendLimiter, async (req, res) => {
     }
 
     // يُسجَّل في ملف المتقدم كبقية المراسلات — حتى لا يُرسله موظف آخر مرتين.
-    const line = `${tpl.noteLabel} عبر واتساب${reused ? '' : ' (رابط جديد)'}`;
+    //  والرابط نفسه داخل الملاحظة عمداً: هو ما أُرسل فعلاً، ووجوده في السجل
+    //  يعني أن أي موظف يفتح الملف بعد أسبوع يستطيع فتحه أو إعادة إرساله بلا
+    //  البحث عنه في مكان آخر.
+    const line = `${tpl.noteLabel} عبر واتساب${reused ? '' : ' (رابط جديد)'} — ${link}`;
     db.run('INSERT INTO applicant_notes (applicant_id, content, type, user_name) VALUES (?, ?, ?, ?)',
       [applicant.id, line, 'follow_up', req.session?.adminName || null]).catch(e => console.error('[Onboarding send] note:', e.message));
-    db.logActivity(applicant.id, tpl.noteLabel, null, 'واتساب', req.session?.adminName || null)
+    db.logActivity(applicant.id, tpl.noteLabel, null, `واتساب — ${link}`.slice(0, 255), req.session?.adminName || null)
       .catch(e => console.error('[Onboarding send] activity:', e.message));
     db.audit(req.session?.adminId, req.session?.adminUser || 'system', 'onboarding_send',
       'applicant', applicant.id, applicant.full_name, line, req.ip).catch(() => {});
