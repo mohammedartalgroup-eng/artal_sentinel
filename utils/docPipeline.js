@@ -64,31 +64,68 @@ async function processDocument({ docType, filePath, mime, applicant }) {
     .filter(f => !result.fields[f.key]?.valid)
     .map(f => f.key);
   const missing = [...new Set([...missingReq, ...missingAssist])];
-  if (missing.length && ai.isConfigured()) {
+
+  // دمج ناتج أي نموذج في النتيجة — لا يدهس قيمة صحيحة التقطتها القواعد.
+  const mergeAi = (out, conf) => {
+    result.aiUsed = true;
+    result.aiProvider = out.provider;
+    result.aiModel = out.model;
+    for (const [k, raw] of Object.entries(out.fields)) {
+      const v = rules.validate(docType, k, raw);
+      if (result.fields[k]?.valid) continue;
+      if (!v.ok && result.fields[k]) continue;      // لا نستبدل خطأً بخطأ
+      result.fields[k] = { raw: String(raw), value: v.value, valid: v.ok, error: v.error, confidence: conf, source: 'ai' };
+    }
+    if (out.isExpected === false && result.typeMatch !== 'yes') {
+      // القواعد قد تكون سبقته إلى نفس الاستنتاج — لا نكرّره على المرشح
+      if (result.typeMatch !== 'no') {
+        result.warnings.push(`يبدو أن الصورة ليست ${def.label}${out.detectedType ? ` — ${out.detectedType}` : ''}.`);
+      }
+      result.typeMatch = 'no';
+    }
+    // تحذيرات النموذج قد تأتي بالإنجليزية — والمرشح يقرأ العربية وحدها،
+    // فنقبل ما غلبت عليه العربية لا ما ورد فيه حرف عربي عرضاً.
+    result.warnings.push(...out.warnings.filter(w => {
+      const ar = (w.match(/[\u0600-\u06FF]/g) || []).length;
+      const la = (w.match(/[A-Za-z]/g) || []).length;
+      return ar > la;
+    }));
+  };
+
+  const askFor = (keys) => def.fields.filter(f => keys.includes(f.key)).map(f => ({ key: f.key, label: f.label }));
+
+  // (3-أ) نموذج نصي — إلا في النماذج التي نعرف أن نصّها مبعثر أصلاً
+  if (missing.length && ai.isConfigured() && !def.visionFirst) {
     try {
-      const askFor = def.fields.filter(f => missing.includes(f.key)).map(f => ({ key: f.key, label: f.label }));
       // النص المُفكوك من الخانات لا الخام: النموذج يهلوس على «F J S G 4 5 3 3»
       // ويرجع أول رمز، بينما «FJSG4533» قيمة لا لبس فيها.
-      const out = await ai.extractDocumentFields(def.label, askFor, rules.debox(text));
-      if (out) {
-        result.aiUsed = true;
-        result.aiProvider = out.provider;
-        result.aiModel = out.model;
-        for (const [k, raw] of Object.entries(out.fields)) {
-          const v = rules.validate(docType, k, raw);
-          // النموذج لا يدهس قيمة صحيحة التقطتها القواعد — يملأ الفراغ فقط.
-          if (result.fields[k]?.valid) continue;
-          result.fields[k] = { raw: String(raw), value: v.value, valid: v.ok, error: v.error, confidence: 0.75, source: 'ai' };
-        }
-        if (out.isExpected === false && result.typeMatch !== 'yes') {
-          result.typeMatch = 'no';
-          result.warnings.push(`يبدو أن الصورة ليست ${def.label}${out.detectedType ? ` — ${out.detectedType}` : ''}.`);
-        }
-        result.warnings.push(...out.warnings);
-      }
+      const out = await ai.extractDocumentFields(def.label, askFor(missing), rules.debox(text));
+      if (out) mergeAi(out, 0.75);
     } catch (e) {
       result.aiError = e.message;
       console.error('[Onboarding AI]', docType, e.message);
+    }
+  }
+
+  // (3-ب) الملاذ الأخير: الصورة نفسها إلى النموذج متعدد الوسائط.
+  //  يعمل فقط إن بقي حقل مطلوب ناقصاً بعد كل ما سبق — أو مباشرةً في النماذج
+  //  ذات الخانات. أرخص من نداء OCR نفسه، لكنه يبقى آخر الدرجات لأن كل درجة
+  //  قبله أسرع وأثبت.
+  const stillMissing = [...new Set([
+    ...rules.missingRequired(docType, result.fields),
+    ...missingAssist.filter(k => !result.fields[k]?.valid),
+  ])];
+  if (stillMissing.length && ai.supportsVision() && filePath) {
+    try {
+      const out = await ai.extractFromImage(def.label, askFor(stillMissing), filePath, mime);
+      if (out) {
+        // قراءة الصورة تفوق قراءة نصٍّ مبعثر — فتدهس قيمة نصية فاشلة التحقق
+        for (const k of stillMissing) if (result.fields[k] && !result.fields[k].valid) delete result.fields[k];
+        mergeAi(out, 0.85);
+      }
+    } catch (e) {
+      result.aiError = e.message;
+      console.error('[Onboarding AI vision]', docType, e.message);
     }
   }
 
@@ -110,6 +147,9 @@ async function processDocument({ docType, filePath, mime, applicant }) {
     result.warnings.push('رقم الهوية في المستند لا يطابق الرقم المسجّل في طلب التوظيف.');
     result.mismatch = true;
   }
+
+  // تكرار التحذير نفسه من مصدرين (قواعد + نموذج) يربك المرشح بلا فائدة
+  result.warnings = [...new Set(result.warnings)];
 
   result.review = rules.reviewLevel(docType, result.fields, result.typeMatch);
   if ((result.mismatch || parsed.expired) && result.review === 'green') result.review = 'yellow';

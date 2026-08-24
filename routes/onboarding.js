@@ -107,6 +107,7 @@ function buildSteps(session, byType, fieldsByType, opts = {}) {
       hasFile: Boolean(doc),
       fileName: doc?.original_name || null,
       aiUsed: Boolean(doc?.ai_used),
+      aiVision: String(doc?.ai_provider || '').endsWith('-vision'),
       hrNote: doc?.hr_note || null,
       // النص الخام لا يُرسَل إلى صفحة المرشح: ضجيج لا يعنيه، وحجم بلا فائدة.
       // ولفريق التوظيف هو أداة التشخيص الأولى حين يخرج حقل خاطئاً.

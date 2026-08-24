@@ -179,4 +179,94 @@ async function extractDocumentFields(docLabel, fields, ocrText) {
   };
 }
 
-module.exports = { isConfigured, provider, model, extractDocumentFields };
+// ═══ الملاذ الأخير: الصورة نفسها إلى النموذج ══════════════════════════════
+//
+// النماذج الرسمية ذات الخانات (شهادة العنوان الوطني) تخرج من OCR نصاً مبعثر
+// الترتيب: الحروف مرصوصة في مربعات، والعمودان العربي والإنجليزي يتداخلان.
+// لا القواعد ولا نموذج نصي ينقذان نصاً فاسداً — كلاهما يعمل على مُدخَل خاطئ.
+//
+// والمفاجأة أن هذا الملاذ ليس الأغلى: صورة إلى Gemini Flash أرخص من نداء
+// Google Vision OCR نفسه. فالترتيب «الأرخص أولاً» يبقى صحيحاً، وهذه الدرجة
+// تُستدعى فقط حين تعجز الدرجات قبلها عن حقل مطلوب.
+
+const VISION_PROVIDERS = ['gemini'];
+const MAX_IMAGE_BYTES = 7 * 1024 * 1024;
+
+function supportsVision() {
+  return isConfigured() && VISION_PROVIDERS.includes(provider());
+}
+
+function buildImagePrompt(docLabel, fields) {
+  const list = fields.map(f => `- ${f.key} (${f.label})`).join('\n');
+  return [
+    'استخرج بيانات هذا المستند السعودي الرسمي. أعد JSON فقط بلا أي شرح.',
+    '',
+    `نوع المستند المتوقَّع: ${docLabel}`,
+    '',
+    'الحقول المطلوبة:',
+    list,
+    '',
+    'القواعد:',
+    '- المستند نموذج بخانات: كل حرف أو رقم في مربع مستقل. اقرأ الخانات متتاليةً كقيمة واحدة.',
+    '- النموذج ثنائي اللغة: لا تخلط التسمية بالقيمة، ولا حقلاً بحقل مجاور.',
+    '- لأسماء الأماكن (الحي، المدينة، الشارع) أعد النسخة العربية إن وُجدت.',
+    '- التواريخ: أعد الميلادي إن طُبع بجوار الهجري.',
+    '- إن لم تجد قيمة حقل، اجعلها null. لا تخمّن.',
+    '',
+    'أعد بهذه الصيغة بالضبط:',
+    '{"is_expected_document": true|false, "detected_type": "وصف قصير", "fields": {"key": "value|null"}, "warnings": ["..."]}',
+  ].join('\n');
+}
+
+/**
+ * يقرأ الصورة/الـPDF مباشرةً بالنموذج متعدد الوسائط.
+ * @returns نفس شكل extractDocumentFields، مع vision: true
+ */
+async function extractFromImage(docLabel, fields, filePath, mime) {
+  if (!supportsVision() || !fields.length) return null;
+
+  const fs = require('fs/promises');
+  const buf = await fs.readFile(filePath);
+  if (buf.length > MAX_IMAGE_BYTES) return null;
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model())}:generateContent?key=${encodeURIComponent(apiKey())}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{
+        parts: [
+          { inline_data: { mime_type: mime || 'image/jpeg', data: buf.toString('base64') } },
+          { text: buildImagePrompt(docLabel, fields) },
+        ],
+      }],
+      // «التفكير» مفعّل هنا عمداً — قراءة نموذج بخانات مهمة استدلال لا نسخ،
+      // وهذه آخر محاولة قبل أن نطلب من المرشح الإدخال يدوياً.
+      generationConfig: { temperature: 0, responseMimeType: 'application/json' },
+    }),
+    signal: AbortSignal.timeout(45000),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json?.error?.message || `Gemini vision HTTP ${res.status}`);
+
+  const raw = json?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '';
+  const data = parseJson(raw);
+  if (!data) throw new Error('رد النموذج (صورة) ليس JSON صالحاً');
+
+  const clean = {};
+  for (const f of fields) {
+    const v = data.fields?.[f.key];
+    if (v != null && String(v).trim() && String(v).toLowerCase() !== 'null') clean[f.key] = String(v).trim();
+  }
+  return {
+    fields: clean,
+    isExpected: data.is_expected_document !== false,
+    detectedType: data.detected_type || null,
+    warnings: Array.isArray(data.warnings) ? data.warnings.slice(0, 3).map(String) : [],
+    provider: `${provider()}-vision`,
+    model: model(),
+    vision: true,
+  };
+}
+
+module.exports = { isConfigured, provider, model, extractDocumentFields, supportsVision, extractFromImage };

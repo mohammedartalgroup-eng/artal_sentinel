@@ -174,7 +174,7 @@
                 <div class="font-bold text-[#001736] text-sm"><%= s.label %></div>
                 <div class="text-xs text-[#43474f]">
                   <%= s.required ? 'مطلوب' : 'اختياري' %>
-                  <% if (s.aiUsed) { %> · <span class="ob-src">استُعين بنموذج لغوي</span><% } %>
+                  <% if (s.aiUsed) { %> · <span class="ob-src"><%= s.aiVision ? 'قرأ النموذج الصورة مباشرةً' : 'استُعين بنموذج لغوي' %></span><% } %>
                 </div>
               </div>
             </div>
