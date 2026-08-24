@@ -590,11 +590,17 @@ function parse(docType, rawText) {
   // ولا نرفضها آلياً بل نرفعها إلى «يحتاج مراجعة» ليقرر فريق التوظيف.
   let expired = false;
   if (docType === 'national_address') {
-    const raw = pickValue(lines, ['تاريخ الانتهاء', 'EXPIRATION DATE', 'EXPIRY DATE'], { min: 6 });
-    const iso = raw && normalizeDate(raw);
-    if (iso && iso < new Date().toISOString().slice(0, 10)) {
+    // ترويسة الشهادة ثلاثة تواريخ متجاورة (التسجيل، الإصدار، الانتهاء) وترتيب
+    // OCR لها غير مضمون: التقاط «السطر التالي للتسمية» أعطى تاريخ الإصدار مرة
+    // وتاريخ التسجيل مرة. والعلاقة بينها ثابتة لا تحتاج تخميناً — التسجيل قبل
+    // الإصدار، والإصدار قبل الانتهاء — فالانتهاء هو أحدثها دائماً.
+    const dates = [...new Set((text.match(DATE_RE) || []).map(normalizeDate).filter(Boolean))].sort();
+    // تاريخ واحد مقروء = تاريخ التسجيل غالباً (وهو قديم دائماً) — الاكتفاء به
+    // يعني اتهام كل شهادة بالانتهاء. لا حكم إلا بتاريخين فأكثر.
+    const exp = dates.length >= 2 ? dates[dates.length - 1] : null;
+    if (exp && exp < new Date().toISOString().slice(0, 10)) {
       expired = true;
-      warnings.push(`شهادة العنوان منتهية الصلاحية (${iso}) — اطلب شهادة حديثة.`);
+      warnings.push(`شهادة العنوان منتهية الصلاحية (${exp}) — اطلب شهادة حديثة.`);
     }
   }
 
