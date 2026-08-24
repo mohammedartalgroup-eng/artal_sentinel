@@ -314,8 +314,17 @@ function validate(docType, key, raw) {
     case 'place': {
       // الحي في نموذج العنوان يلتصق به الرقم الفرعي أحياناً («Al Munaizlah 7927»)،
       // والحرف الواحد ليس اسم شارع — رفضه يفتح الباب للنموذج اللغوي أو للمرشح.
-      const v = s.replace(/\s+/g, ' ').trim().replace(/[\s،,-]*\d[\d\s]*$/, '').trim();
-      if (v.length < 3) return { ok: false, value: v, error: 'قيمة غير مفهومة — اكتبها يدوياً' };
+      // بلا فكّ خانات هنا: «F J S G» أحرفُ رمزٍ مختصر تسرّبت، ودمجها يحوّلها
+      // إلى «FJSG» فتبدو كلمة سليمة. أسماء الأماكن لا تُكتب في خانات أصلاً.
+      const src = normalizeDigits(raw).replace(/[ً-ْـ]/g, '').replace(/\s+/g, ' ').trim();
+      const v = src.replace(/[\s،,-]*\d[\d\s]*$/, '').trim();
+      // «S J» ثلاثة محارف لكنها ليست اسماً: بقايا خانات مفكوكة بحرف لكل كلمة.
+      // الشرط الحقيقي أن تحوي كلمةً واحدة على الأقل من ثلاثة أحرف — وبدونه
+      // يمرّ الضجيج كقيمة صحيحة فلا تُطلب قراءة الصورة له أصلاً.
+      const longest = Math.max(0, ...v.split(' ').map(w => w.length));
+      if (v.length < 3 || longest < 3) {
+        return { ok: false, value: v, error: 'قيمة غير مفهومة — اكتبها يدوياً' };
+      }
       return { ok: true, value: v.slice(0, 120), error: null };
     }
     case 'name_en': {
