@@ -67,7 +67,9 @@ async function processDocument({ docType, filePath, mime, applicant }) {
   if (missing.length && ai.isConfigured()) {
     try {
       const askFor = def.fields.filter(f => missing.includes(f.key)).map(f => ({ key: f.key, label: f.label }));
-      const out = await ai.extractDocumentFields(def.label, askFor, text);
+      // النص المُفكوك من الخانات لا الخام: النموذج يهلوس على «F J S G 4 5 3 3»
+      // ويرجع أول رمز، بينما «FJSG4533» قيمة لا لبس فيها.
+      const out = await ai.extractDocumentFields(def.label, askFor, rules.debox(text));
       if (out) {
         result.aiUsed = true;
         result.aiProvider = out.provider;
@@ -110,7 +112,7 @@ async function processDocument({ docType, filePath, mime, applicant }) {
   }
 
   result.review = rules.reviewLevel(docType, result.fields, result.typeMatch);
-  if (result.mismatch && result.review === 'green') result.review = 'yellow';
+  if ((result.mismatch || parsed.expired) && result.review === 'green') result.review = 'yellow';
 
   return result;
 }

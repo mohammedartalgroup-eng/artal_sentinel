@@ -23,9 +23,58 @@ function normalizeDigits(s) {
   });
 }
 
-// تطبيع عام قبل أي بحث: أرقام لاتينية، مسافات موحّدة، تشكيل محذوف.
+/**
+ * فكّ «الخانات»: النماذج الرسمية السعودية تطبع كل حرف/رقم في مربع مستقل
+ * (العنوان الوطني، رقم الهوية في إثبات العنوان)، فيقرؤها OCR رموزاً متفرقة:
+ *
+ *    F J S G 4 5 3 3   →   FJSG4533
+ *    3 6 3 6 9         →   36369
+ *
+ * بلا هذه الخطوة يلتقط أي مستخرج الحرف الأول ويظنّه القيمة كاملة — وهو ما كان
+ * يحدث فعلاً. تُطبَّق قبل القواعد وقبل إرسال النص إلى النموذج اللغوي معاً.
+ *
+ * الشرط: ثلاثة رموز مفردة متتالية فأكثر — اثنان قد يكونان اختصاراً حقيقياً،
+ * والكلمات العادية أطول من حرف واحد فلا تتأثر.
+ */
+function debox(input) {
+  const isSingle = (t) => /^[A-Za-z0-9\u0660-\u0669]$/.test(t);
+
+  // (أ) أسطر من رمز واحد متتالية → سطر واحد (خانات مرصوصة عمودياً)
+  const merged = [];
+  let run = [];
+  const flushLines = () => {
+    if (run.length >= 3) merged.push(run.join(''));
+    else merged.push(...run);
+    run = [];
+  };
+  for (const ln of String(input == null ? '' : input).split(/\r?\n/)) {
+    const t = ln.trim();
+    if (isSingle(t)) run.push(t);
+    else { flushLines(); merged.push(ln); }
+  }
+  flushLines();
+
+  // (ب) داخل السطر: سلسلة رموز مفردة مفصولة بمسافات → كلمة واحدة
+  return merged.map(ln => {
+    const out = [];
+    let buf = [];
+    const flush = () => {
+      if (buf.length >= 3) out.push(buf.join(''));
+      else out.push(...buf);
+      buf = [];
+    };
+    for (const tok of ln.split(/\s+/)) {
+      if (isSingle(tok)) buf.push(tok);
+      else { flush(); out.push(tok); }
+    }
+    flush();
+    return out.join(' ').trim();
+  }).join('\n');
+}
+
+// تطبيع عام قبل أي بحث: فكّ الخانات، أرقام لاتينية، مسافات موحّدة، تشكيل محذوف.
 function normalizeText(s) {
-  return normalizeDigits(s)
+  return debox(normalizeDigits(s))
     .replace(/[ً-ْـ]/g, '')     // تشكيل وتطويل
     .replace(/ /g, ' ')
     .replace(/[ \t]+/g, ' ');
@@ -145,13 +194,14 @@ const DOC_TYPES = {
     icon: 'home_pin',
     hint: 'ارفع صورة شهادة العنوان الوطني من تطبيق سبل أو أبشر.',
     fields: [
-      { key: 'short_address',     label: 'الرمز المختصر',  type: 'short_address', required: true },
-      { key: 'building_number',   label: 'رقم المبنى',     type: 'digits4',       required: true },
-      { key: 'street',            label: 'الشارع',         type: 'text',          required: false },
-      { key: 'district',          label: 'الحي',           type: 'text',          required: true },
-      { key: 'city',              label: 'المدينة',        type: 'text',          required: true },
-      { key: 'postal_code',       label: 'الرمز البريدي',  type: 'digits5',       required: true },
-      { key: 'additional_number', label: 'الرقم الإضافي',  type: 'digits4',       required: false },
+      { key: 'short_address',     label: 'الرمز المختصر',         type: 'short_address', required: true },
+      { key: 'building_number',   label: 'رقم المبنى',            type: 'digits4',       required: true },
+      { key: 'street',            label: 'الشارع',                type: 'place',         required: false, aiAssist: true },
+      { key: 'district',          label: 'الحي',                  type: 'place',         required: true },
+      { key: 'city',              label: 'المدينة',               type: 'place',         required: true },
+      { key: 'postal_code',       label: 'الرمز البريدي',         type: 'digits5',       required: true },
+      // النموذج الرسمي يسمّيه «الرقم الفرعي / Secondary No.» لا «الإضافي»
+      { key: 'additional_number', label: 'الرقم الفرعي',          type: 'digits4',       required: false, aiAssist: true },
     ],
     markers: ['العنوان الوطني', 'الرمز المختصر', 'الرقم الإضافي', 'NATIONAL ADDRESS', 'SHORT ADDRESS', 'ADDITIONAL NO'],
   },
@@ -241,6 +291,13 @@ function validate(docType, key, raw) {
       const v = s.replace(/\s+/g, ' ').trim();
       if (v.length < 4) return { ok: false, value: v, error: 'الاسم قصير جداً' };
       return { ok: true, value: v, error: null };
+    }
+    case 'place': {
+      // الحي في نموذج العنوان يلتصق به الرقم الفرعي أحياناً («Al Munaizlah 7927»)،
+      // والحرف الواحد ليس اسم شارع — رفضه يفتح الباب للنموذج اللغوي أو للمرشح.
+      const v = s.replace(/\s+/g, ' ').trim().replace(/[\s،,-]*\d[\d\s]*$/, '').trim();
+      if (v.length < 3) return { ok: false, value: v, error: 'قيمة غير مفهومة — اكتبها يدوياً' };
+      return { ok: true, value: v.slice(0, 120), error: null };
     }
     case 'name_en': {
       // حروف لاتينية فقط — الاسم الإنجليزي على الهوية يُكتب بفاصلة وحرف أوسط
@@ -357,6 +414,66 @@ function nationalityFromId(idValue) {
   return /^1\d{9}$/.test(d) && saudiIdValid(d) ? 'سعودي' : null;
 }
 
+// سطور هي «تسميات» لا قيم — النماذج الرسمية ثنائية اللغة تطبع التسمية مرتين
+// (عربي ثم إنجليزي) قبل القيمة، فأخذُ السطر التالي أعمى يلتقط «Building No.»
+// ويحوّلها digitsOnlyFix إلى رقم وهمي. هذه القائمة تمنع ذلك.
+const LABEL_LINES = [
+  'building no', 'building number', 'street', 'district', 'city', 'postal code', 'zip',
+  'secondary no', 'secondary number', 'additional no', 'additional number', 'short address',
+  'name', 'id no', 'id number', 'reg date', 'address details', 'address holder details',
+  'proof number', 'original date', 'expiration date', 'national address', 'address proof',
+  'kingdom of saudi arabia', 'date of birth', 'dob', 'doe', 'expiry date', 'nationality',
+  'sex', 'occupation', 'to verify', 'iban', 'account name', 'customer name',
+  'الشارع', 'الحي', 'المدينة', 'الرمز البريدي', 'الرمزي البريدي', 'رقم المبنى', 'الرقم الفرعي',
+  'الرقم الاضافي', 'الرقم الإضافي', 'العنوان المختصر', 'الاسم', 'رقم الهوية', 'رقم الاقامة',
+  'رقم الإقامة', 'تاريخ التسجيل', 'تفاصيل العنوان', 'بيانات صاحب العنوان', 'العنوان الوطني',
+  'اثبات عنوان', 'إثبات عنوان', 'المملكة العربية السعودية', 'رقم الاثبات', 'رقم الإثبات',
+  'تاريخ الاصدار', 'تاريخ الإصدار', 'تاريخ الانتهاء', 'الجنسية', 'تاريخ الميلاد', 'مكان الميلاد',
+  'الرقم', 'للتحقق', 'وزارة الداخلية', 'الهوية الوطنية',
+];
+
+const cleanKey = (t) => String(t == null ? '' : t)
+  .toLowerCase().replace(/[.:：\-–_,]/g, '').replace(/\s+/g, ' ').trim();
+
+function isLabelLine(t) {
+  const k = cleanKey(t);
+  return !k || LABEL_LINES.some(l => k === cleanKey(l));
+}
+
+const hasArabic = (t) => /[\u0600-\u06FF]/.test(String(t || ''));
+
+/**
+ * قيمة حقل من منطقة التسمية — تتخطّى سطور التسميات وتفحص عدة سطور بعدها.
+ *
+ * @param {number} opts.digits  عدد الأرقام المتوقَّع بالضبط (0 = حقل نصي)
+ * @param {boolean} opts.preferArabic  النسخة العربية أفيد لفريق عربي حين تتوفر الاثنتان
+ */
+function pickValue(lines, labels, { digits = 0, min = 3, lookahead = 3, preferArabic = false } = {}) {
+  const cands = [];
+  for (const lab of labels) {
+    for (let i = 0; i < lines.length; i++) {
+      const idx = lines[i].toUpperCase().indexOf(lab.toUpperCase());
+      if (idx === -1) continue;
+      const tail = lines[i].slice(idx + lab.length).replace(/^[\s:：.\-–]+/, '').trim();
+      if (tail) cands.push(tail);
+      for (let k = 1; k <= lookahead; k++) if (lines[i + k]) cands.push(lines[i + k].trim());
+    }
+  }
+
+  const ok = [];
+  for (const c of cands) {
+    if (isLabelLine(c)) continue;
+    if (digits) {
+      const d = normalizeDigits(c).replace(/\D/g, '');
+      if (d.length === digits) ok.push(d);
+      continue;
+    }
+    if (c.length >= min && c.length <= 120) ok.push(c);
+  }
+  if (!ok.length) return null;
+  return (preferArabic && ok.find(hasArabic)) || ok[0];
+}
+
 function parse(docType, rawText) {
   const text = normalizeText(rawText || '');
   const upper = text.toUpperCase();
@@ -404,12 +521,13 @@ function parse(docType, rawText) {
   if (docType === 'national_address') {
     const sa = upper.match(/\b[A-Z]{4}\s?\d{4}\b/);
     put('short_address', sa && sa[0], 0.95);
-    put('building_number', afterLabel(lines, ['رقم المبنى', 'BUILDING NO', 'BUILDING NUMBER']), 0.9);
-    put('additional_number', afterLabel(lines, ['الرقم الإضافي', 'ADDITIONAL NO', 'ADDITIONAL NUMBER']), 0.9);
-    put('postal_code', afterLabel(lines, ['الرمز البريدي', 'POSTAL CODE', 'ZIP']), 0.9);
-    put('district', afterLabel(lines, ['الحي', 'DISTRICT'], { maxLen: 40 }), 0.85);
-    put('city', afterLabel(lines, ['المدينة', 'CITY'], { maxLen: 40 }), 0.85);
-    put('street', afterLabel(lines, ['الشارع', 'STREET'], { maxLen: 60 }), 0.8);
+    put('short_address', pickValue(lines, ['العنوان المختصر', 'SHORT ADDRESS'], { min: 8 }), 0.9);
+    put('building_number',   pickValue(lines, ['رقم المبنى', 'BUILDING NO', 'BUILDING NUMBER'], { digits: 4 }), 0.9);
+    put('additional_number', pickValue(lines, ['الرقم الفرعي', 'الرقم الإضافي', 'SECONDARY NO', 'SECONDARY NUMBER', 'ADDITIONAL NO', 'ADDITIONAL NUMBER'], { digits: 4 }), 0.9);
+    put('postal_code',       pickValue(lines, ['الرمز البريدي', 'الرمزي البريدي', 'POSTAL CODE', 'ZIP'], { digits: 5 }), 0.9);
+    put('district', pickValue(lines, ['الحي', 'DISTRICT'], { preferArabic: true }), 0.85);
+    put('city',     pickValue(lines, ['المدينة', 'CITY'],  { preferArabic: true }), 0.85);
+    put('street',   pickValue(lines, ['الشارع', 'STREET'], { preferArabic: true }), 0.8);
   }
 
   if (docType === 'iban') {
@@ -429,12 +547,24 @@ function parse(docType, rawText) {
     put('name_ar', afterLabel(lines, ['الاسم', 'NAME']), 0.8);
   }
 
+  // شهادة العنوان الوطني لها صلاحية مطبوعة — المنتهية لا تصلح لملف موظف،
+  // ولا نرفضها آلياً بل نرفعها إلى «يحتاج مراجعة» ليقرر فريق التوظيف.
+  let expired = false;
+  if (docType === 'national_address') {
+    const raw = pickValue(lines, ['تاريخ الانتهاء', 'EXPIRATION DATE', 'EXPIRY DATE'], { min: 6 });
+    const iso = raw && normalizeDate(raw);
+    if (iso && iso < new Date().toISOString().slice(0, 10)) {
+      expired = true;
+      warnings.push(`شهادة العنوان منتهية الصلاحية (${iso}) — اطلب شهادة حديثة.`);
+    }
+  }
+
   if (lines.length < 3) warnings.push('نص المستند غير واضح — قد تحتاج صورة أوضح.');
   if (typeMatch === 'no') {
     warnings.push(`يبدو أن الصورة ليست ${DOC_TYPES[docType].label} — ربما ${DOC_TYPES[otherHit[0]].label}.`);
   }
 
-  return { fields: out, warnings, typeMatch };
+  return { fields: out, warnings, typeMatch, expired };
 }
 
 // ─── بوابة الذكاء الاصطناعي ─────────────────────────────────────────────────
@@ -480,7 +610,7 @@ function derivedFrom(docType, key, value) {
 
 module.exports = {
   DOC_TYPES, DOC_KEYS, fieldDef, derivedFrom, derivedKeys, nationalityFromId,
-  normalizeDigits, normalizeText, digitsOnlyFix, normalizeDate, hijriToGregorian,
+  normalizeDigits, normalizeText, debox, digitsOnlyFix, normalizeDate, hijriToGregorian,
   saudiIdValid, ibanValid,
   parse, validate, needsAi, missingRequired, reviewLevel,
 };

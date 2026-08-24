@@ -88,7 +88,7 @@ async function loadDocs(sessionId) {
 }
 
 // حالة كل مستند كما تراها الواجهتان (المرشح وHR) — مصدر واحد للحقيقة.
-function buildSteps(session, byType, fieldsByType) {
+function buildSteps(session, byType, fieldsByType, opts = {}) {
   const required = requiredList(session);
   return rules.DOC_KEYS.map(type => {
     const def = rules.DOC_TYPES[type];
@@ -108,6 +108,9 @@ function buildSteps(session, byType, fieldsByType) {
       fileName: doc?.original_name || null,
       aiUsed: Boolean(doc?.ai_used),
       hrNote: doc?.hr_note || null,
+      // النص الخام لا يُرسَل إلى صفحة المرشح: ضجيج لا يعنيه، وحجم بلا فائدة.
+      // ولفريق التوظيف هو أداة التشخيص الأولى حين يخرج حقل خاطئاً.
+      ocrText: opts.withOcr ? (doc?.ocr_text || null) : null,
       fields: def.fields.map(f => ({
         key: f.key, label: f.label, required: f.required, type: f.type,
         value: saved[f.key]?.value ?? '',
@@ -550,7 +553,7 @@ adminRouter.get('/view/:applicantId', async (req, res) => {
     let steps = [], history = [];
     if (s) {
       const { byType, fieldsByType } = await loadDocs(s.id);
-      steps = buildSteps(s, byType, fieldsByType);
+      steps = buildSteps(s, byType, fieldsByType, { withOcr: true });
       history = await db.all(
         'SELECT id, doc_type, status, review, original_name, created_at FROM onboarding_documents WHERE session_id = ? AND is_current = 0 ORDER BY id DESC',
         [s.id]
