@@ -69,6 +69,11 @@
 
     .note{font-size:12.5px;color:var(--muted);text-align:center;margin-top:22px;line-height:1.9}
 
+    .conflict{margin-top:26px;background:var(--amber-bg);border:1px solid #f3d58a;border-radius:16px;padding:14px 16px}
+    .conflict .ch{display:flex;align-items:center;gap:7px;font-weight:700;font-size:13.5px;color:var(--amber);margin-bottom:8px}
+    .conflict .cl{font-size:13px;color:#7a4d05;line-height:1.9}
+    .conflict .cn{font-size:12px;color:var(--amber);margin-top:8px;opacity:.9}
+
     /* ── شاشة المستند ──────────────────────────────────────── */
     .back{display:inline-flex;align-items:center;gap:6px;background:none;border:0;font:inherit;
           color:var(--navy);padding:14px 0;cursor:pointer}
@@ -139,6 +144,18 @@
   </div>
 
   <div class="wrap">
+    <!-- اختلاف بين المستندات — يراه المرشح ليصحّحه بنفسه قبل أن يصل HR -->
+    <div id="conflicts" class="conflict <%= conflicts.length ? '' : 'hidden' %>">
+      <div class="ch"><span class="material-symbols-outlined">warning</span> بيانات تحتاج مراجعتك</div>
+      <div id="conflict-list"><%
+        conflicts.forEach(function (g) { %>
+        <div class="cl"><b><%= g.label %></b>: <%
+          g.values.forEach(function (v, i) { %><%= i ? ' — ' : '' %><%= v.docLabel %> «<%= v.value %>»<% });
+        %></div><%
+      }); %></div>
+      <div class="cn">تأكّد من الصحيح وصحّحه في المستند المعني — قد يكون سبب الاختلاف خطأً في القراءة.</div>
+    </div>
+
     <div class="cards" id="cards"></div>
     <p class="note">
       بياناتك تُستخدم لإنشاء ملفك الوظيفي في شركة أرتال للحراسات الأمنية فقط.<br>
@@ -410,6 +427,7 @@ async function confirmDoc() {
     }
     const s = step(current);
     s.status = 'confirmed';
+    renderConflicts(j.conflicts || []);
     toast(j.progress >= 100 ? 'اكتمل ملفك — شكراً لك 🎉' : 'تم الحفظ ✓');
     showList();
   } catch (err) {
@@ -417,6 +435,17 @@ async function confirmDoc() {
   } finally {
     btn.disabled = false;
   }
+}
+
+// اختلاف بين مستندين في حقل مشترك — نعرضه للمرشح بلغة مفهومة لا كخطأ تقني
+function renderConflicts(list) {
+  const box = $('conflicts');
+  if (!list.length) { box.classList.add('hidden'); return; }
+  $('conflict-list').innerHTML = list.map(g =>
+    `<div class="cl"><b>${g.label}</b>: ` +
+    g.values.map(v => `${v.docLabel} «${v.value}»`).join(' — ') + '</div>'
+  ).join('');
+  box.classList.remove('hidden');
 }
 
 // ─── الإقلاع: نفتح مباشرةً على أول مستند ناقص لمن سبق أن بدأ ────────────────

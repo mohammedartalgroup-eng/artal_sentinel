@@ -121,6 +121,47 @@
         </div>
       </div>
 
+      <!-- ── الملف الموحّد: ما تتفق عليه المستندات وما تختلف فيه ──── -->
+      <% if (profile.length) { %>
+      <div class="ob-card p-4 lg:p-5">
+        <div class="flex items-baseline gap-2 mb-1">
+          <h2 class="text-sm font-bold text-[#001736]">الملف الموحّد</h2>
+          <span class="text-[11px] text-[#43474f]">البيانات المشتركة بين المستندات</span>
+        </div>
+        <p class="text-[11px] text-[#43474f] mb-3">
+          اتفاق المستندات تأكيدٌ على صحة القراءة. والاختلاف يعني أحد ثلاثة: خطأ قراءة، أو مستند لشخص آخر، أو بيانات قديمة — ولا يُرجَّح آلياً.
+        </p>
+        <div class="overflow-x-auto">
+          <table class="ob-tbl">
+            <thead><tr><th>الحقل</th><th>القيمة المعتمدة</th><th>مصدرها</th><th>الحالة</th></tr></thead>
+            <tbody>
+            <% profile.forEach(function (g) { %>
+              <tr>
+                <td class="text-[#43474f] whitespace-nowrap"><%= g.label %></td>
+                <td class="ob-val"><%= g.chosen.value %></td>
+                <td class="ob-src"><%= g.chosen.docLabel %></td>
+                <td>
+                  <% if (g.conflict) { %>
+                    <span class="ob-chip r">اختلاف بين المستندات</span>
+                    <div class="mt-1.5 space-y-0.5">
+                      <% g.values.forEach(function (v) { %>
+                        <div class="ob-src"><%= v.docLabel %>: <span class="text-[#001736] font-semibold"><%= v.value %></span></div>
+                      <% }) %>
+                    </div>
+                  <% } else if (g.values.length > 1) { %>
+                    <span class="ob-chip g">متطابق في <%= g.values.length %> مستندات</span>
+                  <% } else { %>
+                    <span class="ob-chip n">مستند واحد</span>
+                  <% } %>
+                </td>
+              </tr>
+            <% }) %>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <% } %>
+
       <!-- ── المستندات ────────────────────────────────────────────── -->
       <% steps.forEach(function (s) { %>
         <div class="ob-card p-4 lg:p-5">

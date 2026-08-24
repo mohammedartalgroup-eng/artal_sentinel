@@ -175,14 +175,14 @@ const DOC_TYPES = {
     icon: 'badge',
     hint: 'صوّر وجه الهوية الوطنية أو الإقامة كاملاً — بلا انعكاس ضوء ولا أطراف مقطوعة.',
     fields: [
-      { key: 'id_number',   label: 'رقم الهوية / الإقامة', type: 'saudi_id', required: true },
-      { key: 'name_ar',     label: 'الاسم بالعربية',        type: 'name',     required: true },
+      { key: 'id_number',   label: 'رقم الهوية / الإقامة', type: 'saudi_id', required: true, cross: 'person_id' },
+      { key: 'name_ar',     label: 'الاسم بالعربية',        type: 'name',     required: true, cross: 'name_ar' },
       // aiAssist: حقل غير مطلوب لكنه يستحق نداء النموذج إن عجزت القواعد عنه.
       // الاسم الإنجليزي يُطبع بتخطيط حرّ على البطاقة (سطر، فاصلة، حرف أوسط)،
       // فالتقاطه بقاعدة وحدها يفشل أحياناً — وتركه فارغاً يعني إدخالاً يدوياً.
-      { key: 'name_en',     label: 'الاسم بالإنجليزية',     type: 'name_en',  required: false, aiAssist: true },
+      { key: 'name_en',     label: 'الاسم بالإنجليزية',     type: 'name_en',  required: false, aiAssist: true, cross: 'name_en' },
       { key: 'nationality', label: 'الجنسية',               type: 'text',     required: false },
-      { key: 'birth_date',  label: 'تاريخ الميلاد',         type: 'date',     required: false },
+      { key: 'birth_date',  label: 'تاريخ الميلاد',         type: 'date',     required: false, cross: 'birth_date' },
       { key: 'expiry_date', label: 'تاريخ الانتهاء',        type: 'date',     required: true },
     ],
     // كلمات تُثبت أن المستند من النوع المتوقَّع (ولو واحدة كفت)
@@ -194,6 +194,8 @@ const DOC_TYPES = {
     icon: 'home_pin',
     hint: 'ارفع صورة شهادة العنوان الوطني من تطبيق سبل أو أبشر.',
     fields: [
+      // رقم الهوية مطبوع على الشهادة — نستخرجه لا لعرضه بل لإثبات أن العنوان لصاحب الملف
+      { key: 'id_number',         label: 'رقم الهوية في الشهادة', type: 'saudi_id',      required: false, cross: 'person_id' },
       { key: 'short_address',     label: 'الرمز المختصر',         type: 'short_address', required: true },
       { key: 'building_number',   label: 'رقم المبنى',            type: 'digits4',       required: true },
       { key: 'street',            label: 'الشارع',                type: 'place',         required: false, aiAssist: true },
@@ -223,9 +225,13 @@ const DOC_TYPES = {
     icon: 'directions_car',
     hint: 'صوّر وجه رخصة القيادة كاملاً.',
     fields: [
-      { key: 'license_number', label: 'رقم الرخصة',     type: 'digits10', required: true },
-      { key: 'expiry_date',    label: 'تاريخ الانتهاء', type: 'date',     required: true },
-      { key: 'name_ar',        label: 'الاسم',          type: 'name',     required: false },
+      // رقم الرخصة في السعودية هو رقم الهوية نفسه — ولهذا يُقارَن به (cross)
+      { key: 'license_number', label: 'رقم الرخصة',        type: 'digits10', required: true,  cross: 'person_id' },
+      { key: 'expiry_date',    label: 'تاريخ الانتهاء',    type: 'date',     required: true },
+      { key: 'blood_type',     label: 'فصيلة الدم',        type: 'blood',    required: false, aiAssist: true },
+      { key: 'birth_date',     label: 'تاريخ الميلاد',     type: 'date',     required: false, aiAssist: true, cross: 'birth_date' },
+      { key: 'name_ar',        label: 'الاسم بالعربية',    type: 'name',     required: false, aiAssist: true, cross: 'name_ar' },
+      { key: 'name_en',        label: 'الاسم بالإنجليزية', type: 'name_en',  required: false, aiAssist: true, cross: 'name_en' },
     ],
     markers: ['رخصة قيادة', 'رخصة القيادة', 'DRIVING LICENSE', 'DRIVING LICENCE', 'DRIVER LICENSE'],
   },
@@ -291,6 +297,16 @@ function validate(docType, key, raw) {
       const v = s.replace(/\s+/g, ' ').trim();
       if (v.length < 4) return { ok: false, value: v, error: 'الاسم قصير جداً' };
       return { ok: true, value: v, error: null };
+    }
+    case 'blood': {
+      // OCR يخلط 8/B و0/O في رمز قصير كهذا — والسياق يجعل التصحيح آمناً
+      const v = s.toUpperCase().replace(/\s+/g, '')
+        .replace(/POSITIVE|POS/g, '+').replace(/NEGATIVE|NEG/g, '-')
+        .replace(/8/g, 'B').replace(/0/g, 'O')
+        .replace(/[^ABO+\-]/g, '');
+      const m = v.match(/^(AB|A|B|O)([+\-])$/);
+      if (!m) return { ok: false, value: v, error: 'فصيلة غير صالحة — مثل O+ أو AB-' };
+      return { ok: true, value: m[1] + m[2], error: null };
     }
     case 'place': {
       // الحي في نموذج العنوان يلتصق به الرقم الفرعي أحياناً («Al Munaizlah 7927»)،
@@ -542,9 +558,20 @@ function parse(docType, rawText) {
   if (docType === 'driving_license') {
     const cands = (text.match(/\d[\d\s-]{8,14}\d/g) || [])
       .map(x => x.replace(/\D/g, '')).filter(x => x.length === 10);
-    put('license_number', cands.find(saudiIdValid) || cands[0] || afterLabel(lines, ['رقم الرخصة', 'LICENSE NO', 'LICENCE NO']), 0.9);
-    put('expiry_date', afterLabel(lines, ['تاريخ الانتهاء', 'الانتهاء', 'EXPIRY', 'EXPIRES']), 0.85);
+    put('license_number', cands.find(saudiIdValid) || cands[0] || pickValue(lines, ['رقم الرخصة', 'الرقم', 'LICENSE NO', 'LICENCE NO', 'NO.'], { digits: 10 }), 0.9);
+    // التسميات اللاتينية أولاً (Exp/DOB تحملان الميلادي بجوار الهجري)
+    put('expiry_date', pickDate(lines, ['EXP', 'EXPIRY', 'EXPIRES', 'تاريخ الانتهاء', 'الانتهاء']), 0.9);
+    put('birth_date',  pickDate(lines, ['DOB', 'DATE OF BIRTH', 'تاريخ الميلاد', 'الميلاد']), 0.9);
     put('name_ar', afterLabel(lines, ['الاسم', 'NAME']), 0.8);
+    put('name_ar', pickArabicName(lines), 0.7);
+    put('name_en', pickLatinName(lines), 0.85);
+    // فصيلة الدم: الرمز يسبق التسمية عادةً في التخطيط العربي («B+ فصيلة الدم»)،
+    // فلا ينفع «السطر التالي». نلتقطه بنمطه من سطر التسمية نفسه، ثم من النص كله.
+    // 8 و0 مقبولان لأن OCR يخلطهما بـ B وO في رمز من حرفين — والتحقق يصحّحهما.
+    const bloodLine = lines.find(l => /(فصيلة|فصيله)\s*الدم|BLOOD/i.test(l));
+    put('blood_type',
+      (bloodLine && (bloodLine.match(/(AB|A|B|O|8|0)\s?[+\-]/i) || [])[0])
+      || (text.match(/(?:^|\s)(AB|A|B|O)\s?[+\-](?=\s|$)/i) || [])[0], 0.9);
   }
 
   // شهادة العنوان الوطني لها صلاحية مطبوعة — المنتهية لا تصلح لملف موظف،
@@ -589,6 +616,81 @@ function reviewLevel(docType, fields, typeMatch) {
   return missingRequired(docType, fields).length === 0 ? 'green' : 'yellow';
 }
 
+// ═══ المقارنة بين المستندات ═══════════════════════════════════════════════
+//
+// الهوية والرخصة وشهادة العنوان تحمل بيانات مشتركة (الرقم، الاسمان، الميلاد).
+// اتفاقها تأكيدٌ مجاني على صحة القراءة، واختلافها إشارة إلى واحد من ثلاثة:
+// خطأ قراءة، أو مستند لشخص آخر، أو بيانات قديمة. لا نرجّح بصمت في الحالتين
+// الأخيرتين — نعرض الاختلاف ليقرّر إنسان.
+
+const CROSS_LABELS = {
+  person_id:  'رقم الهوية',
+  name_ar:    'الاسم بالعربية',
+  name_en:    'الاسم بالإنجليزية',
+  birth_date: 'تاريخ الميلاد',
+};
+
+// ثقة المستند: الهوية هي المرجع، ثم الرخصة (تصدرها الداخلية أيضاً)، ثم غيرها.
+const DOC_TRUST = { id_iqama: 30, driving_license: 20, national_address: 10, iban: 5 };
+// ومصدر القيمة أهم من المستند: ما أكّده إنسان يسبق أي قراءة آلية.
+const SOURCE_SCORE = { user: 100, ocr: 20, rule: 15, ai: 10 };
+
+// تطبيع الأسماء للمقارنة وحدها — لا يُحفظ ولا يُعرض.
+function nameKey(v) {
+  return normalizeText(v).toLowerCase()
+    .replace(/[أإآا]/g, 'ا').replace(/[ىي]/g, 'ي').replace(/ة/g, 'ه')
+    .replace(/[^\p{L}\p{N} ]/gu, ' ')
+    .replace(/\s+/g, ' ').trim();
+}
+
+// تشابه بمجموعات الكلمات: OCR يسقط كلمة أو يقلب حرفاً، والاسم يبقى هو الاسم.
+function nameSimilar(a, b) {
+  const A = new Set(nameKey(a).split(' ').filter(w => w.length > 1));
+  const B = new Set(nameKey(b).split(' ').filter(w => w.length > 1));
+  if (!A.size || !B.size) return false;
+  let hit = 0;
+  for (const w of A) if (B.has(w)) hit++;
+  return hit / Math.max(A.size, B.size) >= 0.6;
+}
+
+/**
+ * يوحّد الحقول المشتركة عبر المستندات.
+ * @param {Array} entries [{docType, key, value, source, confidence, userConfirmed}]
+ * @returns [{cross, label, chosen, conflict, values[]}]
+ */
+function consolidate(entries) {
+  const groups = {};
+  for (const e of entries) {
+    const def = fieldDef(e.docType, e.key);
+    if (!def?.cross) continue;
+    if (!String(e.value ?? '').trim()) continue;
+    (groups[def.cross] ||= []).push({
+      ...e,
+      docLabel: DOC_TYPES[e.docType]?.label || e.docType,
+      fieldLabel: def.label,
+    });
+  }
+
+  return Object.entries(groups).map(([cross, vals]) => {
+    const scored = vals
+      .map(v => ({
+        ...v,
+        score: (SOURCE_SCORE[v.source] || 0)
+             + (DOC_TRUST[v.docType] || 0)
+             + (v.userConfirmed ? 50 : 0)
+             + Number(v.confidence || 0),
+      }))
+      .sort((a, b) => b.score - a.score);
+
+    const chosen = scored[0];
+    const isName = cross === 'name_ar' || cross === 'name_en';
+    const same = (v) => isName ? nameSimilar(v.value, chosen.value) : String(v.value) === String(chosen.value);
+    const conflict = scored.length > 1 && scored.some(v => !same(v));
+
+    return { cross, label: CROSS_LABELS[cross] || cross, chosen, conflict, values: scored };
+  }).sort((a, b) => Number(b.conflict) - Number(a.conflict));
+}
+
 /**
  * حقول تُشتق تلقائياً بعد تغيّر حقل آخر (تعديل يدوي أو استخراج).
  * يُرجع [{key, value}] — والمُستدعي يقرّر متى يكتبها (لا يدهس قيمة كتبها المرشح).
@@ -613,4 +715,5 @@ module.exports = {
   normalizeDigits, normalizeText, debox, digitsOnlyFix, normalizeDate, hijriToGregorian,
   saudiIdValid, ibanValid,
   parse, validate, needsAi, missingRequired, reviewLevel,
+  consolidate, nameSimilar, CROSS_LABELS,
 };

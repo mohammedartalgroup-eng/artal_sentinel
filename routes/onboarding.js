@@ -124,6 +124,27 @@ function buildSteps(session, byType, fieldsByType, opts = {}) {
   });
 }
 
+/**
+ * الملف الموحّد: يجمع الحقول المشتركة من كل المستندات ويكشف الاختلافات.
+ * يعتمد القيم المحفوظة (بما فيها ما صحّحه المرشح) لا نتيجة القراءة الأخيرة.
+ */
+function buildProfile(fieldsByType) {
+  const entries = [];
+  for (const [docType, fields] of Object.entries(fieldsByType || {})) {
+    for (const [key, row] of Object.entries(fields)) {
+      if (!row.valid) continue;
+      entries.push({
+        docType, key,
+        value: row.value,
+        source: row.source,
+        confidence: Number(row.confidence || 0),
+        userConfirmed: Boolean(row.user_confirmed),
+      });
+    }
+  }
+  return rules.consolidate(entries);
+}
+
 async function recomputeProgress(session) {
   const required = requiredList(session);
   const done = await db.all(
@@ -225,6 +246,7 @@ publicRouter.get('/:token', pageLimiter, async (req, res) => {
     const completed = steps.filter(st => st.required && st.status === 'confirmed').length;
 
     res.render('onboarding', {
+      conflicts: buildProfile(fieldsByType).filter(g => g.conflict),
       token: s.token,
       firstName: String(applicant.full_name || '').split(' ')[0] || '',
       steps,
@@ -371,7 +393,8 @@ publicRouter.post('/:token/confirm', pageLimiter, resolveToken, async (req, res)
     );
 
     const p = await recomputeProgress(s);
-    res.json({ ok: true, ...p });
+    const { fieldsByType } = await loadDocs(s.id);
+    res.json({ ok: true, ...p, conflicts: buildProfile(fieldsByType).filter(g => g.conflict) });
   } catch (err) {
     console.error('[Onboarding confirm]', err.message);
     res.status(500).json({ error: 'تعذّر التأكيد' });
@@ -550,17 +573,18 @@ adminRouter.get('/view/:applicantId', async (req, res) => {
     if (!applicant) return res.status(404).send('المتقدم غير موجود');
 
     const s = await db.get('SELECT * FROM onboarding_sessions WHERE applicant_id = ? ORDER BY id DESC LIMIT 1', [applicant.id]);
-    let steps = [], history = [];
+    let steps = [], history = [], profile = [];
     if (s) {
       const { byType, fieldsByType } = await loadDocs(s.id);
       steps = buildSteps(s, byType, fieldsByType, { withOcr: true });
+      profile = buildProfile(fieldsByType);
       history = await db.all(
         'SELECT id, doc_type, status, review, original_name, created_at FROM onboarding_documents WHERE session_id = ? AND is_current = 0 ORDER BY id DESC',
         [s.id]
       );
     }
     res.render('onboarding-admin', {
-      applicant, session: s, steps, history,
+      applicant, session: s, steps, history, profile,
       link: s ? publicLink(req, s.token) : null,
       DOC_TYPES: rules.DOC_TYPES,
       engine: { ocr: ocr.isConfigured(), ai: ai.isConfigured(), aiProvider: ai.provider(), aiModel: ai.model() },
