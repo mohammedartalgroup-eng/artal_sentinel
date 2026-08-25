@@ -15,6 +15,8 @@
     body { font-family: 'Inter', sans-serif; }
     h1,h2,h3 { font-family: 'Manrope', sans-serif; }
     .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+    /* رابط خط جوجل يأتي بعد tailwind.css، وقاعدته font-size:24px تُلغي أصناف الحجم */
+    .material-symbols-outlined.text-6xl { font-size: 3.75rem; }
   </style>
 </head>
 <body class="bg-surface text-on-surface min-h-screen flex flex-col">
