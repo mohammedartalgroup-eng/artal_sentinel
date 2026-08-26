@@ -70,7 +70,7 @@ app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 // ─── ملفات عامة مسموح بها صراحةً (لا تحتاج تسجيل دخول) ─────────────────────
 const UPLOADS_ROOT = process.env.UPLOADS_PATH || path.join(__dirname, 'uploads');
 // قائمة بيضاء — أضف هنا أي ملف تريد إتاحته للعموم
-const PUBLIC_FILES = ['hiring_req.pdf'];
+const PUBLIC_FILES = ['hiring_request.pdf', 'hiring_req.pdf'];
 
 app.get('/uploads/:filename', (req, res) => {
   const { filename } = req.params;
