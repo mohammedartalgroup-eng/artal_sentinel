@@ -418,28 +418,32 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
           <% } %>
         </div>
 
-        <!-- ═══ موافقة الخصوصية ═════════════════════════════════════════════
+        <!-- ═══ الموافقة النظامية ════════════════════════════════════════════
              الدليل على أن هذه البيانات دخلت النظام بموافقة صاحبها، وعلى أي
-             إصدار من السياسة وافق. بدون رقم الإصدار لا تُثبت الموافقة شيئاً
-             بعد أول تحديث للسياسة. -->
+             إصدارٍ من الشروط وسياسة الخصوصية وافق. الإصداران منفصلان لأن
+             الوثيقتين تُحدَّثان باستقلال — ورقمٌ واحد لهما يضيع أيَّهما تغيّر. -->
         <div class="bg-white rounded-2xl p-6">
           <h2 class="font-bold text-[#001736] text-sm mb-4 flex items-center gap-2">
             <span class="material-symbols-outlined text-base">policy</span>
-            موافقة الخصوصية
+            الموافقة النظامية
           </h2>
           <% if (applicant.consent_at) { %>
             <div class="flex items-start gap-2.5">
               <span class="material-symbols-outlined text-base flex-shrink-0" style="color:#15803d">verified_user</span>
               <div class="flex-1 min-w-0 text-xs leading-6">
-                <div class="font-medium text-[#001736]">وافق على سياسة الخصوصية عند التقديم</div>
+                <div class="font-medium text-[#001736]">أقرّ بقراءة الشروط وسياسة الخصوصية ووافق عليهما</div>
                 <div class="text-[#43474f]"><%= fmtDateTime(applicant.consent_at) %></div>
-                <div class="text-[#8a9099]">
-                  إصدار السياسة:
-                  <a href="/privacy" target="_blank" rel="noopener" class="text-[#405f91] hover:underline"><%= applicant.privacy_version || '—' %></a>
-                  <% if (applicant.consent_ip) { %>
-                  &nbsp;·&nbsp; <span class="font-mono"><%= applicant.consent_ip %></span>
-                  <% } %>
+                <div class="text-[#8a9099] mt-1">
+                  شروط الاستخدام:
+                  <a href="/terms" target="_blank" rel="noopener" class="text-[#405f91] hover:underline"><%= applicant.terms_version || '—' %></a>
                 </div>
+                <div class="text-[#8a9099]">
+                  سياسة الخصوصية:
+                  <a href="/privacy" target="_blank" rel="noopener" class="text-[#405f91] hover:underline"><%= applicant.privacy_version || '—' %></a>
+                </div>
+                <% if (applicant.consent_ip) { %>
+                <div class="text-[#8a9099]">من عنوان <span class="font-mono"><%= applicant.consent_ip %></span></div>
+                <% } %>
               </div>
             </div>
           <% } else { %>
@@ -447,7 +451,8 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
               <span class="material-symbols-outlined text-base flex-shrink-0" style="color:#b45309">help</span>
               <div class="flex-1 min-w-0 text-xs leading-6 text-[#43474f]">
                 <div class="font-medium text-[#001736]">لا توجد موافقة مسجّلة</div>
-                هذا الطلب سابق لتفعيل تسجيل الموافقة، فلا يُنسب إليه إقرارٌ لم يُؤخذ فعلاً.
+                هذا الطلب سابق لتفعيل تسجيل الموافقة على الشروط وسياسة الخصوصية،
+                فلا يُنسب إليه إقرارٌ لم يُؤخذ فعلاً.
               </div>
             </div>
           <% } %>

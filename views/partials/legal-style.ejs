@@ -1,0 +1,36 @@
+<%
+/**
+ * تنسيق الصفحات النظامية — مشترك بين سياسة الخصوصية وشروط الاستخدام.
+ * مفصول في ملف واحد عمداً: وثيقتان تُقرآن معاً ويُوافَق عليهما معاً، فاختلاف
+ * شكلهما يوحي بأنهما من جهتين مختلفتين. وأي تعديل هنا يطالهما معاً بلا انحراف.
+ */
+%>
+<style>
+  body { font-family: 'Inter', sans-serif; background: #f2f4f6; color: #191c1e; }
+  h1, h2 { font-family: 'Manrope', sans-serif; }
+  .pp-wrap { max-width: 52rem; margin: 0 auto; }
+  .pp-card { background: #fff; border-radius: 1rem; padding: 2rem 1.75rem; }
+  .pp h2 {
+    font-size: 1.05rem; font-weight: 700; color: #001736;
+    margin: 2.25rem 0 0.75rem; padding-bottom: 0.5rem; border-bottom: 1px solid #eceef0;
+  }
+  .pp h2:first-child { margin-top: 0; }
+  .pp h3 { font-size: 0.9rem; font-weight: 600; color: #405f91; margin: 1.25rem 0 0.5rem; }
+  .pp p  { font-size: 0.9rem; line-height: 2; color: #43474f; margin: 0 0 0.75rem; }
+  .pp ul, .pp ol { margin: 0 0 0.9rem; padding-inline-start: 1.35rem; }
+  .pp li { font-size: 0.9rem; line-height: 1.95; color: #43474f; margin-bottom: 0.2rem; }
+  .pp li > ul, .pp li > ol { margin: 0.35rem 0 0.5rem; }
+  .pp dl { margin: 0 0 0.9rem; }
+  .pp dt { font-size: 0.9rem; font-weight: 600; color: #001736; margin-top: 0.85rem; }
+  .pp dd { font-size: 0.9rem; line-height: 1.95; color: #43474f; margin: 0.15rem 0 0; padding-inline-start: 0; }
+  .pp a  { color: #405f91; text-decoration: underline; word-break: break-word; }
+  .pp strong { color: #001736; font-weight: 600; }
+  .pp-toc { background: #f8f9fb; border-radius: 0.875rem; padding: 1.25rem 1.5rem; margin-bottom: 2rem; }
+  .pp-toc ol { margin: 0; padding-inline-start: 1.25rem; columns: 2; column-gap: 2rem; }
+  .pp-toc li { font-size: 0.8rem; line-height: 1.9; break-inside: avoid; }
+  .pp-toc a { color: #43474f; text-decoration: none; }
+  .pp-toc a:hover { color: #001736; text-decoration: underline; }
+  .pp-sep { height: 1px; background: #eceef0; margin: 2rem 0 0; }
+  @media (max-width: 640px) { .pp-toc ol { columns: 1; } .pp-card { padding: 1.5rem 1.25rem; } }
+  @media print { .pp-nav, .pp-toc { display: none !important; } .pp-card { padding: 0; } }
+</style>

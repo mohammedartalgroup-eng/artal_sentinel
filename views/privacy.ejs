@@ -3,8 +3,8 @@
 <%
 /**
  * سياسة الخصوصية — النص كما ورد من الشركة حرفياً، بلا تعديل في الصياغة.
- * ⚠️ أي تغيير في النص يستوجب تحديث utils/privacy.js (VERSION و UPDATED_LABEL)
- *    وإلا حُفظت موافقات جديدة منسوبة إلى إصدار قديم.
+ * ⚠️ أي تغيير في النص يستوجب تحديث utils/legal.js (PRIVACY.VERSION) وإلا حُفظت
+ *    موافقات جديدة منسوبة إلى إصدار قديم.
  */
 %>
 <head>
@@ -20,30 +20,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&icon_names=arrow_forward,mail,shield_person&display=block" rel="stylesheet">
-  <style>
-    body { font-family: 'Inter', sans-serif; background: #f2f4f6; color: #191c1e; }
-    h1, h2 { font-family: 'Manrope', sans-serif; }
-    .pp-wrap { max-width: 52rem; margin: 0 auto; }
-    .pp-card { background: #fff; border-radius: 1rem; padding: 2rem 1.75rem; }
-    .pp h2 {
-      font-size: 1.05rem; font-weight: 700; color: #001736;
-      margin: 2.25rem 0 0.75rem; padding-bottom: 0.5rem; border-bottom: 1px solid #eceef0;
-    }
-    .pp h2:first-child { margin-top: 0; }
-    .pp h3 { font-size: 0.9rem; font-weight: 600; color: #405f91; margin: 1.25rem 0 0.5rem; }
-    .pp p  { font-size: 0.9rem; line-height: 2; color: #43474f; margin: 0 0 0.75rem; }
-    .pp ul { margin: 0 0 0.9rem; padding-inline-start: 1.25rem; }
-    .pp li { font-size: 0.9rem; line-height: 1.95; color: #43474f; margin-bottom: 0.2rem; }
-    .pp a  { color: #405f91; text-decoration: underline; word-break: break-word; }
-    .pp strong { color: #001736; font-weight: 600; }
-    .pp-toc { background: #f8f9fb; border-radius: 0.875rem; padding: 1.25rem 1.5rem; margin-bottom: 2rem; }
-    .pp-toc ol { margin: 0; padding-inline-start: 1.25rem; columns: 2; column-gap: 2rem; }
-    .pp-toc li { font-size: 0.8rem; line-height: 1.9; break-inside: avoid; }
-    .pp-toc a { color: #43474f; text-decoration: none; }
-    .pp-toc a:hover { color: #001736; text-decoration: underline; }
-    @media (max-width: 640px) { .pp-toc ol { columns: 1; } .pp-card { padding: 1.5rem 1.25rem; } }
-    @media print { .pp-nav, .pp-toc { display: none !important; } .pp-card { padding: 0; } }
-  </style>
+  <%- include('partials/legal-style') %>
 </head>
 <body>
 
@@ -291,7 +268,8 @@
         العودة إلى نموذج التقديم
       </a>
       <p class="text-xs text-[#43474f] mt-4">
-        لاستفسارات الخصوصية:
+        <a href="/terms" class="text-[#405f91] hover:underline">شروط وأحكام استخدام المنصة</a>
+        &nbsp;·&nbsp;
         <a href="mailto:info@artalgroup.net" class="text-[#405f91] hover:underline">info@artalgroup.net</a>
       </p>
     </div>

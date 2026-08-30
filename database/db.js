@@ -280,6 +280,13 @@ async function initialize() {
       `);
       console.log('[DB] Migration: added privacy consent columns to applicants');
     }
+    // عمود منفصل للشروط: الوثيقتان تُحدَّثان باستقلال، فرقمٌ واحد لهما معاً
+    // يضيع أيَّهما تغيّر. يُضاف بفحص مستقل حتى تلحقه قواعد رُحّلت قبله.
+    const [termsCols] = await conn.query("SHOW COLUMNS FROM applicants LIKE 'terms_version'");
+    if (termsCols.length === 0) {
+      await conn.query("ALTER TABLE applicants ADD COLUMN terms_version VARCHAR(20) DEFAULT NULL AFTER privacy_version");
+      console.log('[DB] Migration: added column terms_version to applicants');
+    }
 
     // ─── ترحيل: إضافة حقول الفحص الخارجي إلى applicants
     const [extCols] = await conn.query("SHOW COLUMNS FROM applicants LIKE 'ext_check_done'");

@@ -4,7 +4,7 @@ const db = require('../database/db');
 const upload = require('../middleware/upload');
 const { checkExternal } = require('../utils/extCheck');
 const jobsCities = require('./jobs').CITIES;   // لسحابة روابط المدن في التذييل
-const privacy = require('../utils/privacy');
+const legal = require('../utils/legal');
 
 // GET /apply — public application form
 router.get('/', async (req, res) => {
@@ -88,7 +88,7 @@ router.post('/', (req, res) => {
       // الموافقة تُتحقَّق في الخادم لا في المتصفح وحده: تحقق المتصفح يُتجاوَز
       // بإرسال الطلب مباشرةً، ولا يصح أن تدخل بيانات هوية بلا موافقة مسجّلة.
       if (consent !== 'yes')
-        errors.push('يجب الاطّلاع على سياسة الخصوصية والموافقة عليها قبل إرسال الطلب');
+        errors.push('يجب الاطّلاع على شروط الاستخدام وسياسة الخصوصية والموافقة عليهما قبل إرسال الطلب');
 
       if (errors.length) {
         return res.status(400).send(`
@@ -116,8 +116,8 @@ router.post('/', (req, res) => {
         `INSERT INTO applicants
           (full_name, id_number, phone, email, age, gender, region, city, neighborhood,
            has_car, has_license, english, qualification, specialization, cv_path, id_image_path,
-           source, referrer, landing_page, consent_at, consent_ip, privacy_version)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?)`,
+           source, referrer, landing_page, consent_at, consent_ip, privacy_version, terms_version)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?)`,
         [
           full_name.trim(),
           id_number.trim(),
@@ -139,7 +139,8 @@ router.post('/', (req, res) => {
           referrer ? String(referrer).trim().slice(0, 255) : null,
           landing_page ? String(landing_page).trim().slice(0, 255) : null,
           req.ip ? String(req.ip).slice(0, 45) : null,
-          privacy.VERSION,
+          legal.PRIVACY.VERSION,
+          legal.TERMS.VERSION,
         ]
       );
 

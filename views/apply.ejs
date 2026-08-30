@@ -630,14 +630,17 @@
                    class="mt-0.5 w-5 h-5 flex-shrink-0 text-primary border-slate-300 rounded focus:ring-primary"
                    onchange="clearError('consent')"/>
             <span class="text-sm text-on-surface-variant leading-relaxed">
-              أقر بأنني اطّلعت على
+              أقر بأنني قرأت وفهمت
+              <a href="/terms" target="_blank" rel="noopener"
+                 class="text-primary font-semibold underline">شروط واحكام استخدام المنصة</a>
+              و
               <a href="/privacy" target="_blank" rel="noopener"
                  class="text-primary font-semibold underline">سياسة الخصوصية وحماية البيانات الشخصية</a>
-              وأوافق على جمع بياناتي الشخصية ومعالجتها لأغراض التوظيف الموضحة فيها.
+              الخاصة بمنصة شركة أرتال الموحدة للحراسات الامنية, وأوافق على جميع ماجاء فيها.
               <span class="text-error">*</span>
             </span>
           </label>
-          <p class="err-msg" id="err-consent">يجب الاطّلاع على سياسة الخصوصية والموافقة عليها قبل إرسال الطلب</p>
+          <p class="err-msg" id="err-consent">يجب الاطّلاع على شروط الاستخدام وسياسة الخصوصية والموافقة عليهما قبل إرسال الطلب</p>
         </div>
 
         <!-- Submit Button -->
@@ -649,6 +652,8 @@
           </button>
           <p class="text-xs text-center text-slate-400 mt-3">
             <span class="text-error">*</span> الحقول المُشار إليها إلزامية
+            &nbsp;·&nbsp;
+            <a href="/terms" target="_blank" rel="noopener" class="underline hover:text-primary">شروط الاستخدام</a>
             &nbsp;·&nbsp;
             <a href="/privacy" target="_blank" rel="noopener" class="underline hover:text-primary">سياسة الخصوصية</a>
           </p>
@@ -1125,7 +1130,7 @@ document.getElementById('applyForm').addEventListener('submit', function (e) {
 
   // ── الموافقة على سياسة الخصوصية (إلزامي)
   if (!document.getElementById('f-consent').checked) {
-    showError('consent', 'يجب الاطّلاع على سياسة الخصوصية والموافقة عليها قبل إرسال الطلب');
+    showError('consent', 'يجب الاطّلاع على شروط الاستخدام وسياسة الخصوصية والموافقة عليهما قبل إرسال الطلب');
     if (!firstError) firstError = 'wrap-consent';
     valid = false;
   } else {

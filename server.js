@@ -150,10 +150,20 @@ app.get('/success', async (req, res) => {
 //  في النموذج يشير إليها ولا معنى لموافقة على نصٍّ لا يستطيع صاحبها فتحه.
 app.get('/privacy', (req, res) => {
   try {
-    res.render('privacy', { updated: require('./utils/privacy').UPDATED_LABEL });
+    res.render('privacy', { updated: require('./utils/legal').PRIVACY.UPDATED_LABEL });
   } catch (err) {
     console.error('[Privacy]', err.message);
     res.status(500).send('تعذّر عرض سياسة الخصوصية');
+  }
+});
+
+// ─── شروط وأحكام الاستخدام ───────────────────────────────────────────────────
+app.get('/terms', (req, res) => {
+  try {
+    res.render('terms', { updated: require('./utils/legal').TERMS.UPDATED_LABEL });
+  } catch (err) {
+    console.error('[Terms]', err.message);
+    res.status(500).send('تعذّر عرض شروط الاستخدام');
   }
 });
 
@@ -199,6 +209,12 @@ app.get('/sitemap.xml', (req, res) => {
   </url>
   <url>
     <loc>https://jobs.artalsecurity.com/privacy</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://jobs.artalsecurity.com/terms</loc>
     <lastmod>${today}</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
