@@ -117,12 +117,36 @@ function missingFor(payload) {
   return out;
 }
 
-/** المستندات المطلوبة التي لم يؤكّدها المرشح بعد */
-function unconfirmedDocs(session, byType) {
+/**
+ * المستندات المطلوبة التي تمنع الإضافة، ولكلٍّ سببه.
+ *
+ * ما الذي يجعل مستنداً «جاهزاً»؟ أحد أمرين، لا أحدهما فقط:
+ *   • أكّده المرشح ولم يُرفض في المراجعة، أو
+ *   • اعتمده فريق التوظيف صراحةً (قرار إنسان يسبق تأكيد المرشح ويغني عنه).
+ *
+ * و«أخضر» وحدها لا تكفي: الاستخراج الآلي يمنحها لكل قراءة نظيفة قبل أن يراها
+ * أحد — فنشترط أثر قرار بشري (hr_decided_at) لا لون الشارة.
+ */
+function docBlockers(session, byType) {
   const required = String(session?.required_docs || '').split(',').filter(Boolean);
-  return required
-    .filter(t => byType?.[t]?.status !== 'confirmed')
-    .map(t => rules.DOC_TYPES[t]?.label || t);
+  const out = [];
+
+  for (const type of required) {
+    const label = rules.DOC_TYPES[type]?.label || type;
+    const doc = byType?.[type];
+
+    if (!doc) { out.push(`مستند لم يُرفع: ${label}`); continue; }
+    if (doc.review === 'red') { out.push(`مستند مرفوض في المراجعة: ${label}`); continue; }
+
+    const hrAccepted = doc.review === 'green' && doc.hr_decided_at;
+    const confirmed = doc.status === 'confirmed';
+
+    if (!hrAccepted && !confirmed) {
+      out.push(`مستند لم يؤكّده المرشح ولم يُعتمد بعد: ${label}`);
+    }
+  }
+
+  return out;
 }
 
-module.exports = { build, missingFor, unconfirmedDocs };
+module.exports = { build, missingFor, docBlockers };

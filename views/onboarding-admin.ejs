@@ -316,6 +316,7 @@
                   <%= s.review === 'green' ? 'تم التحقق' : (s.review === 'red' ? 'غير مقبول' : 'يحتاج مراجعة') %>
                 </span>
                 <% if (s.status === 'confirmed') { %><span class="ob-chip n">أكّده المرشح</span><% } %>
+                <% if (s.hrDecidedBy) { %><span class="ob-chip n" title="<%= fmtDateTime(s.hrDecidedAt) %>">اعتمده <%= s.hrDecidedBy %></span><% } %>
                 <a class="ob-btn s" target="_blank" rel="noopener" href="/admin/onboarding/file/<%= s.docId %>">
                   <span class="material-symbols-outlined" style="font-size:18px">visibility</span> المرفق
                 </a>

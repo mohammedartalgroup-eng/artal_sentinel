@@ -125,6 +125,20 @@ async function init() {
     // source: ocr | ai | user  — «من قال هذه القيمة» سؤال تدقيقي لا تجميلي:
     //         قيمة مصدرها user تعني إنساناً صحّح آلة، وهي إشارة لتحسين القواعد.
 
+    // ترحيل: أثر قرار فريق التوظيف على المستند.
+    //  «مقبول» كان يضبط review فقط، وهي قيمة يضبطها الاستخراج الآلي أيضاً —
+    //  فلا يمكن تمييز «أخضر لأن القراءة نظيفة» من «أخضر لأن إنساناً اعتمده».
+    //  والفرق حاسم: قرار الإنسان وحده يفتح باب الإضافة لنظام الموظفين.
+    const [hrCols] = await conn.query("SHOW COLUMNS FROM onboarding_documents LIKE 'hr_decided_at'");
+    if (hrCols.length === 0) {
+      await conn.query(`
+        ALTER TABLE onboarding_documents
+          ADD COLUMN hr_decided_at DATETIME     DEFAULT NULL,
+          ADD COLUMN hr_decided_by VARCHAR(100) DEFAULT NULL
+      `);
+      console.log('[DB] Migration: added hr_decided_at/by to onboarding_documents');
+    }
+
     await conn.query(`
       CREATE TABLE IF NOT EXISTS onboarding_employment (
         id                  INT AUTO_INCREMENT PRIMARY KEY,

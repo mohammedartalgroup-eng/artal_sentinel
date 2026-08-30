@@ -121,6 +121,8 @@ function buildSteps(session, byType, fieldsByType, opts = {}) {
       aiUsed: Boolean(doc?.ai_used),
       aiVision: String(doc?.ai_provider || '').endsWith('-vision'),
       hrNote: doc?.hr_note || null,
+      hrDecidedBy: doc?.hr_decided_by || null,
+      hrDecidedAt: doc?.hr_decided_at || null,
       // النص الخام لا يُرسَل إلى صفحة المرشح: ضجيج لا يعنيه، وحجم بلا فائدة.
       // ولفريق التوظيف هو أداة التشخيص الأولى حين يخرج حقل خاطئاً.
       ocrText: opts.withOcr ? (doc?.ocr_text || null) : null,
@@ -864,7 +866,7 @@ async function syncContext(applicantId, req) {
 
   // عوائق محلية تُشرح بالعربية قبل أي نداء خارجي — أرخص وأوضح من رفض بعيد
   const blockers = [
-    ...payloadBuilder.unconfirmedDocs(s, byType).map(label => `مستند لم يؤكّده المرشح: ${label}`),
+    ...payloadBuilder.docBlockers(s, byType),
     ...built.missing.map(label => `بيان ناقص: ${label}`),
   ];
 
@@ -951,7 +953,12 @@ adminRouter.post('/doc/:docId/review', async (req, res) => {
     const doc = await db.get('SELECT * FROM onboarding_documents WHERE id = ?', [req.params.docId]);
     if (!doc) return res.status(404).json({ error: 'المستند غير موجود' });
 
-    await db.run('UPDATE onboarding_documents SET review = ?, hr_note = ? WHERE id = ?', [review, note, doc.id]);
+    // نُسجّل «من قرّر ومتى» لا الحالة وحدها: أخضرُ الاستخراج الآلي وأخضرُ قرار
+    // الإنسان يبدوان سواءً في عمود review، والفرق بينهما هو ما يفتح باب الإضافة.
+    await db.run(
+      'UPDATE onboarding_documents SET review = ?, hr_note = ?, hr_decided_at = NOW(), hr_decided_by = ? WHERE id = ?',
+      [review, note, req.session?.adminName || req.session?.adminUser || null, doc.id]
+    );
     db.audit(req.session?.adminId, req.session?.adminUser || 'system', 'onboarding_review',
       'applicant', doc.applicant_id, null, `${rules.DOC_TYPES[doc.doc_type]?.label || doc.doc_type} → ${review}`, req.ip).catch(() => {});
     res.json({ ok: true, review });
