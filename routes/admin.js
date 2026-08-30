@@ -655,8 +655,12 @@ async function exportApplicants(req, res) {
   }
 }
 
-// GET يبقى لروابط محفوظة (يشترط ?reason=) و POST هو ما تستخدمه نافذة السبب
-router.route('/applicants/export').get(exportApplicants).post(exportApplicants);
+// التصدير للمديرين وحدهم. الحارس على المسار لا على الزر: إخفاء الزر من
+// الواجهة لا يمنع أحداً من مناداة الرابط مباشرةً، والبوابة الحقيقية هنا.
+// GET يبقى لروابط محفوظة (يشترط ?reason=) و POST هو ما تستخدمه نافذة السبب.
+router.route('/applicants/export')
+  .get(requireManager, exportApplicants)
+  .post(requireManager, exportApplicants);
 
 // ─── Applicant Detail ─────────────────────────────────────────────────────────
 
