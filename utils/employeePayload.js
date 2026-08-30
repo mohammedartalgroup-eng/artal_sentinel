@@ -149,4 +149,24 @@ function docBlockers(session, byType) {
   return out;
 }
 
-module.exports = { build, missingFor, docBlockers };
+/**
+ * تصنيف الوثيقة في النظام الأساسي لكل مستند عندنا.
+ *
+ * الهوية تتفرّع بحسب أول رقم: 1 مواطن ← «هوية»، 2 مقيم ← «إقامة». وهو تفريعٌ
+ * يفهمه أرشيف الموظفين ولا يفهمه اسم مستند واحد عندنا.
+ */
+function categoryFor(docType, nationalId) {
+  if (docType === 'id_iqama') {
+    return String(nationalId || '').startsWith('2') ? 'iqama' : 'national_id';
+  }
+  return {
+    personal_photo: 'personal_photo',
+    national_address: 'national_address',
+    iban: 'bank_iban',
+    driving_license: 'driving_license',
+    cv: 'cv',
+    education_certificate: 'educational_certificate',
+  }[docType] || 'other';
+}
+
+module.exports = { build, missingFor, docBlockers, categoryFor };

@@ -178,6 +178,12 @@ async function init() {
     //   duplicate = الهوية مسجّلة موظفاً مسبقاً، ومعها ext_employee_id لسجله —
     //   فتبقى مزامنة المرفقات إليه قراراً يدوياً لا نتيجةً تلقائية للرفض.
 
+    const [attCols] = await conn.query("SHOW COLUMNS FROM onboarding_employment LIKE 'attachments_synced_at'");
+    if (attCols.length === 0) {
+      await conn.query('ALTER TABLE onboarding_employment ADD COLUMN attachments_synced_at DATETIME DEFAULT NULL');
+      console.log('[DB] Migration: added attachments_synced_at to onboarding_employment');
+    }
+
     // إعدادات قالب واتساب الخاص بالميزة — تُكتب هنا لا في db.js حتى تبقى
     // الميزة قابلة للحذف كاملةً بحذف ملفاتها. INSERT IGNORE = لا تدهس تعديلاً
     // أجراه المدير من صفحة الإعدادات.

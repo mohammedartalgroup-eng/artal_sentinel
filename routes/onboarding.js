@@ -943,6 +943,107 @@ adminRouter.post('/sync/:applicantId', sendLimiter, async (req, res) => {
   }
 });
 
+/**
+ * مزامنة المرفقات إلى ملف موظف قائم.
+ *
+ * تعمل في حالتين: بعد الإضافة الناجحة، أو حين تكون الهوية مسجّلة موظفاً مسبقاً
+ * — وحينها لا نُنشئ شيئاً ولا نعدّل بياناته، بل نضيف وثائقه فقط، وبنقرة صريحة
+ * من الموظف لا كأثر تلقائي للرفض.
+ *
+ * ملف لكل نداء: فشل واحد لا يُسقط البقية، والنتيجة تُعرض ملفاً ملفاً.
+ */
+adminRouter.post('/sync-attachments/:applicantId', sendLimiter, async (req, res) => {
+  if (!featureOn()) return res.status(503).json({ error: 'الميزة غير مفعّلة' });
+  if (!artalsys.isConfigured()) return res.status(409).json({ error: 'تكامل النظام الأساسي غير مهيأ' });
+
+  try {
+    const applicant = await db.get('SELECT * FROM applicants WHERE id = ?', [req.params.applicantId]);
+    if (!applicant) return res.status(404).json({ error: 'المتقدم غير موجود' });
+
+    const s = await db.get('SELECT * FROM onboarding_sessions WHERE applicant_id = ? ORDER BY id DESC LIMIT 1', [applicant.id]);
+    if (!s) return res.status(400).json({ error: 'لا توجد جلسة استكمال' });
+
+    const employment = await loadEmployment(s.id);
+    const employeeId = Number(req.body?.employee_id || employment?.ext_employee_id || 0);
+    if (!employeeId) return res.status(422).json({ error: 'لا يوجد رقم موظف — أضف الموظف أولاً أو حدّد رقمه' });
+
+    const docs = await db.all(
+      'SELECT * FROM onboarding_documents WHERE session_id = ? AND is_current = 1 ORDER BY id ASC',
+      [s.id]
+    );
+
+    const nationalId = applicant.id_number;
+    const results = [];
+
+    for (const doc of docs) {
+      const label = rules.DOC_TYPES[doc.doc_type]?.label || doc.doc_type;
+      try {
+        if (!/^[A-Za-z0-9._-]+$/.test(doc.file_name || '')) throw new Error('اسم ملف غير صالح');
+        const filePath = path.join(OB_ROOT, String(doc.applicant_id), doc.file_name);
+        const buffer = await fs.promises.readFile(filePath);
+
+        const r = await artalsys.uploadAttachment(employeeId, {
+          buffer,
+          fileName: doc.original_name || doc.file_name,
+          mime: doc.mime,
+          category: payloadBuilder.categoryFor(doc.doc_type, nationalId),
+          title: `${label} — ${nationalId || applicant.full_name}`,
+          notes: 'مزامنة من منصة استكمال البيانات',
+          sourceDocumentId: doc.id,
+        });
+
+        results.push({
+          doc: label,
+          ok: r.ok,
+          duplicate: Boolean(r.json?.duplicate),
+          attachment_id: r.json?.attachment_id || null,
+          error: r.ok ? null : (r.json?.error || `HTTP ${r.status}`),
+        });
+      } catch (e) {
+        results.push({ doc: label, ok: false, error: e.message });
+      }
+    }
+
+    // السيرة الذاتية المرفقة بطلب التوظيف — ليست في مستندات الرحلة لكنها ملفه
+    if (applicant.cv_path && !docs.some(d => d.doc_type === 'cv')) {
+      try {
+        const CV_ROOT = process.env.UPLOADS_PATH || path.join(__dirname, '..', 'uploads');
+        const buffer = await fs.promises.readFile(path.join(CV_ROOT, 'cv', applicant.cv_path));
+        const r = await artalsys.uploadAttachment(employeeId, {
+          buffer,
+          fileName: applicant.cv_path,
+          mime: applicant.cv_path.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
+          category: 'cv',
+          title: `السيرة الذاتية — ${nationalId || applicant.full_name}`,
+          notes: 'مرفقة بطلب التوظيف',
+          sourceDocumentId: null,
+        });
+        results.push({ doc: 'السيرة الذاتية (من الطلب)', ok: r.ok, attachment_id: r.json?.attachment_id || null, error: r.ok ? null : (r.json?.error || `HTTP ${r.status}`) });
+      } catch (e) {
+        results.push({ doc: 'السيرة الذاتية (من الطلب)', ok: false, error: e.message });
+      }
+    }
+
+    const okCount = results.filter(r => r.ok).length;
+    const line = `مزامنة المرفقات إلى الموظف #${employeeId} — ${okCount} من ${results.length}`;
+
+    await db.run(
+      'UPDATE onboarding_employment SET ext_employee_id = ?, attachments_synced_at = NOW() WHERE session_id = ?',
+      [employeeId, s.id]
+    ).catch(() => {});
+
+    db.run('INSERT INTO applicant_notes (applicant_id, content, type, user_name) VALUES (?, ?, ?, ?)',
+      [applicant.id, line, 'follow_up', req.session?.adminName || null]).catch(() => {});
+    db.audit(req.session?.adminId, req.session?.adminUser || 'system', 'onboarding_attachments',
+      'applicant', applicant.id, applicant.full_name, line, req.ip).catch(() => {});
+
+    res.json({ ok: okCount === results.length, employee_id: employeeId, results });
+  } catch (err) {
+    console.error('[Onboarding sync-attachments]', err.message);
+    res.status(502).json({ error: err.message });
+  }
+});
+
 // قرار HR على مستند — الاستثناءات وحدها تصل إلى إنسان، وهذا مكان تسجيلها.
 adminRouter.post('/doc/:docId/review', async (req, res) => {
   if (!featureOn()) return res.status(503).json({ error: 'الميزة غير مفعّلة' });

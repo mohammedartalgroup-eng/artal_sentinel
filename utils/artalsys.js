@@ -70,4 +70,36 @@ async function pushEmployee(payload, { dryRun = false } = {}) {
   });
 }
 
-module.exports = { isConfigured, baseUrl, options, pushEmployee };
+/**
+ * رفع مرفق واحد إلى ملف الموظف.
+ *
+ * ملف لكل نداء: حدود الرفع في الطرف الآخر معلومة (10MB للملف)، وفشل ملف لا
+ * يُسقط البقية. و`sourceDocumentId` يمنع التكرار عند إعادة الضغط — الطرف الآخر
+ * يفحصه ويرد المرفق القائم بدل إنشاء نسخة ثانية.
+ */
+async function uploadAttachment(employeeId, { buffer, fileName, mime, category, title, notes, sourceDocumentId }) {
+  if (!isConfigured()) throw new Error('تكامل النظام الأساسي غير مهيأ');
+
+  const form = new FormData();
+  form.append('file', new Blob([buffer], { type: mime || 'application/octet-stream' }), fileName);
+  form.append('category', category);
+  if (title) form.append('title', title);
+  if (notes) form.append('notes', notes);
+  if (sourceDocumentId != null) form.append('source_document_id', String(sourceDocumentId));
+
+  const res = await fetch(`${baseUrl()}/api/hooks/onboarding/employee/${employeeId}/attachment`, {
+    method: 'POST',
+    headers: { 'X-Secret': process.env.ARTALSYS_PUSH_SECRET, Accept: 'application/json' },
+    body: form,
+    signal: AbortSignal.timeout(60000),
+  });
+
+  const text = await res.text();
+  let json = null;
+  try { json = JSON.parse(text); } catch (e) { /* ليس JSON */ }
+  if (!json) throw new Error(`رد غير مفهوم عند رفع المرفق (HTTP ${res.status})`);
+
+  return { status: res.status, ok: res.ok, json };
+}
+
+module.exports = { isConfigured, baseUrl, options, pushEmployee, uploadAttachment };

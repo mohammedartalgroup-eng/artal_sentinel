@@ -210,8 +210,15 @@
                href="<%= artalsysUrl %>/admin/employees/<%= employment.ext_employee_id %>/edit">
               <span class="material-symbols-outlined" style="font-size:18px">open_in_new</span> فتح ملفه
             </a>
+            <button class="ob-btn s" id="att-sync" onclick="syncAttachments()">
+              <span class="material-symbols-outlined" style="font-size:18px">cloud_upload</span> مزامنة المرفقات
+            </button>
             <span class="ob-src"><%= fmtDateTime(employment.synced_at) %></span>
           </div>
+          <% if (employment.attachments_synced_at) { %>
+            <div class="ob-src mt-2">آخر مزامنة للمرفقات: <%= fmtDateTime(employment.attachments_synced_at) %></div>
+          <% } %>
+          <div id="att-result" class="mt-3 text-xs hidden"></div>
         <% } else { %>
           <p class="text-[11px] text-[#43474f] mb-3">
             «فحص قبل الإضافة» يمرّ بكل التحقق في النظام الأساسي <b>بلا إنشاء أي سجل</b> — فترى النتيجة قبل أن تضغط.
@@ -232,6 +239,10 @@
                    href="<%= artalsysUrl %>/admin/employees/<%= employment.ext_employee_id %>/edit">
                   فتح ملف الموظف القائم (#<%= employment.ext_employee_id %>)
                 </a>
+                <!-- الهوية مسجّلة موظفاً: لا نُنشئ ولا نعدّل بياناته — نضيف وثائقه فقط، بنقرة صريحة -->
+                <button class="ob-btn p" id="att-sync" onclick="syncAttachments()">
+                  <span class="material-symbols-outlined" style="font-size:18px">cloud_upload</span> مزامنة المرفقات إلى ملفه
+                </button>
               <% } %>
             </div>
           <% } %>
@@ -243,6 +254,7 @@
           <% } %>
 
           <div id="sync-result" class="mt-3 text-xs hidden"></div>
+          <div id="att-result" class="mt-3 text-xs hidden"></div>
         <% } %>
       </div>
 
@@ -506,6 +518,38 @@ async function syncNow() {
     location.reload();
   } catch (err) {
     syncBox(err.message, 'bad');
+    btn.disabled = false;
+  }
+}
+
+async function syncAttachments() {
+  const btn = document.getElementById('att-sync');
+  const box = document.getElementById('att-result');
+  if (!confirm('رفع مرفقات هذا الملف إلى سجل الموظف في النظام الأساسي؟')) return;
+
+  btn.disabled = true;
+  box.classList.remove('hidden');
+  box.style.background = '#eef2f7'; box.style.color = '#43474f';
+  box.style.borderRadius = '12px'; box.style.padding = '10px 12px';
+  box.textContent = 'جارٍ الرفع…';
+
+  try {
+    const r = await fetch('/admin/onboarding/sync-attachments/' + APPLICANT_ID, { method: 'POST' });
+    const j = await r.json();
+    if (!r.ok && !j.results) throw new Error(j.error || 'تعذّرت المزامنة');
+
+    const rows = (j.results || []).map(x =>
+      (x.ok ? '✅ ' : '❌ ') + x.doc
+      + (x.duplicate ? ' (مرفوع مسبقاً)' : '')
+      + (x.error ? ' — ' + x.error : ''));
+    const okAll = (j.results || []).every(x => x.ok);
+    box.style.background = okAll ? '#dcfce7' : '#fef3c7';
+    box.style.color = okAll ? '#15803d' : '#a16207';
+    box.innerHTML = '<b>الموظف #' + j.employee_id + '</b><br>' + rows.join('<br>');
+  } catch (err) {
+    box.style.background = '#ffdad6'; box.style.color = '#ba1a1a';
+    box.textContent = err.message;
+  } finally {
     btn.disabled = false;
   }
 }
