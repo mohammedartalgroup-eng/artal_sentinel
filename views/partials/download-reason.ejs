@@ -1,0 +1,147 @@
+<%
+/**
+ * نافذة «سبب التحميل» — مشتركة بين صفحة المتقدمين وصفحة المتقدم وصفحة عرض
+ * المرفق وصفحة الاستكمال.
+ *
+ * لماذا نافذة إجبارية لا مجرد تسجيل صامت؟ لأن السطر في سجل التدقيق يردع
+ * بقدر ما يوثّق: من يعرف أنه سيُسأل «لماذا حمّلت هوية هذا المرشح؟» يفكّر
+ * مرتين قبل أن يحمّلها. والسبب المكتوب بخط يده يجعل السطر قابلاً للمراجعة
+ * فعلاً بدل أن يكون رقماً في تقرير.
+ *
+ * التحميل يمرّ عبر fetch لا عبر الانتقال إلى الرابط: هكذا يُعرض خطأ الخادم
+ * (سبب قصير مثلاً) داخل النافذة بدل أن تُستبدل الصفحة بصفحة خطأ ويضيع مكان
+ * المستخدم.
+ */
+%>
+<style>
+  #dl-reason-modal { border: none; border-radius: 1rem; padding: 0; max-width: 30rem; width: calc(100% - 2rem); }
+  #dl-reason-modal::backdrop { background: rgba(0,23,54,0.55); }
+  #dl-reason-modal .dlr-head { padding: 1.25rem 1.5rem 0.75rem; }
+  #dl-reason-modal .dlr-body { padding: 0 1.5rem 1rem; }
+  #dl-reason-modal .dlr-foot { padding: 0.875rem 1.5rem; background: #f7f8fa; display: flex; gap: 0.5rem; justify-content: flex-end; }
+  #dl-reason-modal textarea {
+    width: 100%; min-height: 6.5rem; resize: vertical; font: inherit; font-size: 0.875rem;
+    border: 1px solid #e0e3e5; border-radius: 0.75rem; padding: 0.625rem 0.75rem; outline: none;
+  }
+  #dl-reason-modal textarea:focus { border-color: #7594ca; }
+  #dl-reason-modal .dlr-btn { border-radius: 0.75rem; font-size: 0.875rem; font-weight: 500; padding: 0.55rem 1.25rem; cursor: pointer; border: none; }
+  #dl-reason-modal .dlr-btn.ghost { background: #eceef0; color: #43474f; }
+  #dl-reason-modal .dlr-btn.go { background: #001736; color: #fff; }
+  #dl-reason-modal .dlr-btn[disabled] { opacity: 0.55; cursor: not-allowed; }
+  #dl-reason-err { display: none; margin-top: 0.6rem; font-size: 0.78rem; color: #ba1a1a; }
+  #dl-reason-chips { display: flex; flex-wrap: wrap; gap: 0.375rem; margin-top: 0.6rem; }
+  #dl-reason-chips button {
+    font-size: 0.72rem; border: 1px solid #e0e3e5; background: #fff; color: #43474f;
+    border-radius: 999px; padding: 0.25rem 0.7rem; cursor: pointer;
+  }
+  #dl-reason-chips button:hover { border-color: #7594ca; color: #001736; }
+</style>
+
+<dialog id="dl-reason-modal">
+  <div class="dlr-head">
+    <div style="display:flex;align-items:center;gap:0.6rem">
+      <span class="material-symbols-outlined" style="color:#b45309">assignment_late</span>
+      <h3 style="font-family:Manrope,sans-serif;font-weight:700;color:#001736;font-size:1rem;margin:0">
+        سبب التحميل مطلوب
+      </h3>
+    </div>
+    <p style="font-size:0.78rem;color:#43474f;margin:0.5rem 0 0;line-height:1.6">
+      تحميل نسخة من بيانات المرشح يُسجَّل باسمك في سجل التدقيق مع السبب الذي تكتبه هنا.
+      اكتب سبباً محدداً يمكن مراجعته لاحقاً.
+    </p>
+  </div>
+  <div class="dlr-body">
+    <div style="font-size:0.78rem;color:#001736;font-weight:600;margin-bottom:0.4rem" id="dl-reason-label"></div>
+    <textarea id="dl-reason-text" maxlength="300"
+              placeholder="مثال: إرفاق السيرة الذاتية بمحضر المقابلة لمشروع الرياض"></textarea>
+    <div id="dl-reason-chips"></div>
+    <div id="dl-reason-err"></div>
+  </div>
+  <div class="dlr-foot">
+    <button type="button" class="dlr-btn ghost" id="dl-reason-cancel">إلغاء</button>
+    <button type="button" class="dlr-btn go" id="dl-reason-go">
+      <span id="dl-reason-go-text">تسجيل السبب والتحميل</span>
+    </button>
+  </div>
+</dialog>
+
+<script>
+(function () {
+  var modal  = document.getElementById('dl-reason-modal');
+  if (!modal) return;
+  var txt    = document.getElementById('dl-reason-text');
+  var err    = document.getElementById('dl-reason-err');
+  var label  = document.getElementById('dl-reason-label');
+  var goBtn  = document.getElementById('dl-reason-go');
+  var goTxt  = document.getElementById('dl-reason-go-text');
+  var chips  = document.getElementById('dl-reason-chips');
+  var MIN    = 10;
+  var current = null;
+
+  var SUGGESTIONS = [
+    'إرفاق الملف بمحضر المقابلة',
+    'إرسال الملف لمدير العمليات للاعتماد',
+    'استكمال إجراءات التعيين',
+    'طلب رسمي من إدارة الموارد البشرية',
+  ];
+  SUGGESTIONS.forEach(function (s) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.textContent = s;
+    b.onclick = function () { txt.value = s; txt.focus(); };
+    chips.appendChild(b);
+  });
+
+  function fail(msg) {
+    err.textContent = msg;
+    err.style.display = 'block';
+  }
+
+  window.askDownloadReason = function (opts) {
+    current = opts || {};
+    label.textContent = current.label || '';
+    txt.value = '';
+    err.style.display = 'none';
+    goBtn.disabled = false;
+    goTxt.textContent = 'تسجيل السبب والتحميل';
+    modal.showModal();
+    setTimeout(function () { txt.focus(); }, 50);
+  };
+
+  document.getElementById('dl-reason-cancel').onclick = function () { modal.close(); };
+
+  goBtn.onclick = async function () {
+    var reason = (txt.value || '').replace(/\s+/g, ' ').trim();
+    if (reason.length < MIN) return fail('اكتب سبباً واضحاً — ' + MIN + ' أحرف على الأقل');
+    err.style.display = 'none';
+    goBtn.disabled = true;
+    goTxt.textContent = 'جارٍ التحميل…';
+    try {
+      var r = await fetch(current.url, {
+        method: current.method || 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ reason: reason }),
+      });
+      if (!r.ok) {
+        var j = await r.json().catch(function () { return {}; });
+        goBtn.disabled = false;
+        goTxt.textContent = 'تسجيل السبب والتحميل';
+        return fail(j.error || 'تعذّر التحميل — حاول مرة أخرى');
+      }
+      var name = r.headers.get('X-Filename');
+      name = name ? decodeURIComponent(name) : (current.fallbackName || 'ملف');
+      var blob = await r.blob();
+      var url  = URL.createObjectURL(blob);
+      var a    = document.createElement('a');
+      a.href = url; a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+      modal.close();
+      if (typeof current.onDone === 'function') current.onDone();
+    } catch (e) {
+      goBtn.disabled = false;
+      goTxt.textContent = 'تسجيل السبب والتحميل';
+      fail('تعذّر الاتصال بالخادم');
+    }
+  };
+})();
+</script>

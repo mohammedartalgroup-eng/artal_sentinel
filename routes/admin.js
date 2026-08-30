@@ -13,6 +13,7 @@ const google         = require('../utils/google');   // لا يرمي عند ا�
 const mailer         = require('../utils/mailer');   // ولا هذان — صفر اعتماديات وتحقق كسول
 const chatwoot       = require('../utils/chatwoot');
 const crypto         = require('crypto');
+const docAccess      = require('../utils/docAccess');   // تدقيق الاطّلاع والتحميل
 
 // ─── Rate Limiter — تسجيل الدخول فقط ─────────────────────────────────────────
 const loginLimiter = rateLimit({
@@ -137,19 +138,38 @@ router.use(requireAuth);
 // ─── خدمة ملفات المتقدمين — محمية بتسجيل الدخول ─────────────────────────────
 const UPLOADS_ROOT = process.env.UPLOADS_PATH || path.join(__dirname, '..', 'uploads');
 
-router.get('/files/:folder/:filename', (req, res) => {
-  const { folder, filename } = req.params;
+// المجلد ↔ العمود ↔ التسمية. المفتاح (cv / id) هو ما يظهر في الروابط.
+const DOC_KINDS = {
+  cv: { folder: 'cv',        column: 'cv_path',       label: 'السيرة الذاتية' },
+  id: { folder: 'id_images', column: 'id_image_path', label: 'صورة الهوية' },
+};
+const FOLDER_TO_KIND = { cv: 'cv', id_images: 'id' };
 
-  // تحقق من المجلدات المسموح بها فقط
-  if (!['cv', 'id_images'].includes(folder)) return res.status(403).end();
+/**
+ * المسار القديم — يبقى لأن روابط محفوظة وصفحة الاستكمال تشير إليه، لكنه لم
+ * يعد يبثّ الملف: يحوّل إلى صفحة العرض المُدقَّقة.
+ *
+ * ⚠️ القاعدة الحاكمة: لا يبقى في النظام طريقٌ يصل إلى مرفق متقدم دون أن
+ *    يمرّ بسطر في audit_log. الرابط المباشر الذي كان هنا كان يفتح الملف
+ *    الخام بلا أثر — وهو بالضبط ما نغلقه.
+ */
+router.get('/files/:folder/:filename', async (req, res) => {
+  const { folder, filename } = req.params;
+  const kind = FOLDER_TO_KIND[folder];
+  if (!kind) return res.status(403).end();
 
   // منع path traversal — السماح فقط بأحرف آمنة في اسم الملف
   if (!filename || !/^[a-zA-Z0-9._-]+$/.test(filename)) return res.status(400).end();
 
-  const filePath = path.join(UPLOADS_ROOT, folder, filename);
-  res.sendFile(filePath, (err) => {
-    if (err && !res.headersSent) res.status(404).end();
-  });
+  try {
+    const col   = DOC_KINDS[kind].column;
+    const owner = await db.get(`SELECT id FROM applicants WHERE ${col} = ? ORDER BY id DESC LIMIT 1`, [filename]);
+    if (!owner) return res.status(404).end();
+    res.redirect(`/admin/applicants/${owner.id}/doc/${kind}`);
+  } catch (err) {
+    console.error('[Files GET]', err.message);
+    res.status(500).end();
+  }
 });
 
 // متغيرات مشتركة لجميع views
@@ -523,8 +543,18 @@ router.get('/applicants', async (req, res) => {
 
 // ─── Export Excel ─────────────────────────────────────────────────────────────
 
-router.get('/applicants/export', async (req, res) => {
+/**
+ * تصدير Excel — سبب إلزامي.
+ *
+ * لماذا التصدير أخطر من فتح مرفق واحد؟ لأنه يُخرج القائمة كاملة — أسماء
+ * وأرقام هوية وجوالات مئات المتقدمين — في ملفٍ واحد يخرج من النظام ولا
+ * سلطة لنا عليه بعدها. لو كان بابٌ واحدٌ يستحق سبباً مكتوباً فهو هذا.
+ */
+async function exportApplicants(req, res) {
   try {
+    const check = docAccess.normalizeReason(req.body?.reason ?? req.query.reason);
+    if (!check.ok) return res.status(400).json({ error: check.error });
+
     const ExcelJS = require('exceljs');
 
     const {
@@ -606,18 +636,27 @@ router.get('/applicants/export', async (req, res) => {
       }
     });
 
-    const date = new Date().toISOString().split('T')[0];
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="artal_applicants_${date}.xlsx"`);
+    // التسجيل قبل البثّ — لو انقطع التنزيل يبقى الأثر بأن نسخة طُلبت
     await db.audit(req.session.adminId, req.session.adminUser, 'export', 'applicant', null, null,
-      `تصدير ${rows.length} متقدم`, req.ip);
+      `تصدير ${rows.length} متقدم — السبب: ${check.reason}`.slice(0, 500), req.ip);
+
+    const date = new Date().toISOString().split('T')[0];
+    const name = `متقدمو أرتال ${date}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', docAccess.disposition('attachment', name));
+    res.setHeader('X-Filename', encodeURIComponent(name));
+    res.setHeader('Cache-Control', 'no-store');
     await wb.xlsx.write(res);
     res.end();
   } catch (err) {
     console.error('[Export]', err.message);
-    res.status(500).send('خطأ في تصدير البيانات');
+    if (!res.headersSent) res.status(500).json({ error: 'خطأ في تصدير البيانات' });
+    else res.end();
   }
-});
+}
+
+// GET يبقى لروابط محفوظة (يشترط ?reason=) و POST هو ما تستخدمه نافذة السبب
+router.route('/applicants/export').get(exportApplicants).post(exportApplicants);
 
 // ─── Applicant Detail ─────────────────────────────────────────────────────────
 
@@ -633,7 +672,7 @@ router.get('/applicants/:id', async (req, res) => {
 
     // ⚠️ عزل: استعلامات المقابلات تحمل .catch خاصاً بها — لو غاب جدول interviews
     //    أو تعطّل استعلامه تظهر الصفحة كاملة بلا بطاقة المقابلة، ولا تسقط بـ 500.
-    const [notes, activity, priorApps, ivRows, ivUsers, settings] = await Promise.all([
+    const [notes, activity, priorApps, ivRows, ivUsers, settings, accessLog] = await Promise.all([
       db.all('SELECT * FROM applicant_notes WHERE applicant_id = ? ORDER BY created_at DESC', [applicant.id]),
       db.all('SELECT * FROM applicant_activity WHERE applicant_id = ? ORDER BY created_at DESC', [applicant.id]),
       // تقديمات سابقة/أخرى بنفس رقم الهوية (نظرة كاملة للمرشّح) — لا تشمل هذا الطلب
@@ -645,7 +684,22 @@ router.get('/applicants/:id', async (req, res) => {
         : Promise.resolve([]),
       db.all("SELECT id, username, full_name FROM admin_users WHERE is_active = 1 ORDER BY COALESCE(full_name, username) ASC").catch(() => []),
       db.getSettings().catch(() => ({})),
+      // سجل الوصول لهذا الملف — يُقرأ قبل تسجيل الفتحة الحالية فيعرض «من سبقني»
+      db.all(
+        `SELECT username, action, details, ip, created_at
+           FROM audit_log
+          WHERE target_type = 'applicant' AND target_id = ?
+            AND action IN (${docAccess.VIEW_ACTIONS_SQL})
+          ORDER BY created_at DESC LIMIT 25`,
+        [applicant.id]
+      ).catch(() => []),
     ]);
+
+    // تدقيق الاطّلاع — الفتحة نفسها حدثٌ يُسجَّل، لا التعديل وحده.
+    // بكبح تكرار قصير حتى لا يملأ تحديثُ الصفحة السجلَّ بصفوف متطابقة.
+    await docAccess.logView(req, {
+      action: 'applicant_view', targetId: applicant.id, targetName: applicant.full_name,
+    });
 
     // بناء بيانات بطاقة المقابلة — أي خطأ هنا يُلغي البطاقة فقط
     let interviewsEnabled = false, activeInterview = null, waUrl = '', googleConnected = false;
@@ -699,7 +753,7 @@ router.get('/applicants/:id', async (req, res) => {
     }
 
     res.render('applicant-detail', {
-      applicant, notes, activity, priorApps,
+      applicant, notes, activity, priorApps, accessLog,
       STATUS_META, NOTE_TYPES, adminUser: req.session.adminUser,
       interviewsEnabled, googleConnected, activeInterview, waUrl, delivery, notifyChannels, jobTitleGuess,
       waTemplates,
@@ -708,6 +762,92 @@ router.get('/applicants/:id', async (req, res) => {
   } catch (err) {
     console.error('[Applicant Detail]', err.message);
     res.status(500).send('خطأ في تحميل بيانات المتقدم');
+  }
+});
+
+// ─── مرفقات المتقدم — عرض مُدقَّق وتحميل بسبب ─────────────────────────────────
+//  الواجهة لا تحمل رابطاً مباشراً للملف الخام إطلاقاً. كل وصول يمرّ من هنا:
+//    /doc/:kind           صفحة عرض — لا زر حفظ ولا رابط للملف نفسه
+//    /doc/:kind/raw       البثّ داخل تلك الصفحة — inline ويُسجَّل «عرض مرفق»
+//    /doc/:kind/download  تحميل صريح — يشترط سبباً مكتوباً ويُسجَّل بلا كبح
+
+async function resolveDoc(applicantId, kind) {
+  const meta = DOC_KINDS[kind];
+  if (!meta) return null;
+  const a = await db.get(
+    `SELECT id, full_name, ${meta.column} AS file_name FROM applicants WHERE id = ?`,
+    [applicantId]
+  );
+  if (!a || !a.file_name) return null;
+  // الاسم يأتي من قاعدة البيانات، ومع ذلك يمرّ بنفس حارس path traversal:
+  // صفٌّ مسموم من استيراد قديم لا يجب أن يفتح مساراً خارج مجلد الرفع.
+  if (!/^[a-zA-Z0-9._-]+$/.test(a.file_name)) return null;
+  return { applicant: a, meta, filePath: path.join(UPLOADS_ROOT, meta.folder, a.file_name) };
+}
+
+router.get('/applicants/:id/doc/:kind', async (req, res) => {
+  try {
+    const d = await resolveDoc(req.params.id, req.params.kind);
+    if (!d) return res.status(404).send('المرفق غير موجود');
+    res.render('doc-view', {
+      docLabel:    d.meta.label,
+      personName:  d.applicant.full_name,
+      applicantId: d.applicant.id,
+      backUrl:     `/admin/applicants/${d.applicant.id}`,
+      rawUrl:      `/admin/applicants/${d.applicant.id}/doc/${req.params.kind}/raw`,
+      downloadUrl: `/admin/applicants/${d.applicant.id}/doc/${req.params.kind}/download`,
+      auditUrl:    `/admin/audit?applicant_id=${d.applicant.id}`,
+      kind:        docAccess.viewerKind(d.applicant.file_name),
+    });
+  } catch (err) {
+    console.error('[Doc view]', err.message);
+    res.status(500).send('خطأ في فتح المرفق');
+  }
+});
+
+router.get('/applicants/:id/doc/:kind/raw', async (req, res) => {
+  try {
+    const d = await resolveDoc(req.params.id, req.params.kind);
+    if (!d) return res.status(404).end();
+    await docAccess.logView(req, {
+      action: 'doc_view', targetId: d.applicant.id,
+      targetName: d.applicant.full_name, details: d.meta.label,
+    });
+    docAccess.sendAs(res, d.filePath, { mode: 'inline' });
+  } catch (err) {
+    console.error('[Doc raw]', err.message);
+    if (!res.headersSent) res.status(500).end();
+  }
+});
+
+// حدٌّ للتحميل: التسريب الجماعي يبدأ بعشرات التحميلات المتتابعة، والحدّ يجعله
+// بطيئاً ومرئياً في السجل بدل أن يتم في دقيقة واحدة.
+const docDownloadLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000, max: 60,
+  message: { error: 'تحميلات كثيرة خلال وقت قصير — انتظر قليلاً' },
+  standardHeaders: true, legacyHeaders: false,
+});
+
+router.post('/applicants/:id/doc/:kind/download', docDownloadLimiter, async (req, res) => {
+  try {
+    const check = docAccess.normalizeReason(req.body?.reason);
+    if (!check.ok) return res.status(400).json({ error: check.error });
+
+    const d = await resolveDoc(req.params.id, req.params.kind);
+    if (!d) return res.status(404).json({ error: 'المرفق غير موجود' });
+
+    // التسجيل قبل البثّ — لو انقطع التحميل يبقى الأثر بأن نسخة طُلبت
+    await docAccess.logDownload(req, {
+      targetId: d.applicant.id, targetName: d.applicant.full_name,
+      docLabel: d.meta.label, reason: check.reason,
+    });
+
+    const name = docAccess.downloadName(d.meta.label, d.applicant.full_name, d.applicant.file_name);
+    res.set('X-Filename', encodeURIComponent(name));
+    docAccess.sendAs(res, d.filePath, { mode: 'attachment', filename: name });
+  } catch (err) {
+    console.error('[Doc download]', err.message);
+    if (!res.headersSent) res.status(500).json({ error: 'تعذّر التحميل' });
   }
 });
 
@@ -1447,9 +1587,9 @@ router.get('/performance', async (req, res) => {
         u.role,
         u.is_active,
         u.last_login,
-        COUNT(CASE WHEN a.action NOT IN ('login','logout') THEN 1 END)
+        COUNT(CASE WHEN a.action NOT IN ('login','logout','applicant_view','doc_view','doc_download') THEN 1 END)
           AS total_actions,
-        COUNT(DISTINCT CASE WHEN a.action NOT IN ('login','logout') THEN DATE(a.created_at) END)
+        COUNT(DISTINCT CASE WHEN a.action NOT IN ('login','logout','applicant_view','doc_view','doc_download') THEN DATE(a.created_at) END)
           AS active_days,
         COUNT(CASE WHEN a.action = 'status_change'  THEN 1 END)
           AS status_changes,
@@ -1465,7 +1605,7 @@ router.get('/performance', async (req, res) => {
           AS ratings_given,
         COUNT(DISTINCT CASE WHEN a.target_type = 'applicant' THEN a.target_id END)
           AS unique_applicants,
-        MAX(CASE WHEN a.action NOT IN ('login','logout') THEN a.created_at END)
+        MAX(CASE WHEN a.action NOT IN ('login','logout','applicant_view','doc_view','doc_download') THEN a.created_at END)
           AS last_action_at,
         ov.overall_last_action
       FROM admin_users u
@@ -1475,7 +1615,7 @@ router.get('/performance', async (req, res) => {
       LEFT JOIN (
         SELECT user_id, MAX(created_at) AS overall_last_action
         FROM audit_log
-        WHERE action NOT IN ('login','logout')
+        WHERE action NOT IN ('login','logout','applicant_view','doc_view','doc_download')
         GROUP BY user_id
       ) ov ON ov.user_id = u.id
       WHERE u.role IN ('employee', 'manager')

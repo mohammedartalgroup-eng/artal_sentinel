@@ -297,59 +297,125 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
           </div>
         </div>
 
-        <!-- Documents -->
+        <!-- Documents — لا رابط مباشر للملف: عرض مُدقَّق أو تحميل بسبب -->
         <div class="bg-white rounded-2xl p-6">
-          <h2 class="font-bold text-[#001736] text-sm mb-4 flex items-center gap-2">
+          <h2 class="font-bold text-[#001736] text-sm mb-1 flex items-center gap-2">
             <span class="material-symbols-outlined text-base">folder_open</span>
             المرفقات
           </h2>
+          <p class="text-xs text-[#43474f] mb-4 flex items-center gap-1.5">
+            <span class="material-symbols-outlined text-sm" style="color:#7594ca">shield_person</span>
+            العرض يُسجَّل باسمك · التحميل يتطلب كتابة سبب
+          </p>
           <div class="space-y-3">
-            <% if (applicant.cv_path) { %>
-            <a href="/admin/files/cv/<%= applicant.cv_path %>" target="_blank"
-               class="flex items-center gap-3 p-3 bg-[#f8f9fb] rounded-xl hover:bg-[#f2f4f6] transition-colors group">
-              <div class="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center flex-shrink-0">
-                <span class="material-symbols-outlined text-red-600 text-lg">description</span>
+            <%
+              const DOCS = [
+                { kind: 'cv', file: applicant.cv_path, label: 'السيرة الذاتية', sub: 'CV',
+                  icon: 'description', iconBg: 'bg-red-100', iconColor: 'text-red-600',
+                  missing: 'لم يرفع السيرة الذاتية' },
+                { kind: 'id', file: applicant.id_image_path, label: 'صورة الهوية', sub: 'ID Image',
+                  icon: 'badge', iconBg: 'bg-blue-100', iconColor: 'text-blue-600',
+                  missing: 'لم يرفع صورة الهوية' },
+              ];
+            %>
+            <% DOCS.forEach(function (d) { %>
+              <% if (d.file) { %>
+              <div class="flex items-center gap-2 p-3 bg-[#f8f9fb] rounded-xl">
+                <div class="w-10 h-10 rounded-lg <%= d.iconBg %> flex items-center justify-center flex-shrink-0">
+                  <span class="material-symbols-outlined <%= d.iconColor %> text-lg"><%= d.icon %></span>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm font-medium text-[#001736] truncate"><%= d.label %></div>
+                  <div class="text-xs text-[#43474f]"><%= d.sub %></div>
+                </div>
+                <a href="/admin/applicants/<%= applicant.id %>/doc/<%= d.kind %>" target="_blank" rel="noopener"
+                   title="عرض داخل النظام — بلا تحميل"
+                   class="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                   style="color:#405f91;background:#ffffff">
+                  <span class="material-symbols-outlined text-sm">visibility</span>
+                  عرض
+                </a>
+                <button type="button" title="تحميل نسخة — يتطلب سبباً مسجّلاً"
+                        onclick="askDocDownload('<%= d.kind %>', '<%= d.label %>')"
+                        class="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                        style="color:#7a5c00;background:#ffdf9e">
+                  <span class="material-symbols-outlined text-sm">download</span>
+                  تحميل
+                </button>
               </div>
-              <div class="flex-1 min-w-0">
-                <div class="text-sm font-medium text-[#001736] truncate">السيرة الذاتية</div>
-                <div class="text-xs text-[#43474f]">CV</div>
+              <% } else { %>
+              <div class="flex items-center gap-3 p-3 bg-[#f8f9fb] rounded-xl opacity-50">
+                <div class="w-10 h-10 rounded-lg bg-[#eceef0] flex items-center justify-center flex-shrink-0">
+                  <span class="material-symbols-outlined text-[#c4c6d0] text-lg"><%= d.icon %></span>
+                </div>
+                <div class="text-sm text-[#43474f]"><%= d.missing %></div>
               </div>
-              <span class="material-symbols-outlined text-[#405f91] text-lg group-hover:scale-110 transition-transform">
-                open_in_new
-              </span>
-            </a>
-            <% } else { %>
-            <div class="flex items-center gap-3 p-3 bg-[#f8f9fb] rounded-xl opacity-50">
-              <div class="w-10 h-10 rounded-lg bg-[#eceef0] flex items-center justify-center flex-shrink-0">
-                <span class="material-symbols-outlined text-[#c4c6d0] text-lg">description</span>
-              </div>
-              <div class="text-sm text-[#43474f]">لم يرفع السيرة الذاتية</div>
-            </div>
-            <% } %>
-
-            <% if (applicant.id_image_path) { %>
-            <a href="/admin/files/id_images/<%= applicant.id_image_path %>" target="_blank"
-               class="flex items-center gap-3 p-3 bg-[#f8f9fb] rounded-xl hover:bg-[#f2f4f6] transition-colors group">
-              <div class="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
-                <span class="material-symbols-outlined text-blue-600 text-lg">badge</span>
-              </div>
-              <div class="flex-1 min-w-0">
-                <div class="text-sm font-medium text-[#001736]">صورة الهوية</div>
-                <div class="text-xs text-[#43474f]">ID Image</div>
-              </div>
-              <span class="material-symbols-outlined text-[#405f91] text-lg group-hover:scale-110 transition-transform">
-                open_in_new
-              </span>
-            </a>
-            <% } else { %>
-            <div class="flex items-center gap-3 p-3 bg-[#f8f9fb] rounded-xl opacity-50">
-              <div class="w-10 h-10 rounded-lg bg-[#eceef0] flex items-center justify-center flex-shrink-0">
-                <span class="material-symbols-outlined text-[#c4c6d0] text-lg">badge</span>
-              </div>
-              <div class="text-sm text-[#43474f]">لم يرفع صورة الهوية</div>
-            </div>
-            <% } %>
+              <% } %>
+            <% }); %>
           </div>
+        </div>
+
+        <!-- ═══ سجل الوصول ══════════════════════════════════════════════════
+             الردع يعمل حين يُرى: الموظف الذي يعرف أن فتحه للملف ظاهرٌ لزملائه
+             ومديره يتصرّف غير الذي يظنّ أن أحداً لا يعلم. -->
+        <%
+          const accessRows  = locals.accessLog || [];
+          const dlRows      = accessRows.filter(function (r) { return r.action === 'doc_download'; });
+          const viewers     = Array.from(new Set(accessRows.map(function (r) { return r.username; })));
+          const ACCESS_META = {
+            applicant_view: { label: 'فتح الملف',   icon: 'visibility',   color: '#405f91' },
+            doc_view:       { label: 'عرض مرفق',    icon: 'image_search', color: '#0277bd' },
+            doc_download:   { label: 'تحميل مرفق',  icon: 'download',     color: '#c2410c' },
+          };
+        %>
+        <div class="bg-white rounded-2xl p-6">
+          <div class="flex items-center justify-between mb-1">
+            <h2 class="font-bold text-[#001736] text-sm flex items-center gap-2">
+              <span class="material-symbols-outlined text-base">shield_person</span>
+              سجل الوصول
+            </h2>
+            <a href="/admin/audit?applicant_id=<%= applicant.id %>"
+               class="text-xs text-[#405f91] hover:underline">الكل</a>
+          </div>
+          <p class="text-xs text-[#43474f] mb-4">
+            آخر <%= accessRows.length %> عملية اطّلاع على هذا الملف
+            <% if (dlRows.length) { %>
+              · <strong style="color:#c2410c"><%= dlRows.length %></strong> تحميل
+            <% } %>
+          </p>
+
+          <% if (!accessRows.length) { %>
+            <div class="text-xs text-[#8a9099] py-3">لا يوجد اطّلاع مسجَّل بعد على هذا الملف.</div>
+          <% } else if (locals.adminRole === 'manager') { %>
+            <div class="space-y-2.5">
+              <% accessRows.slice(0, 8).forEach(function (r) {
+                   const m = ACCESS_META[r.action] || { label: r.action, icon: 'help', color: '#43474f' }; %>
+              <div class="flex items-start gap-2.5">
+                <span class="material-symbols-outlined text-base flex-shrink-0" style="color:<%= m.color %>"><%= m.icon %></span>
+                <div class="flex-1 min-w-0">
+                  <div class="text-xs font-medium text-[#001736] truncate">
+                    <%= r.username %>
+                    <span class="font-normal text-[#43474f]">— <%= m.label %></span>
+                  </div>
+                  <div class="text-[11px] text-[#8a9099]">
+                    <%= fmtDateTime(r.created_at) %>
+                    <% if (r.details) { %> · <%= r.details %><% } %>
+                  </div>
+                </div>
+              </div>
+              <% }); %>
+            </div>
+            <% if (accessRows.length > 8) { %>
+            <a href="/admin/audit?applicant_id=<%= applicant.id %>"
+               class="block text-center text-xs text-[#405f91] hover:underline mt-3">عرض السجل الكامل</a>
+            <% } %>
+          <% } else { %>
+            <div class="text-xs text-[#43474f] leading-6 p-3 bg-[#f8f9fb] rounded-xl">
+              اطّلع على هذا الملف <strong><%= viewers.length %></strong>
+              <%= viewers.length === 1 ? 'موظف' : 'موظفين' %>.
+              كل فتح أو تحميل يُسجَّل باسم صاحبه ووقته، والتفاصيل الكاملة متاحة للمديرين.
+            </div>
+          <% } %>
         </div>
 
         <!-- ═══ ملف الاستكمال (ميزة تجريبية معزولة) ═══════════════════
@@ -1924,6 +1990,19 @@ function saveEdit(nid) {
   })
   .catch(() => toast('خطأ في الاتصال بالخادم', 'error', true));
 }
+</script>
+
+<%- include('partials/download-reason') %>
+<script>
+  // تحميل مرفق — يمرّ دائماً بنافذة السبب، فلا يوجد مسار تحميل صامت
+  function askDocDownload(kind, label) {
+    askDownloadReason({
+      url: '/admin/applicants/<%= applicant.id %>/doc/' + kind + '/download',
+      label: label + ' — ' + <%- JSON.stringify(applicant.full_name || '').replace(/</g, '\\u003c') %>,
+      fallbackName: label,
+      onDone: function () { toast('سُجّل التحميل في سجل التدقيق', 'shield_person'); },
+    });
+  }
 </script>
 </body>
 </html>

@@ -8,7 +8,8 @@ router.get('/', async (req, res) => {
   try {
     const users = await db.all(`
       SELECT u.id, u.username, u.full_name, u.role, u.is_active, u.last_login, u.created_at,
-             COUNT(a.id) AS action_count
+             -- الاطّلاع ليس عملية إنجاز: فتح ملف لا يساوي تغيير حالة
+             COUNT(CASE WHEN a.action NOT IN ('applicant_view','doc_view','doc_download') THEN 1 END) AS action_count
       FROM admin_users u
       LEFT JOIN audit_log a ON a.user_id = u.id
       GROUP BY u.id

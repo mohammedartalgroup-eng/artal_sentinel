@@ -26,6 +26,7 @@ const ocr     = require('../utils/visionOcr');
 const ai      = require('../utils/aiExtract');
 const { processDocument } = require('../utils/docPipeline');
 const upload  = require('../middleware/onboardingUpload');
+const docAccess = require('../utils/docAccess');   // نفس تدقيق مرفقات التوظيف
 
 const OB_ROOT = upload.OB_ROOT;
 const LINK_DAYS = 30;
@@ -634,16 +635,87 @@ adminRouter.get('/view/:applicantId', async (req, res) => {
   }
 });
 
+// ─── مستندات الاستكمال — نفس قاعدة مرفقات التوظيف ────────────────────────────
+//  هذه المستندات أحسّ من السيرة الذاتية: هوية وآيبان وشهادات. لا معنى لتدقيق
+//  صارم على مرفقات الطلب وباب مفتوح هنا — فتمرّ بنفس الطبقة تماماً.
+async function resolveObDoc(docId) {
+  const doc = await db.get('SELECT * FROM onboarding_documents WHERE id = ?', [docId]);
+  if (!doc || !/^[A-Za-z0-9._-]+$/.test(doc.file_name || '')) return null;
+  const p = path.join(OB_ROOT, String(doc.applicant_id), doc.file_name);
+  if (!fs.existsSync(p)) return null;
+  const applicant = await db.get('SELECT id, full_name FROM applicants WHERE id = ?', [doc.applicant_id])
+    .catch(() => null);
+  return {
+    doc, filePath: p,
+    label: rules.DOC_TYPES[doc.doc_type]?.label || doc.doc_type,
+    applicantId: doc.applicant_id,
+    personName: applicant?.full_name || `متقدم #${doc.applicant_id}`,
+  };
+}
+
 adminRouter.get('/file/:docId', async (req, res) => {
   if (!featureOn()) return res.status(503).end();
   try {
-    const doc = await db.get('SELECT * FROM onboarding_documents WHERE id = ?', [req.params.docId]);
-    if (!doc || !/^[A-Za-z0-9._-]+$/.test(doc.file_name)) return res.status(404).end();
-    const p = path.join(OB_ROOT, String(doc.applicant_id), doc.file_name);
-    if (!fs.existsSync(p)) return res.status(404).end();
-    res.sendFile(p, (err) => { if (err && !res.headersSent) res.status(404).end(); });
+    const d = await resolveObDoc(req.params.docId);
+    if (!d) return res.status(404).send('المستند غير موجود');
+    res.render('doc-view', {
+      docLabel:    d.label,
+      personName:  d.personName,
+      applicantId: d.applicantId,
+      backUrl:     `/admin/onboarding/view/${d.applicantId}`,
+      rawUrl:      `/admin/onboarding/file/${d.doc.id}/raw`,
+      downloadUrl: `/admin/onboarding/file/${d.doc.id}/download`,
+      auditUrl:    `/admin/audit?applicant_id=${d.applicantId}`,
+      kind:        docAccess.viewerKind(d.doc.file_name),
+    });
   } catch (err) {
-    res.status(500).end();
+    console.error('[Onboarding file view]', err.message);
+    res.status(500).send('خطأ في فتح المستند');
+  }
+});
+
+adminRouter.get('/file/:docId/raw', async (req, res) => {
+  if (!featureOn()) return res.status(503).end();
+  try {
+    const d = await resolveObDoc(req.params.docId);
+    if (!d) return res.status(404).end();
+    await docAccess.logView(req, {
+      action: 'doc_view', targetId: d.applicantId,
+      targetName: d.personName, details: `استكمال — ${d.label}`,
+    });
+    docAccess.sendAs(res, d.filePath, { mode: 'inline' });
+  } catch (err) {
+    console.error('[Onboarding file raw]', err.message);
+    if (!res.headersSent) res.status(500).end();
+  }
+});
+
+const obDownloadLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000, max: 60,
+  message: { error: 'تحميلات كثيرة خلال وقت قصير — انتظر قليلاً' },
+  standardHeaders: true, legacyHeaders: false,
+});
+
+adminRouter.post('/file/:docId/download', obDownloadLimiter, async (req, res) => {
+  if (!featureOn()) return res.status(503).json({ error: 'الميزة غير مفعّلة' });
+  try {
+    const check = docAccess.normalizeReason(req.body?.reason);
+    if (!check.ok) return res.status(400).json({ error: check.error });
+
+    const d = await resolveObDoc(req.params.docId);
+    if (!d) return res.status(404).json({ error: 'المستند غير موجود' });
+
+    await docAccess.logDownload(req, {
+      targetId: d.applicantId, targetName: d.personName,
+      docLabel: `استكمال — ${d.label}`, reason: check.reason,
+    });
+
+    const name = docAccess.downloadName(d.label, d.personName, d.doc.file_name);
+    res.set('X-Filename', encodeURIComponent(name));
+    docAccess.sendAs(res, d.filePath, { mode: 'attachment', filename: name });
+  } catch (err) {
+    console.error('[Onboarding file download]', err.message);
+    if (!res.headersSent) res.status(500).json({ error: 'تعذّر التحميل' });
   }
 });
 

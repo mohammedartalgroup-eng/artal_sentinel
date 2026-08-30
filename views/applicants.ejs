@@ -83,11 +83,12 @@
             else if (v !== '' && v != null) _exportParams.append(k, v);
           }
         %>
-        <a href="/admin/applicants/export?<%= _exportParams.toString() %>"
+        <button type="button" onclick="askExport()"
+          title="تصدير النتائج المفلترة — يتطلب كتابة سبب يُسجَّل في سجل التدقيق"
           class="bg-green-700 text-white text-sm font-medium px-5 py-2.5 rounded-xl flex items-center gap-2 hover:bg-green-800 transition-colors">
           <span class="material-symbols-outlined text-base">download</span>
           تصدير Excel
-        </a>
+        </button>
       </header>
 
       <main class="p-4 lg:p-8 space-y-4 lg:space-y-6">
@@ -893,6 +894,18 @@
         sync();
       })();
     </script>
+
+<%- include('partials/download-reason') %>
+<script>
+  // التصدير أوسع باب لخروج البيانات — يمرّ بنفس نافذة السبب
+  function askExport() {
+    askDownloadReason({
+      url: <%- JSON.stringify('/admin/applicants/export?' + _exportParams.toString()).replace(/</g, '\\u003c') %>,
+      label: 'تصدير <%= total %> متقدم إلى ملف Excel',
+      fallbackName: 'متقدمو أرتال.xlsx',
+    });
+  }
+</script>
 </body>
 
 </html>

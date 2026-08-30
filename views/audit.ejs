@@ -59,6 +59,41 @@
 
   <main class="p-4 lg:p-8 space-y-6">
 
+    <!-- اختصارات الرقابة على البيانات ─────────────────────────────────────
+         السجل الكامل يخلط عشرات الأفعال. هذه الاختصارات تفتحه على السؤال
+         الذي يُسأل فعلاً: من أخذ نسخة، ومن يتصفّح الملفات. -->
+    <%
+      const _q = (obj) => {
+        const p = new URLSearchParams(
+          Object.fromEntries(Object.entries(Object.assign({}, filters, obj)).filter(([, v]) => v))
+        );
+        return p.toString();
+      };
+      const QUICK = [
+        { action: 'doc_download',   label: 'تحميل المرفقات', icon: 'download',     color: '#c2410c', bg: '#ffedd5' },
+        { action: 'export',         label: 'تصدير Excel',    icon: 'table_view',   color: '#1b5e20', bg: '#e8f5e9' },
+        { action: 'doc_view',       label: 'عرض المرفقات',   icon: 'image_search', color: '#075985', bg: '#e0f2fe' },
+        { action: 'applicant_view', label: 'فتح الملفات',    icon: 'visibility',   color: '#4338ca', bg: '#eef2ff' },
+      ];
+    %>
+    <div class="bg-white rounded-2xl p-4 flex items-center gap-2 flex-wrap">
+      <span class="text-xs font-semibold text-[#43474f] flex items-center gap-1.5 ml-1">
+        <span class="material-symbols-outlined text-base" style="color:#7594ca">shield_person</span>
+        الوصول إلى بيانات المتقدمين:
+      </span>
+      <% QUICK.forEach(function (k) { %>
+      <a href="/admin/audit?<%= _q({ action: k.action, page: '' }) %>"
+         class="badge"
+         style="background:<%= k.bg %>;color:<%= k.color %>;<%= filters.action === k.action ? 'outline:2px solid ' + k.color + ';outline-offset:1px' : '' %>">
+        <span class="material-symbols-outlined" style="font-size:13px"><%= k.icon %></span>
+        <%= k.label %>
+      </a>
+      <% }); %>
+      <% if (filters.action) { %>
+      <a href="/admin/audit?<%= _q({ action: '', page: '' }) %>" class="text-xs text-[#405f91] hover:underline">إلغاء الفلتر</a>
+      <% } %>
+    </div>
+
     <!-- Filter Panel -->
     <form method="GET" action="/admin/audit">
       <div class="bg-white rounded-2xl p-6">
@@ -88,6 +123,12 @@
             <label class="block text-xs font-medium text-[#43474f] mb-1.5">نوع العملية</label>
             <select name="action">
               <option value="">جميع العمليات</option>
+              <optgroup label="الوصول إلى البيانات">
+                <option value="applicant_view" <%= filters.action === 'applicant_view' ? 'selected' : '' %>>فتح ملف متقدم</option>
+                <option value="doc_view"       <%= filters.action === 'doc_view'       ? 'selected' : '' %>>عرض مرفق</option>
+                <option value="doc_download"   <%= filters.action === 'doc_download'   ? 'selected' : '' %>>تحميل مرفق</option>
+                <option value="export"         <%= filters.action === 'export'         ? 'selected' : '' %>>تصدير Excel</option>
+              </optgroup>
               <optgroup label="الدخول والخروج">
                 <option value="login"          <%= filters.action === 'login'          ? 'selected' : '' %>>تسجيل الدخول</option>
                 <option value="logout"         <%= filters.action === 'logout'         ? 'selected' : '' %>>تسجيل الخروج</option>
@@ -100,7 +141,6 @@
                 <option value="note_delete"    <%= filters.action === 'note_delete'    ? 'selected' : '' %>>حذف ملاحظة</option>
                 <option value="activity_delete" <%= filters.action === 'activity_delete' ? 'selected' : '' %>>حذف سجل نشاط</option>
                 <option value="applicant_delete" <%= filters.action === 'applicant_delete' ? 'selected' : '' %>>حذف متقدم</option>
-                <option value="export"         <%= filters.action === 'export'         ? 'selected' : '' %>>تصدير Excel</option>
               </optgroup>
               <optgroup label="المستخدمون">
                 <option value="user_create"    <%= filters.action === 'user_create'    ? 'selected' : '' %>>إنشاء مستخدم</option>
@@ -183,6 +223,9 @@
               <td class="px-5 py-3.5">
                 <%
                   const ACTION_MAP = {
+                    applicant_view:   { label: 'فتح ملف متقدم',     bg: '#eef2ff', color: '#4338ca' },
+                    doc_view:         { label: 'عرض مرفق',          bg: '#e0f2fe', color: '#075985' },
+                    doc_download:     { label: 'تحميل مرفق',        bg: '#ffedd5', color: '#c2410c' },
                     login:            { label: 'دخول',              bg: '#e8f5e9', color: '#2e7d32' },
                     logout:           { label: 'خروج',              bg: '#f3f4f6', color: '#4b5563' },
                     status_change:    { label: 'تغيير حالة',        bg: '#fff8e1', color: '#f57f17' },

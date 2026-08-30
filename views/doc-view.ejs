@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<%
+/**
+ * صفحة عرض المرفق — العرض هنا لا يعطي رابطاً للملف الخام ولا زر حفظ.
+ * البثّ يأتي من مسار /raw الذي يفرض inline ويسجّل اطّلاعاً في سجل التدقيق،
+ * والتحميل فعلٌ منفصل خلف نافذة السبب.
+ *
+ * ⚠️ ما تفعله هذه الصفحة ردعٌ وتوثيق لا منعٌ تقني: من يرى الصورة يستطيع
+ *    تصويرها بلقطة شاشة، ولا حيلة في ذلك على الويب. الفارق أن الفتح صار
+ *    مسجّلاً باسمه ووقته، وأن أخذ نسخة صار خطوة يكتب صاحبها سببها.
+ */
+%>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title><%= docLabel %> — <%= personName %></title>
+  <link rel="icon" type="image/png" href="/images/icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=block" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Inter', sans-serif; background: #14181d; color: #eff1f3; }
+    h1, h2 { font-family: 'Manrope', sans-serif; }
+
+    .dv-bar {
+      background: #001736; color: #fff; padding: 0.75rem 1rem;
+      display: flex; align-items: center; gap: 0.75rem; position: sticky; top: 0; z-index: 20;
+    }
+    .dv-bar a.back { color: #b8c9d3; text-decoration: none; display: flex; align-items: center; }
+    .dv-bar a.back:hover { color: #fff; }
+    .dv-title { flex: 1; min-width: 0; }
+    .dv-title h1 { font-size: 0.95rem; margin: 0; font-weight: 700; }
+    .dv-title p  { font-size: 0.72rem; margin: 0.15rem 0 0; color: #b8c9d3; }
+    .dv-actions { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
+    .dv-btn {
+      display: inline-flex; align-items: center; gap: 0.4rem; border: none; cursor: pointer;
+      font: inherit; font-size: 0.8rem; font-weight: 500; padding: 0.5rem 0.9rem; border-radius: 0.75rem;
+      background: rgba(255,255,255,0.1); color: #fff; text-decoration: none;
+    }
+    .dv-btn:hover { background: rgba(255,255,255,0.18); }
+    .dv-btn.warn { background: #e2c382; color: #201600; }
+    .dv-btn.warn:hover { background: #ffdf9e; }
+
+    .dv-notice {
+      background: #1d2530; border-bottom: 1px solid #2b3542; color: #b8c9d3;
+      font-size: 0.72rem; padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.4rem;
+    }
+    .dv-notice .material-symbols-outlined { font-size: 1rem; color: #e2c382; }
+
+    .dv-stage { position: relative; padding: 1.25rem; min-height: calc(100vh - 8rem); }
+    .dv-frame {
+      position: relative; margin: 0 auto; max-width: 60rem; background: #fff;
+      border-radius: 0.75rem; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,0.45);
+    }
+    .dv-frame img { display: block; width: 100%; height: auto; user-select: none; -webkit-user-drag: none; }
+    .dv-frame iframe { display: block; width: 100%; height: calc(100vh - 11rem); border: 0; background: #fff; }
+
+    /* العلامة المائية: اسم من يعرض ووقت العرض — تجعل لقطة الشاشة نفسها دليلاً */
+    .dv-mark {
+      position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 5;
+      display: flex; flex-wrap: wrap; align-content: flex-start; gap: 0;
+    }
+    .dv-mark span {
+      flex: 0 0 33.333%; padding: 2.2rem 0; text-align: center;
+      transform: rotate(-24deg); font-size: 0.68rem; font-weight: 600;
+      color: rgba(0,23,54,0.13); white-space: nowrap; letter-spacing: 0.02em;
+    }
+
+    .dv-empty { max-width: 32rem; margin: 3rem auto; background: #1d2530; border-radius: 1rem; padding: 2rem; text-align: center; }
+    .dv-empty .material-symbols-outlined { font-size: 3rem; color: #506169; }
+    .dv-empty p { font-size: 0.85rem; color: #b8c9d3; line-height: 1.7; }
+
+    .dv-print-note { display: none; }
+    @media print {
+      /* الطباعة إلى PDF نسخةٌ أخرى بلا سبب مسجّل — تُغلق هنا */
+      body > *:not(.dv-print-note) { display: none !important; }
+      .dv-print-note { display: block !important; padding: 3rem; text-align: center; color: #000; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="dv-print-note">
+  <h2>الطباعة غير متاحة من صفحة العرض</h2>
+  <p>لأخذ نسخة من المرفق استخدم زر «تحميل» — يُسجَّل باسمك مع السبب في سجل التدقيق.</p>
+</div>
+
+<div class="dv-bar">
+  <a class="back" href="<%= backUrl %>" title="رجوع">
+    <span class="material-symbols-outlined">arrow_forward</span>
+  </a>
+  <div class="dv-title">
+    <h1><%= docLabel %></h1>
+    <p><%= personName %><% if (locals.applicantId) { %> · تقديم رقم #<%= applicantId %><% } %></p>
+  </div>
+  <div class="dv-actions">
+    <% if (locals.auditUrl) { %>
+    <a class="dv-btn" href="<%= auditUrl %>">
+      <span class="material-symbols-outlined" style="font-size:1.05rem">manage_search</span>
+      <span class="dv-hide-sm">سجل الوصول</span>
+    </a>
+    <% } %>
+    <button type="button" class="dv-btn warn" onclick="requestDownload()">
+      <span class="material-symbols-outlined" style="font-size:1.05rem">download</span>
+      تحميل
+    </button>
+  </div>
+</div>
+
+<div class="dv-notice">
+  <span class="material-symbols-outlined">visibility</span>
+  <span>
+    عرضٌ فقط — فتحك لهذا المرفق مسجَّل باسم <strong><%= locals.adminName || locals.adminUser || "—" %></strong>.
+    التحميل يتطلب كتابة سبب يُحفظ في سجل التدقيق.
+  </span>
+</div>
+
+<div class="dv-stage">
+  <% if (kind === 'image') { %>
+    <div class="dv-frame">
+      <img src="<%= rawUrl %>" alt="<%= docLabel %>" oncontextmenu="return false" draggable="false">
+      <div class="dv-mark" id="dv-mark"></div>
+    </div>
+  <% } else if (kind === 'pdf') { %>
+    <div class="dv-frame">
+      <%# toolbar=0 يخفي شريط عارض PDF المدمج (بما فيه زر الحفظ) في المتصفحات التي تدعمه %>
+      <iframe src="<%= rawUrl %>#toolbar=0&navpanes=0&statusbar=0&view=FitH" title="<%= docLabel %>"></iframe>
+      <div class="dv-mark" id="dv-mark"></div>
+    </div>
+  <% } else { %>
+    <div class="dv-empty">
+      <span class="material-symbols-outlined">description</span>
+      <h2 style="font-size:1rem;margin:0.75rem 0 0.5rem">لا يمكن عرض هذا النوع داخل المتصفح</h2>
+      <p>
+        هذا المرفق بصيغة لا يعرضها المتصفح (Word مثلاً).
+        استخدم زر «تحميل» أعلاه — سيُطلب منك كتابة سبب يُسجَّل في سجل التدقيق.
+      </p>
+    </div>
+  <% } %>
+</div>
+
+<%- include('partials/download-reason') %>
+
+<script>
+  // ─── العلامة المائية ───────────────────────────────────────────────────────
+  (function () {
+    var host = document.getElementById('dv-mark');
+    if (!host) return;
+    var stamp = <%- JSON.stringify((locals.adminName || locals.adminUser || '') + ' · ' + new Date().toLocaleString('ar-SA', { timeZone: 'Asia/Riyadh' })) %>;
+    for (var i = 0; i < 30; i++) {
+      var s = document.createElement('span');
+      s.textContent = stamp;
+      host.appendChild(s);
+    }
+  })();
+
+  function requestDownload() {
+    askDownloadReason({
+      url: <%- JSON.stringify(downloadUrl) %>,
+      label: <%- JSON.stringify(docLabel + ' — ' + personName) %>,
+      fallbackName: <%- JSON.stringify(docLabel) %>,
+    });
+  }
+
+  // ─── مثبّطات النسخ العابر ───────────────────────────────────────────────────
+  // ليست حماية — لقطة الشاشة تتجاوزها. الغرض ألا يخرج المرفق بضغطة عابرة
+  // على «حفظ الصورة» أو Ctrl+S دون أن يمرّ بمسار التحميل المسجَّل.
+  document.addEventListener('contextmenu', function (e) {
+    if (e.target.closest('.dv-frame')) e.preventDefault();
+  });
+  document.addEventListener('dragstart', function (e) {
+    if (e.target.closest('.dv-frame')) e.preventDefault();
+  });
+  document.addEventListener('keydown', function (e) {
+    var k = (e.key || '').toLowerCase();
+    if ((e.ctrlKey || e.metaKey) && (k === 's' || k === 'p')) {
+      e.preventDefault();
+      askDownloadReason({
+        url: <%- JSON.stringify(downloadUrl) %>,
+        label: <%- JSON.stringify(docLabel + ' — ' + personName) %>,
+        fallbackName: <%- JSON.stringify(docLabel) %>,
+      });
+    }
+  });
+</script>
+</body>
+</html>
