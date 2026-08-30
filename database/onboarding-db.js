@@ -125,6 +125,45 @@ async function init() {
     // source: ocr | ai | user  — «من قال هذه القيمة» سؤال تدقيقي لا تجميلي:
     //         قيمة مصدرها user تعني إنساناً صحّح آلة، وهي إشارة لتحسين القواعد.
 
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS onboarding_employment (
+        id                  INT AUTO_INCREMENT PRIMARY KEY,
+        session_id          INT          NOT NULL,
+        applicant_id        INT          NOT NULL,
+        job_title           VARCHAR(60)  DEFAULT NULL,
+        preferred_zone_name VARCHAR(120) DEFAULT NULL,
+        basic_salary        DECIMAL(10,2) DEFAULT NULL,
+        living_allowance    DECIMAL(10,2) DEFAULT NULL,
+        other_allowances    DECIMAL(10,2) DEFAULT NULL,
+        actual_start        DATE         DEFAULT NULL,
+        contract_start      DATE         DEFAULT NULL,
+        marital_status      VARCHAR(10)  DEFAULT NULL,
+        qualification       VARCHAR(60)  DEFAULT NULL,
+        specialization      VARCHAR(100) DEFAULT NULL,
+        emergency_phone     VARCHAR(20)  DEFAULT NULL,
+        email               VARCHAR(120) DEFAULT NULL,
+        insurance_type      VARCHAR(30)  DEFAULT NULL,
+        insurance_company   VARCHAR(120) DEFAULT NULL,
+        ext_employee_id     INT          DEFAULT NULL,
+        sync_status         VARCHAR(20)  DEFAULT NULL,
+        sync_error          VARCHAR(255) DEFAULT NULL,
+        synced_at           DATETIME     DEFAULT NULL,
+        updated_by          VARCHAR(100) DEFAULT NULL,
+        created_at          DATETIME     DEFAULT CURRENT_TIMESTAMP,
+        updated_at          DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (session_id) REFERENCES onboarding_sessions(id) ON DELETE CASCADE,
+        UNIQUE KEY uq_session (session_id),
+        INDEX idx_applicant (applicant_id),
+        INDEX idx_ext (ext_employee_id)
+      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+    `);
+    // بيانات التوظيف التي يُدخلها فريق الموارد البشرية — راتب وبدلات ومسمّى
+    // وموقع. لا تظهر في رحلة المرشح إطلاقاً، ولا تُكتب في جدول applicants.
+    //
+    // sync_status: pending | created | duplicate | failed
+    //   duplicate = الهوية مسجّلة موظفاً مسبقاً، ومعها ext_employee_id لسجله —
+    //   فتبقى مزامنة المرفقات إليه قراراً يدوياً لا نتيجةً تلقائية للرفض.
+
     // إعدادات قالب واتساب الخاص بالميزة — تُكتب هنا لا في db.js حتى تبقى
     // الميزة قابلة للحذف كاملةً بحذف ملفاتها. INSERT IGNORE = لا تدهس تعديلاً
     // أجراه المدير من صفحة الإعدادات.

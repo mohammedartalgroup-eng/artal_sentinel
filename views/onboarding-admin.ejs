@@ -32,6 +32,9 @@
             font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
     .ob-btn.p{background:#001736;color:#fff} .ob-btn.s{background:#eef2f7;color:#001736}
     .ob-btn.d{background:#ffdad6;color:#ba1a1a}
+    .emp-in{width:100%;border:1.5px solid #e0e3e5;border-radius:10px;padding:9px 11px;font:inherit;
+            font-size:13.5px;background:#fff;color:#001736}
+    .emp-in:focus{outline:none;border-color:#264778}
     .ob-link{background:#f8f9fb;border:1px dashed #c4c6d0;border-radius:12px;padding:10px 12px;
              font-size:12.5px;color:#43474f;word-break:break-all;font-family:ui-monospace,monospace}
   </style>
@@ -119,6 +122,74 @@
             <div style="height:100%;width:<%= session.progress %>%;background:#001736;border-radius:99px"></div>
           </div>
         </div>
+      </div>
+
+      <!-- ── بيانات التوظيف: يملأها فريق الموارد البشرية وحده ────── -->
+      <div class="ob-card p-4 lg:p-5">
+        <div class="flex items-baseline gap-2 mb-1">
+          <h2 class="text-sm font-bold text-[#001736]">بيانات التوظيف</h2>
+          <span class="text-[11px] text-[#43474f]">لا تظهر للمرشح — يملأها فريق التوظيف</span>
+        </div>
+        <p class="text-[11px] text-[#43474f] mb-3">
+          ما لا يوجد في مستندات المرشح: الراتب وبدلاته، المسمّى، الموقع، تواريخ العقد.
+          الحفظ جزئي — املأ ما لديك الآن وأكمل لاحقاً. الحقول المعلَّمة (*) مطلوبة قبل الإضافة للنظام.
+        </p>
+
+        <form id="emp-form" onsubmit="saveEmployment(event)"
+              class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <% empFields.forEach(function (f) { %>
+            <%
+              // عمود DATE يعود كائنَ تاريخ من mysql2، و<input type=date> لا يقبل
+              // إلا YYYY-MM-DD — بدون هذا التحويل يظهر الحقل فارغاً رغم أنه محفوظ.
+              const raw = employment ? (employment[f.key] ?? '') : '';
+              const val = (f.type === 'date' && raw) ? new Date(raw).toISOString().slice(0, 10) : raw;
+            %>
+            <div>
+              <label class="block text-[11px] font-semibold text-[#43474f] mb-1" for="emp-<%= f.key %>">
+                <%= f.label %><% if (f.required) { %> <span class="text-[#ba1a1a]">*</span><% } %>
+              </label>
+
+              <% if (f.type === 'select') { %>
+                <select id="emp-<%= f.key %>" name="<%= f.key %>" class="emp-in">
+                  <option value="">—</option>
+                  <% f.options.forEach(function (o) { %>
+                    <option value="<%= o %>" <%= String(val) === o ? 'selected' : '' %>><%= o %></option>
+                  <% }) %>
+                </select>
+              <% } else if (f.type === 'choice') { %>
+                <select id="emp-<%= f.key %>" name="<%= f.key %>" class="emp-in">
+                  <option value="">—</option>
+                  <% f.options.forEach(function (o) { %>
+                    <option value="<%= o.value %>" <%= String(val) === o.value ? 'selected' : '' %>><%= o.label %></option>
+                  <% }) %>
+                </select>
+              <% } else { %>
+                <input id="emp-<%= f.key %>" name="<%= f.key %>" class="emp-in"
+                       type="<%= f.type === 'date' ? 'date' : (f.type === 'money' ? 'number' : 'text') %>"
+                       <%= f.type === 'money' ? 'step="0.01" min="0"' : '' %>
+                       dir="<%= ['money','date','phone','email'].includes(f.type) ? 'ltr' : 'auto' %>"
+                       value="<%= val === null ? '' : val %>">
+              <% } %>
+
+              <% if (f.hint) { %><div class="text-[10px] text-[#747780] mt-1"><%= f.hint %></div><% } %>
+            </div>
+          <% }) %>
+
+          <div class="sm:col-span-2 lg:col-span-3 flex items-center gap-3 flex-wrap pt-1">
+            <button type="submit" class="ob-btn p" id="emp-save">
+              <span class="material-symbols-outlined" style="font-size:18px">save</span> حفظ بيانات التوظيف
+            </button>
+            <span id="emp-status" class="text-xs"></span>
+          </div>
+        </form>
+
+        <div id="emp-missing" class="mt-3 text-[11px] <%= empMissing.length ? '' : 'hidden' %>"
+             style="color:#a16207">
+          ناقص قبل الإضافة للنظام: <span id="emp-missing-list"><%= empMissing.map(f => f.label).join('، ') %></span>
+        </div>
+        <% if (employment && employment.updated_by) { %>
+          <div class="ob-src mt-2">آخر تعديل: <%= employment.updated_by %> · <%= fmtDateTime(employment.updated_at) %></div>
+        <% } %>
       </div>
 
       <!-- ── الملف الموحّد: ما تتفق عليه المستندات وما تختلف فيه ──── -->
@@ -303,6 +374,46 @@ async function reextract(docId, btn) {
   } catch (e) {
     alert(e.message);
     btn.disabled = false; btn.innerHTML = old;
+  }
+}
+
+async function saveEmployment(e) {
+  e.preventDefault();
+  const btn = document.getElementById('emp-save');
+  const st = document.getElementById('emp-status');
+  const body = Object.fromEntries(new FormData(document.getElementById('emp-form')).entries());
+  btn.disabled = true; st.textContent = 'جارٍ الحفظ…'; st.style.color = '#43474f';
+  try {
+    const r = await fetch('/admin/onboarding/employment/' + APPLICANT_ID, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      // أخطاء الحقول تُعرض عند الحقل نفسه لا في رسالة عامة
+      if (j.errors) {
+        Object.entries(j.errors).forEach(([k, msg]) => {
+          const el = document.getElementById('emp-' + k);
+          if (el) { el.style.borderColor = '#ba1a1a'; el.title = msg; }
+        });
+      }
+      throw new Error(j.error || 'تعذّر الحفظ');
+    }
+    document.querySelectorAll('.emp-in').forEach(el => { el.style.borderColor = ''; el.title = ''; });
+    st.textContent = 'تم الحفظ ✓'; st.style.color = '#15803d';
+
+    const box = document.getElementById('emp-missing');
+    if (j.missing.length) {
+      document.getElementById('emp-missing-list').textContent = j.missing.map(f => f.label).join('، ');
+      box.classList.remove('hidden');
+    } else {
+      box.classList.add('hidden');
+    }
+  } catch (err) {
+    st.textContent = err.message; st.style.color = '#ba1a1a';
+  } finally {
+    btn.disabled = false;
   }
 }
 

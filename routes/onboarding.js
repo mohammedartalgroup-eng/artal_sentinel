@@ -26,6 +26,7 @@ const ocr     = require('../utils/visionOcr');
 const ai      = require('../utils/aiExtract');
 const { processDocument } = require('../utils/docPipeline');
 const upload  = require('../middleware/onboardingUpload');
+const emp     = require('../utils/employmentFields');
 const docAccess = require('../utils/docAccess');   // نفس تدقيق مرفقات التوظيف
 
 const OB_ROOT = upload.OB_ROOT;
@@ -153,6 +154,11 @@ function buildProfile(fieldsByType) {
     }
   }
   return rules.consolidate(entries);
+}
+
+/** صف بيانات التوظيف للجلسة — يُنشأ فارغاً عند أول حفظ لا قبله */
+async function loadEmployment(sessionId) {
+  return db.get('SELECT * FROM onboarding_employment WHERE session_id = ?', [sessionId]).catch(() => null);
 }
 
 async function recomputeProgress(session) {
@@ -608,8 +614,9 @@ adminRouter.get('/view/:applicantId', async (req, res) => {
     if (!applicant) return res.status(404).send('المتقدم غير موجود');
 
     const s = await db.get('SELECT * FROM onboarding_sessions WHERE applicant_id = ? ORDER BY id DESC LIMIT 1', [applicant.id]);
-    let steps = [], history = [], profile = [];
+    let steps = [], history = [], profile = [], employment = null;
     if (s) {
+      employment = await loadEmployment(s.id);
       const { byType, fieldsByType } = await loadDocs(s.id);
       steps = buildSteps(s, byType, fieldsByType, {
         withOcr: true,
@@ -623,6 +630,9 @@ adminRouter.get('/view/:applicantId', async (req, res) => {
     }
     res.render('onboarding-admin', {
       applicant, session: s, steps, history, profile,
+      employment,
+      empFields: emp.FIELDS,
+      empMissing: emp.missingRequired(employment || {}),
       link: s ? publicLink(req, s.token) : null,
       DOC_TYPES: rules.DOC_TYPES,
       engine: { ocr: ocr.isConfigured(), ai: ai.isConfigured(), aiProvider: ai.provider(), aiModel: ai.model() },
@@ -784,6 +794,50 @@ adminRouter.post('/doc/:docId/reextract', reextractLimiter, async (req, res) => 
   } catch (err) {
     console.error('[Onboarding reextract]', err.message);
     res.status(500).json({ error: 'تعذّرت إعادة الاستخراج' });
+  }
+});
+
+// حفظ بيانات التوظيف — الحفظ جزئي دائماً: يملأ الموظف ما لديه اليوم ويكمل غداً،
+// ولا تُشترط الحقول المطلوبة إلا عند المزامنة مع النظام الأساسي.
+adminRouter.post('/employment/:applicantId', async (req, res) => {
+  if (!featureOn()) return res.status(503).json({ error: 'الميزة غير مفعّلة' });
+  try {
+    const s = await db.get(
+      'SELECT * FROM onboarding_sessions WHERE applicant_id = ? ORDER BY id DESC LIMIT 1',
+      [req.params.applicantId]
+    );
+    if (!s) return res.status(404).json({ error: 'لا توجد جلسة استكمال لهذا المتقدم' });
+
+    // لا نقبل من الواجهة إلا ما أعلنه السجل — لا حقل خارج القائمة يصل الجدول
+    const values = {};
+    const errors = {};
+    for (const key of emp.KEYS) {
+      if (!(key in (req.body || {}))) continue;
+      const v = emp.validate(key, req.body[key]);
+      if (!v.ok) { errors[key] = v.error; continue; }
+      values[key] = v.value;
+    }
+    if (Object.keys(errors).length) return res.status(422).json({ error: 'قيم غير صالحة', errors });
+
+    const cols = Object.keys(values);
+    const actor = req.session?.adminName || req.session?.adminUser || null;
+
+    if (cols.length) {
+      const insertCols = ['session_id', 'applicant_id', ...cols, 'updated_by'];
+      const params = [s.id, s.applicant_id, ...cols.map(c => values[c]), actor];
+      await db.run(
+        `INSERT INTO onboarding_employment (${insertCols.map(c => `\`${c}\``).join(', ')})
+         VALUES (${insertCols.map(() => '?').join(', ')})
+         ON DUPLICATE KEY UPDATE ${[...cols, 'updated_by'].map(c => `\`${c}\` = VALUES(\`${c}\`)`).join(', ')}`,
+        params
+      );
+    }
+
+    const row = await loadEmployment(s.id);
+    res.json({ ok: true, missing: emp.missingRequired(row || {}), employment: row });
+  } catch (err) {
+    console.error('[Onboarding employment]', err.message);
+    res.status(500).json({ error: 'تعذّر حفظ بيانات التوظيف' });
   }
 });
 
