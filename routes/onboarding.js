@@ -27,6 +27,8 @@ const ai      = require('../utils/aiExtract');
 const { processDocument } = require('../utils/docPipeline');
 const upload  = require('../middleware/onboardingUpload');
 const emp     = require('../utils/employmentFields');
+const artalsys = require('../utils/artalsys');
+const payloadBuilder = require('../utils/employeePayload');
 const docAccess = require('../utils/docAccess');   // نفس تدقيق مرفقات التوظيف
 
 const OB_ROOT = upload.OB_ROOT;
@@ -631,6 +633,8 @@ adminRouter.get('/view/:applicantId', async (req, res) => {
     res.render('onboarding-admin', {
       applicant, session: s, steps, history, profile,
       employment,
+      artalsysReady: artalsys.isConfigured(),
+      artalsysUrl: artalsys.baseUrl(),
       empFields: emp.FIELDS,
       empMissing: emp.missingRequired(employment || {}),
       link: s ? publicLink(req, s.token) : null,
@@ -838,6 +842,102 @@ adminRouter.post('/employment/:applicantId', async (req, res) => {
   } catch (err) {
     console.error('[Onboarding employment]', err.message);
     res.status(500).json({ error: 'تعذّر حفظ بيانات التوظيف' });
+  }
+});
+
+// ═══ المزامنة مع النظام الأساسي ═══════════════════════════════════════════
+//
+// خطوتان لا واحدة: «فحص» يمرّ بكل شيء بلا إنشاء، ثم «إضافة». الفحص يستدعي
+// dry_run في الطرف الآخر فيرى الموظف النتيجة كاملة — بما فيها تعارض الهوية أو
+// الجوال — قبل أن يضغط زر الإضافة، لا بعده.
+
+async function syncContext(applicantId, req) {
+  const applicant = await db.get('SELECT * FROM applicants WHERE id = ?', [applicantId]);
+  if (!applicant) return { error: 'المتقدم غير موجود', code: 404 };
+
+  const s = await db.get('SELECT * FROM onboarding_sessions WHERE applicant_id = ? ORDER BY id DESC LIMIT 1', [applicantId]);
+  if (!s) return { error: 'لا توجد جلسة استكمال لهذا المتقدم', code: 400 };
+
+  const { byType, fieldsByType } = await loadDocs(s.id);
+  const employment = await loadEmployment(s.id);
+  const built = payloadBuilder.build({ applicant, fieldsByType, employment, sessionId: s.id });
+
+  // عوائق محلية تُشرح بالعربية قبل أي نداء خارجي — أرخص وأوضح من رفض بعيد
+  const blockers = [
+    ...payloadBuilder.unconfirmedDocs(s, byType).map(label => `مستند لم يؤكّده المرشح: ${label}`),
+    ...built.missing.map(label => `بيان ناقص: ${label}`),
+  ];
+
+  return { applicant, session: s, employment, payload: built.payload, blockers };
+}
+
+adminRouter.get('/sync-preview/:applicantId', async (req, res) => {
+  if (!featureOn()) return res.status(503).json({ error: 'الميزة غير مفعّلة' });
+  try {
+    const ctx = await syncContext(req.params.applicantId, req);
+    if (ctx.error) return res.status(ctx.code).json({ error: ctx.error });
+
+    const out = {
+      ok: true,
+      configured: artalsys.isConfigured(),
+      blockers: ctx.blockers,
+      payload: ctx.payload,
+      employment: ctx.employment,
+    };
+
+    if (ctx.blockers.length || !artalsys.isConfigured()) return res.json(out);
+
+    // فحص عن بُعد — لا يكتب شيئاً في النظام الأساسي
+    const r = await artalsys.pushEmployee(ctx.payload, { dryRun: true });
+    res.json({ ...out, remote: { status: r.status, ...r.json } });
+  } catch (err) {
+    console.error('[Onboarding sync-preview]', err.message);
+    res.status(502).json({ error: err.message });
+  }
+});
+
+adminRouter.post('/sync/:applicantId', sendLimiter, async (req, res) => {
+  if (!featureOn()) return res.status(503).json({ error: 'الميزة غير مفعّلة' });
+  if (!artalsys.isConfigured()) return res.status(409).json({ error: 'تكامل النظام الأساسي غير مهيأ' });
+
+  try {
+    const ctx = await syncContext(req.params.applicantId, req);
+    if (ctx.error) return res.status(ctx.code).json({ error: ctx.error });
+    if (ctx.blockers.length) return res.status(422).json({ error: 'الملف غير مكتمل', blockers: ctx.blockers });
+
+    const r = await artalsys.pushEmployee(ctx.payload);
+    const employeeId = r.json?.employee_id || r.json?.conflicts?.national_id?.employee_id || null;
+
+    // نُسجّل نتيجة كل محاولة — الرفض معلومة تُحفظ لا رسالة تختفي بإغلاق النافذة
+    const status = r.status === 201 ? 'created' : (r.status === 409 ? 'duplicate' : 'failed');
+    const errText = r.status === 201 ? null
+      : String(r.json?.error || 'تعذّرت الإضافة').slice(0, 250);
+
+    await db.run(
+      `UPDATE onboarding_employment
+          SET ext_employee_id = ?, sync_status = ?, sync_error = ?, synced_at = ?
+        WHERE session_id = ?`,
+      [employeeId, status, errText, r.status === 201 ? new Date() : null, ctx.session.id]
+    );
+
+    const label = r.status === 201
+      ? `أُضيف إلى نظام الموظفين — رقم ${employeeId}`
+      : `تعذّرت الإضافة إلى نظام الموظفين — ${errText}`;
+
+    db.run('INSERT INTO applicant_notes (applicant_id, content, type, user_name) VALUES (?, ?, ?, ?)',
+      [ctx.applicant.id, label, 'follow_up', req.session?.adminName || null]).catch(() => {});
+    db.audit(req.session?.adminId, req.session?.adminUser || 'system', 'onboarding_sync',
+      'applicant', ctx.applicant.id, ctx.applicant.full_name, label.slice(0, 500), req.ip).catch(() => {});
+
+    res.status(r.status === 201 ? 200 : r.status).json({
+      ok: r.status === 201,
+      status,
+      employee_id: employeeId,
+      remote: r.json,
+    });
+  } catch (err) {
+    console.error('[Onboarding sync]', err.message);
+    res.status(502).json({ error: err.message });
   }
 });
 

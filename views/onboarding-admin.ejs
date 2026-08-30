@@ -192,6 +192,60 @@
         <% } %>
       </div>
 
+      <!-- ── الإضافة إلى نظام الموظفين ─────────────────────────────── -->
+      <div class="ob-card p-4 lg:p-5" id="sync-card">
+        <div class="flex items-baseline gap-2 mb-1">
+          <h2 class="text-sm font-bold text-[#001736]">الإضافة إلى نظام الموظفين</h2>
+          <span class="text-[11px] text-[#43474f]">artalsys.com</span>
+        </div>
+
+        <% const synced = employment && employment.sync_status === 'created' && employment.ext_employee_id; %>
+        <% const dup = employment && employment.sync_status === 'duplicate'; %>
+
+        <% if (synced) { %>
+          <div class="mt-2 flex items-center gap-2 flex-wrap">
+            <span class="ob-chip g">أُضيف إلى النظام</span>
+            <span class="text-sm font-bold text-[#001736]">رقم الموظف: <%= employment.ext_employee_id %></span>
+            <a class="ob-btn s" target="_blank" rel="noopener"
+               href="<%= artalsysUrl %>/admin/employees/<%= employment.ext_employee_id %>/edit">
+              <span class="material-symbols-outlined" style="font-size:18px">open_in_new</span> فتح ملفه
+            </a>
+            <span class="ob-src"><%= fmtDateTime(employment.synced_at) %></span>
+          </div>
+        <% } else { %>
+          <p class="text-[11px] text-[#43474f] mb-3">
+            «فحص قبل الإضافة» يمرّ بكل التحقق في النظام الأساسي <b>بلا إنشاء أي سجل</b> — فترى النتيجة قبل أن تضغط.
+          </p>
+
+          <% if (!artalsysReady) { %>
+            <div class="ob-chip n">تكامل النظام الأساسي غير مهيأ — راجع متغيّرات البيئة</div>
+          <% } else { %>
+            <div class="flex items-center gap-2 flex-wrap">
+              <button class="ob-btn s" id="sync-check" onclick="syncPreview()">
+                <span class="material-symbols-outlined" style="font-size:18px">fact_check</span> فحص قبل الإضافة
+              </button>
+              <button class="ob-btn p hidden" id="sync-go" onclick="syncNow()">
+                <span class="material-symbols-outlined" style="font-size:18px">person_add</span> إضافة إلى النظام
+              </button>
+              <% if (dup && employment.ext_employee_id) { %>
+                <a class="ob-btn s" target="_blank" rel="noopener"
+                   href="<%= artalsysUrl %>/admin/employees/<%= employment.ext_employee_id %>/edit">
+                  فتح ملف الموظف القائم (#<%= employment.ext_employee_id %>)
+                </a>
+              <% } %>
+            </div>
+          <% } %>
+
+          <% if (employment && employment.sync_error) { %>
+            <div class="mt-3 text-xs bg-[#ffdad6] text-[#ba1a1a] rounded-xl px-3 py-2">
+              آخر محاولة: <%= employment.sync_error %>
+            </div>
+          <% } %>
+
+          <div id="sync-result" class="mt-3 text-xs hidden"></div>
+        <% } %>
+      </div>
+
       <!-- ── الملف الموحّد: ما تتفق عليه المستندات وما تختلف فيه ──── -->
       <% if (profile.length) { %>
       <div class="ob-card p-4 lg:p-5">
@@ -374,6 +428,84 @@ async function reextract(docId, btn) {
   } catch (e) {
     alert(e.message);
     btn.disabled = false; btn.innerHTML = old;
+  }
+}
+
+// ─── المزامنة مع النظام الأساسي ─────────────────────────────────────────────
+function syncBox(html, tone) {
+  const box = document.getElementById('sync-result');
+  const colors = { ok: ['#dcfce7', '#15803d'], warn: ['#fef3c7', '#a16207'], bad: ['#ffdad6', '#ba1a1a'], info: ['#eef2f7', '#43474f'] };
+  const [bg, fg] = colors[tone] || colors.info;
+  box.style.background = bg; box.style.color = fg;
+  box.style.borderRadius = '12px'; box.style.padding = '10px 12px';
+  box.innerHTML = html;
+  box.classList.remove('hidden');
+}
+
+async function syncPreview() {
+  const btn = document.getElementById('sync-check');
+  btn.disabled = true;
+  syncBox('جارٍ الفحص…', 'info');
+  try {
+    const r = await fetch('/admin/onboarding/sync-preview/' + APPLICANT_ID);
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'تعذّر الفحص');
+
+    if (j.blockers.length) {
+      syncBox('<b>لا يمكن الإضافة بعد:</b><ul style="margin:6px 0 0;padding-inline-start:18px">'
+        + j.blockers.map(b => '<li>' + b + '</li>').join('') + '</ul>', 'warn');
+      document.getElementById('sync-go').classList.add('hidden');
+      return;
+    }
+
+    const rem = j.remote || {};
+    if (rem.status === 409) {
+      const c = rem.conflicts || {};
+      const lines = Object.values(c).map(x => '• ' + x.message
+        + (x.employee_id ? ' (موظف رقم ' + x.employee_id + (x.name ? ' — ' + x.name : '') + ')' : ''));
+      syncBox('<b>تعارض يمنع الإضافة:</b><br>' + lines.join('<br>'), 'bad');
+      document.getElementById('sync-go').classList.add('hidden');
+      return;
+    }
+    if (rem.status === 422) {
+      const errs = Object.values(rem.errors || {}).flat();
+      syncBox('<b>رفض النظام الأساسي البيانات:</b><br>' + errs.join('<br>'), 'bad');
+      document.getElementById('sync-go').classList.add('hidden');
+      return;
+    }
+    if (rem.status !== 200 || !rem.ok) {
+      syncBox(rem.error || 'رد غير متوقع من النظام الأساسي', 'bad');
+      return;
+    }
+
+    const e = rem.employee || {};
+    syncBox('<b>جاهز للإضافة ✓</b> — سيُنشأ باسم «' + (e.first_name || '') + ' ' + (e.family_name || '')
+      + '» · هوية ' + (e.national_id || '') + ' · ' + (e.job_title || '') + ' · راتب ' + (e.basic_salary || 0), 'ok');
+    document.getElementById('sync-go').classList.remove('hidden');
+  } catch (err) {
+    syncBox(err.message, 'bad');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function syncNow() {
+  if (!confirm('إضافة هذا المرشح إلى نظام الموظفين؟\nيُنشأ سجل موظف حقيقي في artalsys.')) return;
+  const btn = document.getElementById('sync-go');
+  btn.disabled = true;
+  syncBox('جارٍ الإضافة…', 'info');
+  try {
+    const r = await fetch('/admin/onboarding/sync/' + APPLICANT_ID, { method: 'POST' });
+    const j = await r.json();
+    if (!r.ok) {
+      const c = j.remote?.conflicts || {};
+      const extra = Object.values(c).map(x => x.message).join(' · ');
+      throw new Error((j.error || j.remote?.error || 'تعذّرت الإضافة') + (extra ? ' — ' + extra : ''));
+    }
+    location.reload();
+  } catch (err) {
+    syncBox(err.message, 'bad');
+    btn.disabled = false;
   }
 }
 
