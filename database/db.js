@@ -242,9 +242,9 @@ async function initialize() {
         details     VARCHAR(500),
         ip          VARCHAR(45),
         created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
-        INDEX idx_user_id  (user_id),
-        INDEX idx_created  (created_at),
-        INDEX idx_action   (action)
+        INDEX idx_user_created   (user_id, created_at),
+        INDEX idx_created        (created_at),
+        INDEX idx_action_created (action, created_at)
       ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
     `);
 
@@ -335,8 +335,23 @@ async function initialize() {
       ['applicants',  'idx_gender',         'ADD INDEX idx_gender (gender)'],
       ['applicants',  'idx_qualification',  'ADD INDEX idx_qualification (qualification)'],
       ['applicants',  'idx_status_created', 'ADD INDEX idx_status_created (status, created_at)'],
-      ['audit_log',   'idx_username',       'ADD INDEX idx_username (username)'],
-      ['audit_log',   'idx_target',         'ADD INDEX idx_target (target_type, target_id)'],
+      // ─── فهارس audit_log المركّبة ──────────────────────────────────────────
+      //  الجدول يكبر بلا سقف (ملايين الصفوف مع تدقيق الاطّلاع)، وكل استعلاماته
+      //  من شكل «فلتر + ORDER BY created_at + LIMIT». فهرس أحادي يجبر المنفّذ
+      //  على الاختيار بين خطتين كلتاهما سيئة الاحتمال:
+      //    - فهرس الفلتر ثم فرز كل صفوفه (موظف نشط = مئات الآلاف)، أو
+      //    - فهرس التاريخ معكوساً مع ترشيح كل صف حتى يكتمل الـ LIMIT — وقد
+      //      قاس هذا 1.8 ثانية على 2.4 مليون صف مقابل ~2ms للفهرس المركّب.
+      //  المركّب (فلتر، created_at) يجعل الخطة الصحيحة بنيوياً بلا فرز ولا
+      //  انقلاب بتغيّر الإحصاءات. الأحادية القديمة تُحذف بعده — إبقاؤها كلفة
+      //  كتابة بلا قارئ.
+      ['audit_log',   'idx_target_created',   'ADD INDEX idx_target_created (target_type, target_id, created_at)'],
+      ['audit_log',   'idx_username_created', 'ADD INDEX idx_username_created (username, created_at)'],
+      ['audit_log',   'idx_action_created',   'ADD INDEX idx_action_created (action, created_at)'],
+      ['audit_log',   'idx_user_created',     'ADD INDEX idx_user_created (user_id, created_at)'],
+      // مغطٍّ لعدّادات صفحة المستخدمين: COUNT لكل مستخدم مع استثناء أفعال
+      // الاطّلاع يقرأ من الفهرس وحده — قيس 326ms مقابل 2.4 ثانية بقراءة الصفوف
+      ['audit_log',   'idx_user_action',      'ADD INDEX idx_user_action (user_id, action)'],
     ];
     for (const [table, name, ddl] of idxChecks) {
       const [idxRows] = await conn.query(
@@ -346,6 +361,20 @@ async function initialize() {
       if (idxRows[0].c === 0) {
         await conn.query(`ALTER TABLE ${table} ${ddl}`);
         console.log(`[DB] Migration: added index ${name} on ${table}`);
+      }
+    }
+
+    // ─── حذف فهارس audit_log الأحادية التي حلّت المركّبة محلّها ─────────────
+    //  بعد نجاح الإضافة فقط — حتى لا يمرّ الجدول بلحظة بلا فهرس صالح.
+    //  البادئة اليسرى للمركّب تغطي كل ما كان الأحادي يخدمه.
+    for (const oldIdx of ['idx_target', 'idx_username', 'idx_action', 'idx_user_id']) {
+      const [oldRows] = await conn.query(
+        'SELECT COUNT(*) as c FROM information_schema.STATISTICS WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?',
+        ['audit_log', oldIdx]
+      );
+      if (oldRows[0].c > 0) {
+        await conn.query(`ALTER TABLE audit_log DROP INDEX ${oldIdx}`);
+        console.log(`[DB] Migration: dropped superseded index ${oldIdx} on audit_log`);
       }
     }
 

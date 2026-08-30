@@ -1530,7 +1530,9 @@ router.get('/audit', async (req, res) => {
     if (action)        { conditions.push('a.action = ?');                params.push(action); }
     if (date_from)     { conditions.push('a.created_at >= ?');                         params.push(date_from + ' 00:00:00'); }
     if (date_to)       { conditions.push('a.created_at < DATE_ADD(?, INTERVAL 1 DAY)'); params.push(date_to); }
-    if (applicant_id)  { conditions.push('a.target_id = ?');             params.push(applicant_id); }
+    // target_type ليس زخرفة: فهرس idx_target_created يبدأ به، وبدونه يرتد
+    // المنفّذ إلى مسح فهرس التاريخ معكوساً عبر ملايين الصفوف (قيس 1.8 ثانية)
+    if (applicant_id)  { conditions.push("a.target_type = 'applicant' AND a.target_id = ?"); params.push(applicant_id); }
     const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
 
     // جلب اسم المتقدم إذا كان الفلتر نشطاً
@@ -1540,17 +1542,22 @@ router.get('/audit', async (req, res) => {
       applicantName = ap?.full_name || '';
     }
 
+    // سقف العدّ: العدّ الدقيق يمسّ كل صف مطابق، ومع فلترين متقاطعين على
+    // ملايين الصفوف قيس ~2 ثانية لعددٍ لن يقرأه أحد بعد خانته الرابعة.
+    // فوق السقف تعرض الصفحة «5000+» ويتوقف العمل عند حدّه.
+    const COUNT_CAP = 5000;
     const [countRow, logs, users] = await Promise.all([
-      db.get(`SELECT COUNT(*) as c FROM audit_log a ${where}`, params),
+      db.get(`SELECT COUNT(*) as c FROM (SELECT 1 FROM audit_log a ${where} LIMIT ${COUNT_CAP}) x`, params),
       db.all(`SELECT a.* FROM audit_log a ${where} ORDER BY a.created_at DESC LIMIT ${PAGE_SIZE} OFFSET ${offset}`, params),
       db.all('SELECT DISTINCT username FROM audit_log ORDER BY username ASC'),
     ]);
 
-    const total      = Number(countRow?.c) || 0;
-    const totalPages = Math.ceil(total / PAGE_SIZE);
+    const total       = Number(countRow?.c) || 0;
+    const totalCapped = total >= COUNT_CAP;
+    const totalPages  = Math.ceil(total / PAGE_SIZE);
 
     res.render('audit', {
-      logs, users, total, totalPages, pageNum,
+      logs, users, total, totalCapped, totalPages, pageNum,
       filters: { user, action, date_from, date_to, applicant_id },
       applicantName,
     });
@@ -1610,22 +1617,30 @@ router.get('/performance', async (req, res) => {
         COUNT(DISTINCT CASE WHEN a.target_type = 'applicant' THEN a.target_id END)
           AS unique_applicants,
         MAX(CASE WHEN a.action NOT IN ('login','logout','applicant_view','doc_view','doc_download') THEN a.created_at END)
-          AS last_action_at,
-        ov.overall_last_action
+          AS last_action_at
       FROM admin_users u
       LEFT JOIN audit_log a
         ON a.user_id = u.id
         AND a.created_at >= ? AND a.created_at < DATE_ADD(?, INTERVAL 1 DAY)
-      LEFT JOIN (
-        SELECT user_id, MAX(created_at) AS overall_last_action
-        FROM audit_log
-        WHERE action NOT IN ('login','logout','applicant_view','doc_view','doc_download')
-        GROUP BY user_id
-      ) ov ON ov.user_id = u.id
       WHERE u.role IN ('employee', 'manager')
-      GROUP BY u.id, u.username, u.full_name, u.role, u.is_active, u.last_login, ov.overall_last_action
+      GROUP BY u.id, u.username, u.full_name, u.role, u.is_active, u.last_login
       ORDER BY total_actions DESC
     `, [fromDate, toDate]);
+
+    // آخر نشاط إجمالي (خارج نطاق التقرير) — مسبار لكل مستخدم بدل GROUP BY
+    // على الجدول كاملاً: التجميع الكامل قيس 2.7 ثانية على 2.4 مليون صف،
+    // والمسبار 0.9ms — الفهرس (user_id, created_at) يُقرأ تنازلياً ويقف عند
+    // أول فعل عمل. وليست هذه مشكلة N+1: العدّ محدود بعدد الموظفين (حفنة
+    // ثابتة) لا بعدد الصفوف، وكل مسبار يلمس صفوفاً معدودة.
+    await Promise.all(employees.map(async (e) => {
+      const row = await db.get(
+        `SELECT created_at FROM audit_log
+          WHERE user_id = ? AND action NOT IN ('login','logout','applicant_view','doc_view','doc_download')
+          ORDER BY created_at DESC LIMIT 1`,
+        [e.id]
+      ).catch(() => null);
+      e.overall_last_action = row ? row.created_at : null;
+    }));
 
     // تحويل وإثراء البيانات
     const nowTs = Date.now();

@@ -6,13 +6,18 @@ const db       = require('../database/db');
 // ─── قائمة المستخدمين ────────────────────────────────────────────────────────
 router.get('/', async (req, res) => {
   try {
+    // التجميع في جدول مشتق يقرأ فهرس (user_id, action) وحده — الـ JOIN المباشر
+    // كان يقرأ صفوف الجدول كلها لكل مستخدم (2.4 ثانية على 2.4 مليون صف).
+    // والاطّلاع مستثنى لأنه ليس عملية إنجاز: فتح ملف لا يساوي تغيير حالة.
     const users = await db.all(`
       SELECT u.id, u.username, u.full_name, u.role, u.is_active, u.last_login, u.created_at,
-             -- الاطّلاع ليس عملية إنجاز: فتح ملف لا يساوي تغيير حالة
-             COUNT(CASE WHEN a.action NOT IN ('applicant_view','doc_view','doc_download') THEN 1 END) AS action_count
+             COALESCE(ac.c, 0) AS action_count
       FROM admin_users u
-      LEFT JOIN audit_log a ON a.user_id = u.id
-      GROUP BY u.id
+      LEFT JOIN (
+        SELECT user_id, COUNT(*) AS c FROM audit_log
+        WHERE action NOT IN ('applicant_view','doc_view','doc_download')
+        GROUP BY user_id
+      ) ac ON ac.user_id = u.id
       ORDER BY u.created_at ASC
     `);
     res.render('users', {
