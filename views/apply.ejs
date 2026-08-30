@@ -620,8 +620,28 @@
           </div>
         </div>
 
+        <!-- ─── الموافقة على سياسة الخصوصية ─────────────────────────────────
+             مربع غير مؤشَّر ابتداءً، ومطلوب. الموافقة تُحفظ مع الطلب (وقتها
+             و IP وإصدار السياسة) لأن نظام حماية البيانات يشترط أن تكون
+             الموافقة قابلة للإثبات — ونصٌّ في أسفل الصفحة لا يُثبت شيئاً. -->
+        <div class="pt-6 input-wrap" id="wrap-consent">
+          <label class="flex items-start gap-3 cursor-pointer bg-surface-container-low rounded-xl p-4 border border-outline-variant/30">
+            <input type="checkbox" name="consent" value="yes" id="f-consent"
+                   class="mt-0.5 w-5 h-5 flex-shrink-0 text-primary border-slate-300 rounded focus:ring-primary"
+                   onchange="clearError('consent')"/>
+            <span class="text-sm text-on-surface-variant leading-relaxed">
+              أقر بأنني اطّلعت على
+              <a href="/privacy" target="_blank" rel="noopener"
+                 class="text-primary font-semibold underline">سياسة الخصوصية وحماية البيانات الشخصية</a>
+              وأوافق على جمع بياناتي الشخصية ومعالجتها لأغراض التوظيف الموضحة فيها.
+              <span class="text-error">*</span>
+            </span>
+          </label>
+          <p class="err-msg" id="err-consent">يجب الاطّلاع على سياسة الخصوصية والموافقة عليها قبل إرسال الطلب</p>
+        </div>
+
         <!-- Submit Button -->
-        <div class="pt-6">
+        <div class="pt-4">
           <button class="w-full bg-gradient-to-r from-primary to-primary-container text-white font-bold py-4 rounded-lg flex items-center justify-center gap-3 hover:opacity-90 transition-all shadow-lg active:scale-[0.98]"
                   type="submit" id="submitBtn">
             إرسال الطلب
@@ -629,6 +649,8 @@
           </button>
           <p class="text-xs text-center text-slate-400 mt-3">
             <span class="text-error">*</span> الحقول المُشار إليها إلزامية
+            &nbsp;·&nbsp;
+            <a href="/privacy" target="_blank" rel="noopener" class="underline hover:text-primary">سياسة الخصوصية</a>
           </p>
         </div>
       </form>
@@ -1099,6 +1121,15 @@ document.getElementById('applyForm').addEventListener('submit', function (e) {
     valid = false;
   } else {
     clearError('has_license');
+  }
+
+  // ── الموافقة على سياسة الخصوصية (إلزامي)
+  if (!document.getElementById('f-consent').checked) {
+    showError('consent', 'يجب الاطّلاع على سياسة الخصوصية والموافقة عليها قبل إرسال الطلب');
+    if (!firstError) firstError = 'wrap-consent';
+    valid = false;
+  } else {
+    clearError('consent');
   }
 
   // ── إذا في أخطاء: اسكرول لأول خطأ

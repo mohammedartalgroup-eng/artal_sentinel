@@ -265,6 +265,22 @@ async function initialize() {
       console.log('[DB] Migration: added column last_login');
     }
 
+    // ─── ترحيل: إضافة حقول موافقة الخصوصية إلى applicants
+    //  الموافقة تُحفظ بثلاثة أجزاء لا جزء واحد: متى، ومن أين، وعلى أي إصدار.
+    //  «وافق: نعم» وحدها لا تُثبت شيئاً بعد أول تحديث للسياسة (البند ١٨).
+    //  الأعمدة تقبل NULL عمداً: الطلبات المسجَّلة قبل هذا الترحيل لم تُؤخذ
+    //  موافقتها فعلاً، وملؤها بقيمة افتراضية يكون تزويراً لسجلٍّ نظامي.
+    const [consentCols] = await conn.query("SHOW COLUMNS FROM applicants LIKE 'consent_at'");
+    if (consentCols.length === 0) {
+      await conn.query(`
+        ALTER TABLE applicants
+          ADD COLUMN consent_at      DATETIME    DEFAULT NULL,
+          ADD COLUMN consent_ip      VARCHAR(45) DEFAULT NULL,
+          ADD COLUMN privacy_version VARCHAR(20) DEFAULT NULL
+      `);
+      console.log('[DB] Migration: added privacy consent columns to applicants');
+    }
+
     // ─── ترحيل: إضافة حقول الفحص الخارجي إلى applicants
     const [extCols] = await conn.query("SHOW COLUMNS FROM applicants LIKE 'ext_check_done'");
     if (extCols.length === 0) {

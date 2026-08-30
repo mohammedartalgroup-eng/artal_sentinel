@@ -4,6 +4,7 @@ const db = require('../database/db');
 const upload = require('../middleware/upload');
 const { checkExternal } = require('../utils/extCheck');
 const jobsCities = require('./jobs').CITIES;   // لسحابة روابط المدن في التذييل
+const privacy = require('../utils/privacy');
 
 // GET /apply — public application form
 router.get('/', async (req, res) => {
@@ -57,7 +58,7 @@ router.post('/', (req, res) => {
     }
 
     try {
-      const { full_name, id_number, phone, email, age, gender, region, city, neighborhood, has_car, has_license, english, qualification, specialization, source, referrer, landing_page } = req.body;
+      const { full_name, id_number, phone, email, age, gender, region, city, neighborhood, has_car, has_license, english, qualification, specialization, source, referrer, landing_page, consent } = req.body;
 
       // البريد الإلكتروني اختياري: يُقبل فارغاً، ويُتحقق منه فقط إن كُتب
       const emailVal = email ? String(email).trim().toLowerCase() : '';
@@ -84,6 +85,10 @@ router.post('/', (req, res) => {
       if (has_license !== 'yes' && has_license !== 'no')        errors.push('يرجى تحديد ما إذا كان لديك رخصة قيادة');
       if (!req.files?.cv?.[0])                                  errors.push('السيرة الذاتية مطلوبة');
       if (!req.files?.id_image?.[0])                            errors.push('صورة الهوية الوطنية مطلوبة');
+      // الموافقة تُتحقَّق في الخادم لا في المتصفح وحده: تحقق المتصفح يُتجاوَز
+      // بإرسال الطلب مباشرةً، ولا يصح أن تدخل بيانات هوية بلا موافقة مسجّلة.
+      if (consent !== 'yes')
+        errors.push('يجب الاطّلاع على سياسة الخصوصية والموافقة عليها قبل إرسال الطلب');
 
       if (errors.length) {
         return res.status(400).send(`
@@ -111,8 +116,8 @@ router.post('/', (req, res) => {
         `INSERT INTO applicants
           (full_name, id_number, phone, email, age, gender, region, city, neighborhood,
            has_car, has_license, english, qualification, specialization, cv_path, id_image_path,
-           source, referrer, landing_page)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           source, referrer, landing_page, consent_at, consent_ip, privacy_version)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?)`,
         [
           full_name.trim(),
           id_number.trim(),
@@ -133,6 +138,8 @@ router.post('/', (req, res) => {
           source ? String(source).trim().slice(0, 60) : null,
           referrer ? String(referrer).trim().slice(0, 255) : null,
           landing_page ? String(landing_page).trim().slice(0, 255) : null,
+          req.ip ? String(req.ip).slice(0, 45) : null,
+          privacy.VERSION,
         ]
       );
 

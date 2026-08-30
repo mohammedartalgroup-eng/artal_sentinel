@@ -145,6 +145,18 @@ app.get('/success', async (req, res) => {
   }
 });
 
+// ─── سياسة الخصوصية ──────────────────────────────────────────────────────────
+//  صفحة عامة: يجب أن تكون قابلة للقراءة قبل التقديم لا بعده، فمربع الموافقة
+//  في النموذج يشير إليها ولا معنى لموافقة على نصٍّ لا يستطيع صاحبها فتحه.
+app.get('/privacy', (req, res) => {
+  try {
+    res.render('privacy', { updated: require('./utils/privacy').UPDATED_LABEL });
+  } catch (err) {
+    console.error('[Privacy]', err.message);
+    res.status(500).send('تعذّر عرض سياسة الخصوصية');
+  }
+});
+
 // ─── SEO: robots.txt ──────────────────────────────────────────────────────────
 app.get('/robots.txt', (req, res) => {
   res.type('text/plain').send(
@@ -184,6 +196,12 @@ app.get('/sitemap.xml', (req, res) => {
     <lastmod>${today}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://jobs.artalsecurity.com/privacy</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
   </url>
 ${cityUrls}
 ${roleUrls}
