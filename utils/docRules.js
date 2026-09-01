@@ -687,7 +687,8 @@ const CROSS_LABELS = {
 // ثقة المستند: الهوية هي المرجع، ثم الرخصة (تصدرها الداخلية أيضاً)، ثم غيرها.
 const DOC_TRUST = { id_iqama: 30, driving_license: 20, national_address: 10, iban: 5 };
 // ومصدر القيمة أهم من المستند: ما أكّده إنسان يسبق أي قراءة آلية.
-const SOURCE_SCORE = { user: 100, ocr: 20, rule: 15, ai: 10 };
+// hr يسبق user: موظف التوظيف يصحّح على المستند بين يديه، والمرشح يكتب من ذاكرته
+const SOURCE_SCORE = { hr: 120, user: 100, ocr: 20, rule: 15, ai: 10 };
 
 // تطبيع الأسماء للمقارنة وحدها — لا يُحفظ ولا يُعرض.
 function nameKey(v) {

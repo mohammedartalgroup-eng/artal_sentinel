@@ -636,6 +636,7 @@ adminRouter.get('/view/:applicantId', async (req, res) => {
       applicant, session: s, steps, history, profile,
       employment,
       artalsysReady: artalsys.isConfigured(),
+      applicantEditable: Object.entries(APPLICANT_EDITABLE).map(([key, d]) => ({ key, label: d.label, hint: d.hint || null, oneOf: d.oneOf || null })),
       artalsysUrl: artalsys.baseUrl(),
       empFields: emp.FIELDS,
       empMissing: emp.missingRequired(employment || {}),
@@ -940,6 +941,111 @@ adminRouter.post('/sync/:applicantId', sendLimiter, async (req, res) => {
   } catch (err) {
     console.error('[Onboarding sync]', err.message);
     res.status(502).json({ error: err.message });
+  }
+});
+
+// ═══ تعديل البيانات من صفحة الموارد البشرية ═══════════════════════════════
+//
+// الموظف يرى المستند أمامه وقد يقرأ ما أخطأت فيه الآلة أو المرشح. تعديله يُحفظ
+// بمصدر «hr» وهو أعلى الترتيب في الملف الموحّد: من يصحّح على الوثيقة أوثق ممن
+// يكتب من ذاكرته.
+
+adminRouter.patch('/field/:applicantId', async (req, res) => {
+  if (!featureOn()) return res.status(503).json({ error: 'الميزة غير مفعّلة' });
+  try {
+    const s = await db.get('SELECT * FROM onboarding_sessions WHERE applicant_id = ? ORDER BY id DESC LIMIT 1', [req.params.applicantId]);
+    if (!s) return res.status(404).json({ error: 'لا توجد جلسة استكمال' });
+
+    const { doc_type: docType, field, value } = req.body || {};
+    if (!rules.DOC_KEYS.includes(String(docType))) return res.status(400).json({ error: 'نوع مستند غير معروف' });
+    if (!rules.fieldDef(docType, String(field))) return res.status(400).json({ error: 'حقل غير معروف' });
+
+    const v = await saveField(s.id, docType, String(field), String(value ?? ''), 'hr', 1);
+
+    // المشتقات تتبع التصحيح كما تتبع إدخال المرشح
+    const also = [];
+    if (v.ok) {
+      for (const d of rules.derivedFrom(docType, String(field), v.value)) {
+        const cur = await db.get(
+          'SELECT value, source FROM onboarding_fields WHERE session_id = ? AND doc_type = ? AND field_key = ?',
+          [s.id, docType, d.key]
+        );
+        if (cur && cur.source !== 'rule' && String(cur.value || '').trim()) continue;
+        const dv = await saveField(s.id, docType, d.key, d.value, 'rule', 1);
+        also.push({ key: d.key, value: dv.value, valid: dv.ok });
+      }
+    }
+
+    db.audit(req.session?.adminId, req.session?.adminUser || 'system', 'onboarding_edit_field',
+      'applicant', Number(req.params.applicantId), null,
+      `${rules.DOC_TYPES[docType]?.label || docType} / ${rules.fieldDef(docType, field)?.label || field} = ${v.value}`, req.ip).catch(() => {});
+
+    res.json({ ok: true, value: v.value, valid: v.ok, error: v.error, also });
+  } catch (err) {
+    console.error('[Onboarding edit field]', err.message);
+    res.status(500).json({ error: 'تعذّر الحفظ' });
+  }
+});
+
+// بيانات المتقدم التي تدخل حمولة الموظف — الجوال والاسم تحديداً: خطأ فيهما
+// يوقف الإضافة أو ينشئ موظفاً لا يُطابقه تسجيل الدخول.
+const APPLICANT_EDITABLE = {
+  full_name: { label: 'الاسم الكامل', max: 200 },
+  phone:     { label: 'رقم الجوال',   pattern: /^05\d{8}$/, hint: '05XXXXXXXX' },
+  email:     { label: 'البريد',       pattern: /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/ },
+  city:      { label: 'المدينة',      max: 60 },
+  region:    { label: 'المنطقة',      max: 60 },
+  gender:    { label: 'الجنس',        oneOf: ['male', 'female'] },
+};
+
+adminRouter.patch('/applicant/:applicantId', async (req, res) => {
+  if (!featureOn()) return res.status(503).json({ error: 'الميزة غير مفعّلة' });
+  try {
+    const applicant = await db.get('SELECT * FROM applicants WHERE id = ?', [req.params.applicantId]);
+    if (!applicant) return res.status(404).json({ error: 'المتقدم غير موجود' });
+
+    const sets = [];
+    const params = [];
+    const changes = [];
+
+    for (const [key, def] of Object.entries(APPLICANT_EDITABLE)) {
+      if (!(key in (req.body || {}))) continue;
+      const raw = String(req.body[key] ?? '').trim();
+
+      if (raw && def.pattern && !def.pattern.test(raw)) {
+        return res.status(422).json({ error: `${def.label} غير صالح${def.hint ? ` — ${def.hint}` : ''}`, field: key });
+      }
+      if (raw && def.oneOf && !def.oneOf.includes(raw)) {
+        return res.status(422).json({ error: `${def.label} غير صالح`, field: key });
+      }
+      if (key === 'full_name' && raw.length < 4) {
+        return res.status(422).json({ error: 'الاسم قصير جداً', field: key });
+      }
+
+      const next = raw ? raw.slice(0, def.max || 200) : null;
+      if (String(applicant[key] ?? '') === String(next ?? '')) continue;
+
+      sets.push(`\`${key}\` = ?`);
+      params.push(next);
+      changes.push(`${def.label}: ${applicant[key] || '—'} ← ${next || '—'}`);
+    }
+
+    if (!sets.length) return res.json({ ok: true, changed: [] });
+
+    params.push(applicant.id);
+    await db.run(`UPDATE applicants SET ${sets.join(', ')} WHERE id = ?`, params);
+
+    // كل تعديل على بيانات متقدم يُسجَّل باسم من أجراه — البيانات تُصحَّح لا تُبدَّل بصمت
+    for (const line of changes) {
+      db.logActivity(applicant.id, 'تعديل بيانات المتقدم', null, line.slice(0, 255), req.session?.adminName || null).catch(() => {});
+    }
+    db.audit(req.session?.adminId, req.session?.adminUser || 'system', 'onboarding_edit_applicant',
+      'applicant', applicant.id, applicant.full_name, changes.join(' · ').slice(0, 500), req.ip).catch(() => {});
+
+    res.json({ ok: true, changed: changes });
+  } catch (err) {
+    console.error('[Onboarding edit applicant]', err.message);
+    res.status(500).json({ error: 'تعذّر الحفظ' });
   }
 });
 

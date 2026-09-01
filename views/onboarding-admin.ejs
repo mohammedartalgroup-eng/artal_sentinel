@@ -124,6 +124,41 @@
         </div>
       </div>
 
+      <!-- ── بيانات المتقدم: تصحيح ما يدخل حمولة الموظف ──────────── -->
+      <div class="ob-card p-4 lg:p-5">
+        <div class="flex items-baseline gap-2 mb-1">
+          <h2 class="text-sm font-bold text-[#001736]">بيانات المتقدم</h2>
+          <span class="text-[11px] text-[#43474f]">تُصحَّح هنا وتُسجَّل في سجل المتقدم</span>
+        </div>
+        <p class="text-[11px] text-[#43474f] mb-3">
+          هذه هي التي تدخل ملف الموظف عند الإضافة — خطأ في الجوال أو الاسم يوقف الإضافة أو يُنشئ سجلاً لا يُطابقه تسجيل الدخول.
+        </p>
+        <form id="app-form" onsubmit="saveApplicant(event)" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <% applicantEditable.forEach(function (f) { %>
+            <div>
+              <label class="block text-[11px] font-semibold text-[#43474f] mb-1" for="ap-<%= f.key %>"><%= f.label %></label>
+              <% if (f.oneOf) { %>
+                <select id="ap-<%= f.key %>" name="<%= f.key %>" class="emp-in">
+                  <option value="">—</option>
+                  <option value="male"   <%= applicant.gender === 'male'   ? 'selected' : '' %>>ذكر</option>
+                  <option value="female" <%= applicant.gender === 'female' ? 'selected' : '' %>>أنثى</option>
+                </select>
+              <% } else { %>
+                <input id="ap-<%= f.key %>" name="<%= f.key %>" class="emp-in" dir="auto"
+                       value="<%= applicant[f.key] == null ? '' : applicant[f.key] %>"
+                       placeholder="<%= f.hint || '' %>">
+              <% } %>
+            </div>
+          <% }) %>
+          <div class="sm:col-span-2 lg:col-span-3 flex items-center gap-3 flex-wrap pt-1">
+            <button type="submit" class="ob-btn s" id="app-save">
+              <span class="material-symbols-outlined" style="font-size:18px">save</span> حفظ بيانات المتقدم
+            </button>
+            <span id="app-status" class="text-xs"></span>
+          </div>
+        </form>
+      </div>
+
       <!-- ── بيانات التوظيف: يملأها فريق الموارد البشرية وحده ────── -->
       <div class="ob-card p-4 lg:p-5">
         <div class="flex items-baseline gap-2 mb-1">
@@ -355,14 +390,18 @@
                 <% s.fields.forEach(function (f) { %>
                   <tr>
                     <td class="text-[#43474f] whitespace-nowrap"><%= f.label %><%= f.required ? ' *' : '' %></td>
-                    <td class="ob-val">
-                      <%= f.value || '—' %>
-                      <% if (f.value && f.valid === false) { %>
-                        <div class="ob-chip r mt-1"><%= f.error || 'غير صالح' %></div>
-                      <% } %>
+                    <td>
+                      <input class="emp-in" style="min-width:170px" dir="auto"
+                             id="fv-<%= s.type %>-<%= f.key %>"
+                             value="<%= f.value || '' %>"
+                             onchange="saveDocField('<%= s.type %>', '<%= f.key %>', this)">
+                      <div class="ob-src mt-1" id="fm-<%= s.type %>-<%= f.key %>"
+                           style="<%= (f.value && f.valid === false) ? 'color:#ba1a1a' : '' %>">
+                        <%= (f.value && f.valid === false) ? (f.error || 'غير صالح') : '' %>
+                      </div>
                     </td>
                     <td class="ob-src">
-                      <%= { ocr:'قراءة آلية', ai:'نموذج لغوي', user:'أدخله المرشح', rule:'قاعدة النظام' }[f.source] || '—' %>
+                      <%= { ocr:'قراءة آلية', ai:'نموذج لغوي', user:'أدخله المرشح', rule:'قاعدة النظام', hr:'صحّحه فريق التوظيف' }[f.source] || '—' %>
                       <% if (f.confidence) { %><br><%= Math.round(f.confidence * 100) %>%<% } %>
                     </td>
                     <td class="ob-src"><%= f.raw && f.raw !== f.value ? f.raw : '—' %></td>
@@ -518,6 +557,56 @@ async function syncNow() {
     location.reload();
   } catch (err) {
     syncBox(err.message, 'bad');
+    btn.disabled = false;
+  }
+}
+
+// تصحيح حقل مستند من صفحة الموارد البشرية — يُحفظ بمصدر «hr»
+async function saveDocField(docType, key, input) {
+  const msg = document.getElementById('fm-' + docType + '-' + key);
+  try {
+    const r = await fetch('/admin/onboarding/field/' + APPLICANT_ID, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ doc_type: docType, field: key, value: input.value }),
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'تعذّر الحفظ');
+
+    input.style.borderColor = j.valid ? '#86c9a0' : '#ba1a1a';
+    msg.style.color = j.valid ? '#15803d' : '#ba1a1a';
+    msg.textContent = j.valid ? 'حُفظ ✓' : (j.error || 'قيمة غير صالحة');
+    if (j.valid && j.value && j.value !== input.value) input.value = j.value;
+
+    (j.also || []).forEach(a => {
+      const el = document.getElementById('fv-' + docType + '-' + a.key);
+      if (el) el.value = a.value;
+    });
+  } catch (err) {
+    msg.style.color = '#ba1a1a';
+    msg.textContent = err.message;
+  }
+}
+
+async function saveApplicant(e) {
+  e.preventDefault();
+  const btn = document.getElementById('app-save');
+  const st = document.getElementById('app-status');
+  const body = Object.fromEntries(new FormData(document.getElementById('app-form')).entries());
+  btn.disabled = true; st.textContent = 'جارٍ الحفظ…'; st.style.color = '#43474f';
+  try {
+    const r = await fetch('/admin/onboarding/applicant/' + APPLICANT_ID, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'تعذّر الحفظ');
+    st.style.color = '#15803d';
+    st.textContent = j.changed.length ? 'حُفظ ✓ (' + j.changed.length + ' تعديل)' : 'لا تغيير';
+  } catch (err) {
+    st.style.color = '#ba1a1a'; st.textContent = err.message;
+  } finally {
     btn.disabled = false;
   }
 }

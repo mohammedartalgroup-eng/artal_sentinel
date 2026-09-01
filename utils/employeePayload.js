@@ -113,7 +113,6 @@ function missingFor(payload) {
   if (!payload.employment.job_title) out.push('المسمّى الوظيفي');
   if (!payload.employment.preferred_zone_name) out.push('الموقع المرشح');
   if (payload.employment.basic_salary === null) out.push('الراتب الأساسي');
-  if (!payload.employment.actual_start) out.push('تاريخ المباشرة');
   return out;
 }
 
@@ -135,15 +134,11 @@ function docBlockers(session, byType) {
     const label = rules.DOC_TYPES[type]?.label || type;
     const doc = byType?.[type];
 
+    // وجود المرفق يكفي: الوثيقة المرفوعة هي الأصل، وتأكيد المرشح واعتماد فريق
+    // التوظيف مراجعةٌ تجري على مهل ولا تُعطّل إضافة موظف بين يديك ملفه.
+    // ولا يمنع إلا الغياب أو الرفض الصريح.
     if (!doc) { out.push(`مستند لم يُرفع: ${label}`); continue; }
     if (doc.review === 'red') { out.push(`مستند مرفوض في المراجعة: ${label}`); continue; }
-
-    const hrAccepted = doc.review === 'green' && doc.hr_decided_at;
-    const confirmed = doc.status === 'confirmed';
-
-    if (!hrAccepted && !confirmed) {
-      out.push(`مستند لم يؤكّده المرشح ولم يُعتمد بعد: ${label}`);
-    }
   }
 
   return out;

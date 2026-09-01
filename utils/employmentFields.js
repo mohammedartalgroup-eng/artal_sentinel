@@ -54,7 +54,8 @@ const FIELDS = [
   { key: 'basic_salary',        label: 'الراتب الأساسي',     type: 'money',  required: true },
   { key: 'living_allowance',    label: 'بدل السكن',          type: 'money',  required: false },
   { key: 'other_allowances',    label: 'بدلات أخرى',         type: 'money',  required: false },
-  { key: 'actual_start',        label: 'تاريخ المباشرة',     type: 'date',   required: true },
+  // اختياري: قد لا يكون الموعد محسوماً وقت الإضافة، والنظام الأساسي يستكمله
+  { key: 'actual_start',        label: 'تاريخ المباشرة',     type: 'date',   required: false },
   { key: 'contract_start',      label: 'بداية العقد',        type: 'date',   required: false },
   { key: 'marital_status',      label: 'الحالة الاجتماعية',  type: 'choice', options: MARITAL, required: false },
   { key: 'qualification',       label: 'المؤهل',             type: 'select', options: QUALIFICATIONS, required: false },
