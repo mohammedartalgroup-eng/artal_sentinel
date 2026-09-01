@@ -510,6 +510,11 @@ async function syncPreview() {
       return;
     }
 
+    // نواقص لا تمنع — تُعرض بلهجة أخفّ حتى لا تختلط بما يوقف الإضافة
+    const noteLine = (j.notes && j.notes.length)
+      ? '<div style="margin-top:8px;opacity:.85">ناقص ولا يمنع الإضافة: ' + j.notes.join('، ') + '</div>'
+      : '';
+
     const rem = j.remote || {};
     if (rem.status === 409) {
       const c = rem.conflicts || {};
@@ -532,7 +537,8 @@ async function syncPreview() {
 
     const e = rem.employee || {};
     syncBox('<b>جاهز للإضافة ✓</b> — سيُنشأ باسم «' + (e.first_name || '') + ' ' + (e.family_name || '')
-      + '» · هوية ' + (e.national_id || '') + ' · ' + (e.job_title || '') + ' · راتب ' + (e.basic_salary || 0), 'ok');
+      + '» · هوية ' + (e.national_id || '') + ' · ' + (e.job_title || '') + ' · راتب ' + (e.basic_salary || 0)
+      + noteLine, 'ok');
     document.getElementById('sync-go').classList.remove('hidden');
   } catch (err) {
     syncBox(err.message, 'bad');

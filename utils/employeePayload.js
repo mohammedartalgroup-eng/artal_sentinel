@@ -117,31 +117,29 @@ function missingFor(payload) {
 }
 
 /**
- * المستندات المطلوبة التي تمنع الإضافة، ولكلٍّ سببه.
+ * ما يمنع الإضافة من المستندات: الهوية وحدها.
  *
- * ما الذي يجعل مستنداً «جاهزاً»؟ أحد أمرين، لا أحدهما فقط:
- *   • أكّده المرشح ولم يُرفض في المراجعة، أو
- *   • اعتمده فريق التوظيف صراحةً (قرار إنسان يسبق تأكيد المرشح ويغني عنه).
- *
- * و«أخضر» وحدها لا تكفي: الاستخراج الآلي يمنحها لكل قراءة نظيفة قبل أن يراها
- * أحد — فنشترط أثر قرار بشري (hr_decided_at) لا لون الشارة.
+ * منها يُقرأ رقم الهوية والاسم وتاريخ الميلاد — أي أن غيابها يعني موظفاً بلا
+ * هوية قانونية، وهو ما يرفضه النظام الأساسي أصلاً. أما العنوان الوطني والآيبان
+ * والرخصة فنواقص تُستكمل بعد الإضافة ولا تبرّر تعطيل موظف بدأ عمله.
  */
 function docBlockers(session, byType) {
+  const label = rules.DOC_TYPES.id_iqama.label;
+  const doc = byType?.id_iqama;
+
+  if (!doc) return [`مستند لم يُرفع: ${label}`];
+  if (doc.review === 'red') return [`مستند مرفوض في المراجعة: ${label}`];
+  return [];
+}
+
+/** نواقص تُعرض ولا تمنع — ليعرف الموظف ما بقي دون أن يُمنع من المضيّ */
+function docNotes(session, byType) {
   const required = String(session?.required_docs || '').split(',').filter(Boolean);
-  const out = [];
 
-  for (const type of required) {
-    const label = rules.DOC_TYPES[type]?.label || type;
-    const doc = byType?.[type];
-
-    // وجود المرفق يكفي: الوثيقة المرفوعة هي الأصل، وتأكيد المرشح واعتماد فريق
-    // التوظيف مراجعةٌ تجري على مهل ولا تُعطّل إضافة موظف بين يديك ملفه.
-    // ولا يمنع إلا الغياب أو الرفض الصريح.
-    if (!doc) { out.push(`مستند لم يُرفع: ${label}`); continue; }
-    if (doc.review === 'red') { out.push(`مستند مرفوض في المراجعة: ${label}`); continue; }
-  }
-
-  return out;
+  return required
+    .filter(t => t !== 'id_iqama')
+    .filter(t => !byType?.[t] || byType[t].review === 'red')
+    .map(t => rules.DOC_TYPES[t]?.label || t);
 }
 
 /**
@@ -164,4 +162,4 @@ function categoryFor(docType, nationalId) {
   }[docType] || 'other';
 }
 
-module.exports = { build, missingFor, docBlockers, categoryFor };
+module.exports = { build, missingFor, docBlockers, docNotes, categoryFor };

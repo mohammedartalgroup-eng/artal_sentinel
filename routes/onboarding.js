@@ -871,7 +871,8 @@ async function syncContext(applicantId, req) {
     ...built.missing.map(label => `بيان ناقص: ${label}`),
   ];
 
-  return { applicant, session: s, employment, payload: built.payload, blockers };
+  const notes = payloadBuilder.docNotes(s, byType);
+  return { applicant, session: s, employment, payload: built.payload, blockers, notes };
 }
 
 adminRouter.get('/sync-preview/:applicantId', async (req, res) => {
@@ -884,6 +885,7 @@ adminRouter.get('/sync-preview/:applicantId', async (req, res) => {
       ok: true,
       configured: artalsys.isConfigured(),
       blockers: ctx.blockers,
+      notes: ctx.notes,
       payload: ctx.payload,
       employment: ctx.employment,
     };
