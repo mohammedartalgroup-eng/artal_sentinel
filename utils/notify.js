@@ -13,6 +13,7 @@
 const db       = require('../database/db');
 const mailer   = require('./mailer');
 const chatwoot = require('./chatwoot');
+const waGroup  = require('./waGroup');
 const M        = require('./interviewMsg');
 
 const KINDS = ['scheduled', 'rescheduled', 'cancelled'];
@@ -129,6 +130,7 @@ async function sendWhatsApp({ applicant, interview, kind, settings, actor }) {
     out.ref = r.conversationId ? `conv:${r.conversationId}` : '';
     out.target = phone;
     console.log(`[Notify] whatsapp sent — interview #${interview.id}, conv ${r.conversationId}`);
+    await mirrorToGroup({ applicant, interview, kind, vars, actor });
   } catch (e) {
     out.status = 'failed';
     out.target = phone;
@@ -136,6 +138,35 @@ async function sendWhatsApp({ applicant, interview, kind, settings, actor }) {
     console.error(`[Notify] whatsapp FAILED — interview #${interview.id}: ${out.reason}`);
   }
   return out;
+}
+
+// ─── مرآة المجموعة الداخلية ──────────────────────────────────────────────────
+/**
+ * نسخة من الموعد إلى مجموعة واتساب داخلية عبر WaAPI — بعد نجاح قالب المتقدم
+ * وحده: المجموعة تعكس ما وصل المتقدم فعلاً لا ما نويناه.
+ *
+ * عمداً خارج كائن delivery: هذه رسالة داخلية، وظهورها كـ«قناة فاشلة» في بطاقة
+ * المتقدم يدفع الموظف لإعادة إرسال قالب وصل أصلاً. تُسجَّل في
+ * interview_messages بقناة wa_group فيبقى الأثر بلا ضجيج في الواجهة.
+ *
+ * لا يرمي — الاستدعاء داخل try الخاص بإرسال واتساب، فأي تسرّب خطأ هنا كان
+ * سيقلب حالة قناة نجحت إلى failed.
+ */
+async function mirrorToGroup({ applicant, interview, kind, vars, actor }) {
+  try {
+    if (!waGroup.isConfigured()) return;
+    const results = await waGroup.notifyGroup({
+      vars, phone: applicant.phone, interview, kind, actor,
+    });
+    for (const r of results) {
+      await log({
+        interviewId: interview.id, applicantId: applicant.id, channel: 'wa_group', kind,
+        status: r.status, target: r.chatId, ref: r.ref, error: r.reason, actor,
+      });
+    }
+  } catch (e) {
+    console.error('[Notify] wa group mirror:', e.message);
+  }
 }
 
 // ─── قناة البريد ─────────────────────────────────────────────────────────────
