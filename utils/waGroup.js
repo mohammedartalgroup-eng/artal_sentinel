@@ -1,6 +1,6 @@
 /**
  * waGroup.js
- * نسخة داخلية من موعد المقابلة إلى مجموعة واتساب عبر WaAPI.
+ * نسخة داخلية من موعد المقابلة إلى مجموعة واتساب عبر Wappi.pro.
  *
  * لماذا مزوّد ثانٍ بجانب Chatwoot؟ لأن قوالب واتساب المعتمدة تُرسل إلى رقم
  * متقدم واحد، ولا يمكن إرسال قالب إلى مجموعة. المجموعات لا تقبل إلا رسالة
@@ -19,19 +19,31 @@ const M = require('./interviewMsg');
 const TIMEOUT_MS = 10000;
 
 // ─── الإعداد ─────────────────────────────────────────────────────────────────
-//  WAAPI_GROUP_CHAT_ID يقبل أكثر من وجهة مفصولة بفواصل — مجموعة العمليات
+//  WAPPI_GROUP_CHAT_ID يقبل أكثر من وجهة مفصولة بفواصل — مجموعة العمليات
 //  ومجموعة الإدارة مثلاً — ولا يلزم تعديل كود لإضافة ثالثة.
+//
+//  أسماء WAAPI_* مقبولة كمرادف قديم لئلا ينقطع الإرسال على خادم ضُبط قبل
+//  تصحيح اسم المزوّد. الاسمان متشابهان لحرف واحد — فالمعتمد WAPPI_* وحده،
+//  والقديم يزول متى نُظّف .env على الخادم.
+const pick = (...names) => {
+  for (const n of names) {
+    const v = String(process.env[n] || '').trim();
+    if (v) return v;
+  }
+  return '';
+};
+
 const cfg = () => ({
-  base:     String(process.env.WAAPI_BASE_URL || 'https://waapi.app/api/v1').trim().replace(/\/+$/, ''),
-  instance: String(process.env.WAAPI_INSTANCE_ID || '').trim(),
-  token:    String(process.env.WAAPI_TOKEN || '').trim(),
-  chats:    String(process.env.WAAPI_GROUP_CHAT_ID || '')
-              .split(',').map(s => s.trim()).filter(Boolean).slice(0, 5),
+  base:    (pick('WAPPI_BASE_URL') || 'https://wappi.pro/api/sync').replace(/\/+$/, ''),
+  profile: pick('WAPPI_PROFILE_ID', 'WAAPI_INSTANCE_ID'),
+  token:   pick('WAPPI_TOKEN', 'WAAPI_TOKEN'),
+  chats:   pick('WAPPI_GROUP_CHAT_ID', 'WAAPI_GROUP_CHAT_ID')
+             .split(',').map(s => s.trim()).filter(Boolean).slice(0, 5),
 });
 
 function isConfigured() {
   const c = cfg();
-  return Boolean(c.instance && c.token && c.chats.length);
+  return Boolean(c.profile && c.token && c.chats.length);
 }
 
 // ملخّص آمن للعرض — بلا أي جزء من الرمز السري
@@ -39,47 +51,53 @@ function status() {
   const c = cfg();
   return {
     configured: isConfigured(),
-    instance: c.instance || '',
+    profile: c.profile || '',
     chats: c.chats,
     hasToken: Boolean(c.token),
   };
 }
 
 // ─── نداء الإرسال ────────────────────────────────────────────────────────────
-//  بلا إعادة محاولة عمداً: WaAPI ترسل فعلياً قبل أن ترد أحياناً، وإعادة بعد
+//  بلا إعادة محاولة عمداً: Wappi ترسل فعلياً قبل أن ترد أحياناً، وإعادة بعد
 //  timeout تعني رسالتين في المجموعة عن موعد واحد.
-async function sendMessage(chatId, message) {
+//
+//  ⚠️ ترويسة Authorization بلا بادئة Bearer — هكذا يطلبها Wappi، وإضافتها
+//     تُرجع 401 بلا تفسير واضح.
+async function sendMessage(recipient, body) {
   const c = cfg();
-  if (!isConfigured()) throw new Error('تكامل WaAPI غير مهيأ');
+  if (!isConfigured()) throw new Error('تكامل Wappi غير مهيأ');
 
   let res;
   try {
-    res = await fetch(`${c.base}/instances/${encodeURIComponent(c.instance)}/client/action/send-message`, {
+    res = await fetch(`${c.base}/message/send?profile_id=${encodeURIComponent(c.profile)}`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${c.token}`,
+        Authorization: c.token,
         'Content-Type': 'application/json',
         Accept: 'application/json',
       },
-      body: JSON.stringify({ chatId, message }),
+      body: JSON.stringify({ recipient, body }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch (_) {
-    throw new Error('انتهت مهلة الاتصال بـ WaAPI');
+    throw new Error('انتهت مهلة الاتصال بـ Wappi');
   }
 
   const text = await res.text().catch(() => '');
-  let body = null;
-  try { body = text ? JSON.parse(text) : null; } catch (_) {}
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch (_) {}
 
-  const detail = String(body?.data?.message || body?.message || text || '').replace(/\s+/g, ' ').slice(0, 160);
-  if (!res.ok) throw new Error(`WaAPI ${res.status}${detail ? `: ${detail}` : ''}`);
+  const detail = String(data?.detail || data?.message || data?.error || text || '')
+    .replace(/\s+/g, ' ').slice(0, 160);
+  if (!res.ok) throw new Error(`Wappi ${res.status}${detail ? `: ${detail}` : ''}`);
 
-  // WaAPI ترد أحياناً بـ 200 وحالة error في الجسم — الفشل الصامت هو العدو
-  const st = String(body?.status || '').toLowerCase();
-  if (st && st !== 'success') throw new Error(`WaAPI ${st}${detail ? `: ${detail}` : ''}`);
+  // Wappi ترد بـ 200 وحالة error في الجسم أحياناً — الفشل الصامت هو العدو.
+  // نرفض ما أُعلن فشله صراحةً فقط، لا ما لم نتعرّف عليه: قيمة نجاح جديدة من
+  // المزوّد يجب ألّا تُقرأ فشلاً وتُغرق السجل بأخطاء وهمية.
+  const st = String(data?.status || '').toLowerCase();
+  if (st === 'error' || st === 'failed') throw new Error(`Wappi ${st}${detail ? `: ${detail}` : ''}`);
 
-  const id = body?.data?.data?.id?._serialized || body?.data?.data?.id?.id || '';
+  const id = data?.task_id || data?.message_id || data?.id || '';
   return { id: String(id || '') };
 }
 
