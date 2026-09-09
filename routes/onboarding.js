@@ -1130,6 +1130,14 @@ adminRouter.post('/sync-attachments/:applicantId', sendLimiter, async (req, res)
 
     for (const doc of docs) {
       const label = rules.DOC_TYPES[doc.doc_type]?.label || doc.doc_type;
+
+      // المرفوض في المراجعة لا يغادر المنصة: رفعه إلى أرشيف الموظف يعني اعتماد
+      // ما رفضه إنسان. يُذكر في النتيجة بسببه حتى لا يُظنّ أنه نُسي.
+      if (doc.review === 'red') {
+        results.push({ doc: label, ok: false, skipped: true, error: 'مرفوض في المراجعة — لم يُرفع' });
+        continue;
+      }
+
       try {
         if (!/^[A-Za-z0-9._-]+$/.test(doc.file_name || '')) throw new Error('اسم ملف غير صالح');
         const filePath = path.join(OB_ROOT, String(doc.applicant_id), doc.file_name);
@@ -1178,8 +1186,11 @@ adminRouter.post('/sync-attachments/:applicantId', sendLimiter, async (req, res)
       }
     }
 
-    const okCount = results.filter(r => r.ok).length;
-    const line = `مزامنة المرفقات إلى الموظف #${employeeId} — ${okCount} من ${results.length}`;
+    const attempted = results.filter(r => !r.skipped);
+    const okCount = attempted.filter(r => r.ok).length;
+    const skipped = results.length - attempted.length;
+    const line = `مزامنة المرفقات إلى الموظف #${employeeId} — ${okCount} من ${attempted.length}`
+      + (skipped ? ` (تُخطّي ${skipped} مرفوض)` : '');
 
     await db.run(
       'UPDATE onboarding_employment SET ext_employee_id = ?, attachments_synced_at = NOW() WHERE session_id = ?',
@@ -1191,7 +1202,7 @@ adminRouter.post('/sync-attachments/:applicantId', sendLimiter, async (req, res)
     db.audit(req.session?.adminId, req.session?.adminUser || 'system', 'onboarding_attachments',
       'applicant', applicant.id, applicant.full_name, line, req.ip).catch(() => {});
 
-    res.json({ ok: okCount === results.length, employee_id: employeeId, results });
+    res.json({ ok: okCount === attempted.length, employee_id: employeeId, results });
   } catch (err) {
     console.error('[Onboarding sync-attachments]', err.message);
     res.status(502).json({ error: err.message });

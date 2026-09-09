@@ -660,10 +660,11 @@ async function syncAttachments() {
     if (!r.ok && !j.results) throw new Error(j.error || 'تعذّرت المزامنة');
 
     const rows = (j.results || []).map(x =>
-      (x.ok ? '✅ ' : '❌ ') + x.doc
+      (x.ok ? '✅ ' : (x.skipped ? '⛔ ' : '❌ ')) + x.doc
       + (x.duplicate ? ' (مرفوع مسبقاً)' : '')
       + (x.error ? ' — ' + x.error : ''));
-    const okAll = (j.results || []).every(x => x.ok);
+    // المتخطّى عمداً (مرفوض) لا يُحسب فشلاً
+    const okAll = (j.results || []).filter(x => !x.skipped).every(x => x.ok);
     box.style.background = okAll ? '#dcfce7' : '#fef3c7';
     box.style.color = okAll ? '#15803d' : '#a16207';
     box.innerHTML = '<b>الموظف #' + j.employee_id + '</b><br>' + rows.join('<br>');
