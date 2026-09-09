@@ -32,15 +32,49 @@ async function call(path, { method = 'GET', body = null, timeout = TIMEOUT_MS } 
     signal: AbortSignal.timeout(timeout),
   });
 
-  // الطرف الآخر يردّ JSON في كل الحالات — وإن جاء HTML فهي صفحة خطأ من الخادم
   const text = await res.text();
-  let json = null;
-  try { json = JSON.parse(text); } catch (e) { /* ليس JSON */ }
+  const json = parseLenient(text);
 
   if (!json) {
     throw new Error(`رد غير مفهوم من النظام الأساسي (HTTP ${res.status})`);
   }
+  // Laravel يضع نص الاستثناء في message لا error — نوحّدهما حتى تصل الرسالة للموظف
+  if (!json.error && json.message && !res.ok) json.error = json.message;
   return { status: res.status, ok: res.ok, json };
+}
+
+/**
+ * JSON من ردٍّ قد يسبقه ضجيج: تنبيه PHP مطبوع قبل الجسم، أو صفحة خادم كاملة.
+ * تجاهل الضجيج هنا هو الفرق بين «أُنشئ الموظف» و«رد غير مفهوم» بعد أن أُنشئ.
+ */
+function parseLenient(text) {
+  const raw = String(text || '');
+  try { return JSON.parse(raw); } catch (e) { /* نحاول من أول قوس */ }
+  const start = raw.indexOf('{');
+  const end = raw.lastIndexOf('}');
+  if (start === -1 || end <= start) return null;
+  try { return JSON.parse(raw.slice(start, end + 1)); } catch (e) { return null; }
+}
+
+/**
+ * هل هذا الشخص موظف أصلاً؟ — عبر نقطة الفحص القائمة منذ زمن (extCheck).
+ * تُستدعى قبل الإنشاء (فلا نحاول لموظف موجود) وبعد أي فشل (فلا نظن أن ما
+ * أُنشئ لم يُنشأ). تعمل بسرّ الفحص لا سرّ الإنشاء لأنها نقطة مختلفة.
+ *
+ * @returns {{found:boolean, id?:number, status?:any, job_status?:string}}
+ */
+async function lookupByNationalId(nationalId) {
+  const id = String(nationalId || '').replace(/\D/g, '');
+  if (id.length !== 10) return { found: false };
+
+  const secret = process.env.EXT_API_SECRET || 'artal@NID%2026';
+  const res = await fetch(`${baseUrl()}/api/employees/check-national-id?national_id=${encodeURIComponent(id)}`, {
+    headers: { 'X-Secret': secret, Accept: 'application/json' },
+    signal: AbortSignal.timeout(10000),
+  });
+  const json = parseLenient(await res.text());
+  if (!res.ok || !json) throw new Error(`تعذّر فحص الهوية في النظام الأساسي (HTTP ${res.status})`);
+  return json;
 }
 
 // القوائم المغلقة (المسميات، المواقع) — تُخبَّأ خمس دقائق فهي شبه ثابتة
@@ -102,4 +136,4 @@ async function uploadAttachment(employeeId, { buffer, fileName, mime, category, 
   return { status: res.status, ok: res.ok, json };
 }
 
-module.exports = { isConfigured, baseUrl, options, pushEmployee, uploadAttachment };
+module.exports = { isConfigured, baseUrl, options, pushEmployee, uploadAttachment, lookupByNationalId, parseLenient };

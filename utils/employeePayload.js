@@ -117,18 +117,14 @@ function missingFor(payload) {
 }
 
 /**
- * ما يمنع الإضافة من المستندات: الهوية وحدها.
+ * المستندات لا تمنع مزامنة البيانات إطلاقاً.
  *
- * منها يُقرأ رقم الهوية والاسم وتاريخ الميلاد — أي أن غيابها يعني موظفاً بلا
- * هوية قانونية، وهو ما يرفضه النظام الأساسي أصلاً. أما العنوان الوطني والآيبان
- * والرخصة فنواقص تُستكمل بعد الإضافة ولا تبرّر تعطيل موظف بدأ عمله.
+ * القرار: موظف الاستقطاب يستطيع إكمال البيانات بيده ومزامنتها ولو لم يُرفع
+ * مستند واحد — رقم الهوية يأتي من سجل التقديم إن لم يأتِ من وثيقة. والوثائق
+ * لها زرها المستقل («مزامنة الوثائق») ولا تُخلط بالبيانات. أما إلزامية
+ * المستندات فعلى المرشح في رحلته، لا على الموظف عند المزامنة.
  */
-function docBlockers(session, byType) {
-  const label = rules.DOC_TYPES.id_iqama.label;
-  const doc = byType?.id_iqama;
-
-  if (!doc) return [`مستند لم يُرفع: ${label}`];
-  if (doc.review === 'red') return [`مستند مرفوض في المراجعة: ${label}`];
+function docBlockers() {
   return [];
 }
 
@@ -136,8 +132,8 @@ function docBlockers(session, byType) {
 function docNotes(session, byType) {
   const required = String(session?.required_docs || '').split(',').filter(Boolean);
 
+  // الهوية ضمن النواقص كغيرها: لم تعد تمنع، لكن غيابها يستحق الذكر أكثر من أي مستند
   return required
-    .filter(t => t !== 'id_iqama')
     .filter(t => !byType?.[t] || byType[t].review === 'red')
     .map(t => rules.DOC_TYPES[t]?.label || t);
 }

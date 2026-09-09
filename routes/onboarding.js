@@ -69,11 +69,9 @@ function requiredList(session) {
 // المستندات المطلوبة تُحسب من الوظيفة لا من قائمة ثابتة: رخصة القيادة تُطلب
 // ممن سُجّل أنه يقودها فقط، وإجبار الجميع عليها يعطّل رحلة لا علاقة لها بها.
 function defaultRequired(applicant) {
-  // السيرة الذاتية والشهادة الدراسية اختياريتان: الأولى مرفقة بالطلب غالباً،
-  // والثانية لا تُشترط لكل وظيفة. والصورة الشخصية مطلوبة — منها بطاقة العمل.
-  const base = ['personal_photo', 'id_iqama', 'national_address', 'iban'];
-  if (applicant?.has_license) base.push('driving_license');
-  return base.join(',');
+  // القرار: كل المستندات إلزامية على المرشح في رحلته. أما موظف الاستقطاب فيزامن
+  // البيانات ولو لم يُرفع مستند — الإلزام على المرشح، والمرونة لمن يراجع.
+  return rules.DOC_KEYS.join(',');
 }
 
 function publicLink(req, token) {
@@ -122,6 +120,7 @@ function buildSteps(session, byType, fieldsByType, opts = {}) {
       aiVision: String(doc?.ai_provider || '').endsWith('-vision'),
       hrNote: doc?.hr_note || null,
       hrDecidedBy: doc?.hr_decided_by || null,
+      syncTitle: doc?.sync_title || null,
       hrDecidedAt: doc?.hr_decided_at || null,
       // النص الخام لا يُرسَل إلى صفحة المرشح: ضجيج لا يعنيه، وحجم بلا فائدة.
       // ولفريق التوظيف هو أداة التشخيص الأولى حين يخرج حقل خاطئاً.
@@ -910,7 +909,46 @@ adminRouter.post('/sync/:applicantId', sendLimiter, async (req, res) => {
     if (ctx.error) return res.status(ctx.code).json({ error: ctx.error });
     if (ctx.blockers.length) return res.status(422).json({ error: 'الملف غير مكتمل', blockers: ctx.blockers });
 
-    const r = await artalsys.pushEmployee(ctx.payload);
+    const nationalId = ctx.payload.person.national_id;
+
+    // ① قبل الإنشاء: هل هو موظف أصلاً؟ نقطة فحص قائمة منذ زمن ومستقلة عن
+    //    نقطة الإنشاء — فلو تعطّل شيء هناك بقي هذا الحاجز قائماً.
+    try {
+      const known = await artalsys.lookupByNationalId(nationalId);
+      if (known.found) {
+        await db.run(
+          `UPDATE onboarding_employment SET ext_employee_id = ?, sync_status = 'duplicate', sync_error = ? WHERE session_id = ?`,
+          [known.id, 'رقم الهوية مسجّل مسبقاً كموظف', ctx.session.id]
+        );
+        return res.status(409).json({
+          ok: false, status: 'duplicate', employee_id: known.id,
+          remote: { error: 'يوجد تعارض يمنع الإضافة', conflicts: { national_id: { employee_id: known.id, message: 'رقم الهوية مسجّل مسبقاً كموظف' } } },
+        });
+      }
+    } catch (e) {
+      // تعذّر الفحص لا يفتح الباب: بلا يقين أن الشخص ليس موظفاً لا نُنشئ
+      return res.status(502).json({ error: `تعذّر التأكد من عدم وجود الموظف مسبقاً — ${e.message}` });
+    }
+
+    let r;
+    try {
+      r = await artalsys.pushEmployee(ctx.payload);
+    } catch (e) {
+      // ② فشل النداء نفسه (مهلة، رد مشوّه): لا نصدّق «لم يُنشأ» قبل أن نسأل.
+      //    هذا بالضبط ما أنتج نسخاً مكرّرة: خطأ في الرد فوق إنشاء ناجح.
+      const after = await artalsys.lookupByNationalId(nationalId).catch(() => ({ found: false }));
+      if (after.found) {
+        await db.run(
+          `UPDATE onboarding_employment SET ext_employee_id = ?, sync_status = 'created', sync_error = NULL, synced_at = NOW() WHERE session_id = ?`,
+          [after.id, ctx.session.id]
+        );
+        db.run('INSERT INTO applicant_notes (applicant_id, content, type, user_name) VALUES (?, ?, ?, ?)',
+          [ctx.applicant.id, `أُضيف إلى نظام الموظفين — رقم ${after.id} (رغم خطأ في الرد: ${e.message})`, 'follow_up', req.session?.adminName || null]).catch(() => {});
+        return res.json({ ok: true, status: 'created', employee_id: after.id, recovered: true });
+      }
+      throw e;
+    }
+
     const employeeId = r.json?.employee_id || r.json?.conflicts?.national_id?.employee_id || null;
 
     // نُسجّل نتيجة كل محاولة — الرفض معلومة تُحفظ لا رسالة تختفي بإغلاق النافذة
@@ -1072,8 +1110,15 @@ adminRouter.post('/sync-attachments/:applicantId', sendLimiter, async (req, res)
     if (!s) return res.status(400).json({ error: 'لا توجد جلسة استكمال' });
 
     const employment = await loadEmployment(s.id);
-    const employeeId = Number(req.body?.employee_id || employment?.ext_employee_id || 0);
-    if (!employeeId) return res.status(422).json({ error: 'لا يوجد رقم موظف — أضف الموظف أولاً أو حدّد رقمه' });
+    let employeeId = Number(req.body?.employee_id || employment?.ext_employee_id || 0);
+
+    // لا رقم محفوظ؟ نسأل النظام الأساسي برقم الهوية — الموظف قد يكون أُضيف من
+    // الاستيراد أو يدوياً، والوثائق تخصّه أينما أُضيف.
+    if (!employeeId) {
+      const known = await artalsys.lookupByNationalId(applicant.id_number).catch(() => ({ found: false }));
+      if (known.found) employeeId = Number(known.id);
+    }
+    if (!employeeId) return res.status(422).json({ error: 'الموظف غير موجود في النظام الأساسي — زامن البيانات أولاً' });
 
     const docs = await db.all(
       'SELECT * FROM onboarding_documents WHERE session_id = ? AND is_current = 1 ORDER BY id ASC',
@@ -1095,7 +1140,8 @@ adminRouter.post('/sync-attachments/:applicantId', sendLimiter, async (req, res)
           fileName: doc.original_name || doc.file_name,
           mime: doc.mime,
           category: payloadBuilder.categoryFor(doc.doc_type, nationalId),
-          title: `${label} — ${nationalId || applicant.full_name}`,
+          // الاسم الذي حدّده الموظف يسبق الاسم المولَّد
+          title: doc.sync_title || `${label} — ${nationalId || applicant.full_name}`,
           notes: 'مزامنة من منصة استكمال البيانات',
           sourceDocumentId: doc.id,
         });
@@ -1149,6 +1195,20 @@ adminRouter.post('/sync-attachments/:applicantId', sendLimiter, async (req, res)
   } catch (err) {
     console.error('[Onboarding sync-attachments]', err.message);
     res.status(502).json({ error: err.message });
+  }
+});
+
+// اسم الوثيقة كما ستظهر في أرشيف الموظف — يحدّده موظف الاستقطاب قبل المزامنة
+adminRouter.patch('/doc/:docId/title', async (req, res) => {
+  if (!featureOn()) return res.status(503).json({ error: 'الميزة غير مفعّلة' });
+  try {
+    const title = String(req.body?.title || '').trim().slice(0, 190);
+    const doc = await db.get('SELECT id FROM onboarding_documents WHERE id = ?', [req.params.docId]);
+    if (!doc) return res.status(404).json({ error: 'المستند غير موجود' });
+    await db.run('UPDATE onboarding_documents SET sync_title = ? WHERE id = ?', [title || null, doc.id]);
+    res.json({ ok: true, title: title || null });
+  } catch (err) {
+    res.status(500).json({ error: 'تعذّر الحفظ' });
   }
 });
 

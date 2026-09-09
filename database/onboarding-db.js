@@ -178,6 +178,13 @@ async function init() {
     //   duplicate = الهوية مسجّلة موظفاً مسبقاً، ومعها ext_employee_id لسجله —
     //   فتبقى مزامنة المرفقات إليه قراراً يدوياً لا نتيجةً تلقائية للرفض.
 
+    // اسم الوثيقة عند المزامنة — يحدّده موظف الاستقطاب، وإلا فاسم النوع
+    const [titleCols] = await conn.query("SHOW COLUMNS FROM onboarding_documents LIKE 'sync_title'");
+    if (titleCols.length === 0) {
+      await conn.query('ALTER TABLE onboarding_documents ADD COLUMN sync_title VARCHAR(190) DEFAULT NULL');
+      console.log('[DB] Migration: added sync_title to onboarding_documents');
+    }
+
     const [attCols] = await conn.query("SHOW COLUMNS FROM onboarding_employment LIKE 'attachments_synced_at'");
     if (attCols.length === 0) {
       await conn.query('ALTER TABLE onboarding_employment ADD COLUMN attachments_synced_at DATETIME DEFAULT NULL');
