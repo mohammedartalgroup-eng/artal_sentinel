@@ -1611,10 +1611,13 @@ function confirmInterview() {
       if (status === 200 && data.ok) {
         const base = ivRescheduleMode ? 'تم تعديل الموعد' : 'تمت جدولة المقابلة';
         const bad  = failedChannels(data.delivery);
+        const pendingLink = !ivRescheduleMode && data.interview && data.interview.pendingLink;
         // الموعد نجح حتى لو تعثّر الإشعار — نقول ذلك صراحةً بدل رسالة نجاح تخفي الفشل
         if (bad.length) toast(`${base} — لكن تعذّر إشعار المتقدم عبر ${bad.join(' و')}`, 'warning', true);
+        // الرابط تأخر عند Google: الإشعار مؤجَّل لا فاشل — يُرسله الخادم وحده عند وصوله
+        else if (pendingLink) toast(`${base} — رابط Meet قيد الإنشاء، وسيُرسل الإشعار للمتقدم تلقائياً عند وصوله`, 'schedule', true);
         else toast(base, 'event_available');
-        setTimeout(() => location.reload(), bad.length ? 2600 : 800);
+        setTimeout(() => location.reload(), (bad.length || pendingLink) ? 3200 : 800);
         return;
       }
       btn.disabled = false;

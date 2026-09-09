@@ -16,6 +16,7 @@ const db        = require('../database/db');
 const google    = require('../utils/google');
 const S         = require('../utils/slots');
 const notify    = require('../utils/notify');
+const meetWatch = require('../utils/meetLinkWatch');
 const { buildWhatsAppText, buildWaUrl, isEmail, deriveJobTitle } = require('../utils/interviewMsg');
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -390,6 +391,15 @@ router.post('/applicants/:id/interview', requireInterviews, scheduleLimiter, asy
       applicant, interview: iv, kind: 'scheduled',
       settings: req.ivSettings, actor: req.session.adminName || req.session.adminUser,
     });
+
+    // تأخر الرابط عند Google؟ الإشعار أُجِّل أعلاه (لا دعوة بلا رابط) — مراقب
+    // خلفي يلتقطه خلال دقائق ويحفظه ويرسل الإشعار وحده، بلا تدخل من الموظف
+    if (iv.pendingLink) {
+      meetWatch.watchMeetLink({
+        interview: { ...iv, eventId: ev.eventId }, applicant,
+        settings: req.ivSettings, actor: req.session.adminName || req.session.adminUser,
+      });
+    }
 
     res.json({
       ok: true, interview: iv, statusChanged, delivery,

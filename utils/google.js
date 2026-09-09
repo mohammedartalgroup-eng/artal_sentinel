@@ -287,6 +287,9 @@ const shape = (data) => ({
   eventId:  data?.id || null,
   meetLink: extractMeet(data),
   htmlLink: data?.htmlLink || null,
+  // pending | success | failure — «failure» تعني أن Google لن يُنشئ الاجتماع
+  // مهما انتظرنا (Meet معطّل في Workspace مثلاً)، فلا معنى للاستعلام بعدها
+  conferenceStatus: data?.conferenceData?.createRequest?.status?.statusCode || null,
 });
 
 async function getEvent(eventId) {
@@ -300,7 +303,10 @@ async function getEvent(eventId) {
 /**
  * إنشاء حدث مع اجتماع Meet.
  * conferenceDataVersion=1 إلزامي وإلا يُتجاهل طلب الاجتماع بصمت.
- * إنشاء الاجتماع غير متزامن، فإن لم يجهز الرابط نستعلم عنه بضع مرات.
+ *
+ * إنشاء الاجتماع غير متزامن: الحدث يعود فوراً والرابط بعده بثوانٍ أحياناً.
+ * نستعلم عنه ~5 ثوانٍ داخل الطلب — أطول من ذلك يجمّد شاشة الموظف — وما تأخر
+ * عن ذلك يلتقطه utils/meetLinkWatch في الخلفية ويرسل الإشعار المؤجَّل.
  */
 async function createEvent(spec) {
   const data = await gfetch(
@@ -308,14 +314,17 @@ async function createEvent(spec) {
     { method: 'POST', body: spec, op: 'createEvent' }   // ← بلا إعادة محاولة عمداً
   );
   let out = shape(data);
-  if (!out.meetLink && out.eventId) {
-    for (const wait of [400, 900, 1800]) {
+  if (!out.meetLink && out.eventId && out.conferenceStatus !== 'failure') {
+    for (const wait of [500, 1000, 1500, 2000]) {
       await new Promise(r => setTimeout(r, wait));
       try {
         const again = await getEvent(out.eventId);
-        if (again.meetLink) { out = again; break; }
+        if (again.meetLink || again.conferenceStatus === 'failure') { out = again; break; }
       } catch (_) { /* الرابط ثانوي — لا نُفشل الجدولة بسببه */ }
     }
+  }
+  if (!out.meetLink) {
+    console.warn(`[Google] event ${out.eventId}: رابط Meet لم يجهز داخل الطلب (status=${out.conferenceStatus || 'unknown'})`);
   }
   return { ...out, pendingLink: !out.meetLink };
 }

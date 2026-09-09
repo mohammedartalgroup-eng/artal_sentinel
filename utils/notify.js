@@ -19,6 +19,10 @@ const M        = require('./interviewMsg');
 const KINDS = ['scheduled', 'rescheduled', 'cancelled'];
 const clip = (s, n = 255) => String(s == null ? '' : s).slice(0, n);
 
+// سبب موحّد لتأجيل الإشعار حين يتأخر رابط Meet عند Google — يظهر للموظف في
+// شارة القناة نصاً، فيعرف أن الرسالة لم تخرج أصلاً (لا أنها خرجت ناقصة)
+const NO_LINK_REASON = 'رابط Meet لم يجهز بعد — يُرسل الإشعار تلقائياً عند وصوله، أو حدّث الرابط ثم أعد الإرسال';
+
 // ─── قراءة إعداد القالب لنوع إشعار معيّن ─────────────────────────────────────
 function templateFor(settings, kind) {
   return {
@@ -112,6 +116,13 @@ async function sendWhatsApp({ applicant, interview, kind, settings, actor }) {
 
   const opts   = msgOpts(interview, settings);
   const vars   = M.messageVars(applicant, interview, opts);
+
+  // قالب يطلب الرابط والرابط غائب: لا نرسل. البديل — شرطة «—» مكان المتغيّر
+  // الفارغ (واتساب يرفض الفارغ) — وصل متقدماً فعلاً فسأل «وين الرابط؟».
+  // رسالة لا تخرج يراها الموظف في الشارة ويعيدها؛ الناقصة لا يراها إلا المتقدم.
+  const needed = tpl.vars.split(',').map(x => x.trim()).filter(Boolean);
+  if (needed.includes('link') && !vars.link) { out.reason = NO_LINK_REASON; return out; }
+
   const params = M.buildProcessedParams(vars, tpl.vars, tpl.shape);
   const fallback = (M.WA_TEXT[kind] || M.buildWhatsAppText)(applicant, interview, opts);
 
@@ -178,6 +189,10 @@ async function sendEmail({ applicant, interview, kind, settings, actor }) {
 
   const to = String(applicant.email || '').trim();
   if (!M.isEmail(to)) { out.reason = 'لا يوجد بريد إلكتروني للمتقدم'; return out; }
+
+  // دعوة بلا زر انضمام تُربك المتقدم كما تربكه رسالة واتساب بلا رابط — تُؤجَّل
+  // معها حتى يصل الرابط، فتخرج القناتان معاً برسالة مكتملة
+  if (kind === 'scheduled' && !String(interview.meetLink || '').trim()) { out.reason = NO_LINK_REASON; return out; }
 
   const opts = { ...msgOpts(interview, settings), kind };
   try {
@@ -343,4 +358,4 @@ async function deliveryFor(interviewId) {
   }
 }
 
-module.exports = { notifyInterview, sendApplicantTemplate, deliveryFor, templateFor, KINDS };
+module.exports = { notifyInterview, sendApplicantTemplate, deliveryFor, templateFor, KINDS, NO_LINK_REASON };
