@@ -567,11 +567,59 @@ router.post('/interviews/:iid/refresh-link', requireInterviews, async (req, res)
     const row = await db.get('SELECT * FROM interviews WHERE id = ?', [req.params.iid]);
     if (!row || !row.google_event_id) return res.status(404).json({ error: 'المقابلة غير موجودة' });
 
-    const ev = await google.getEvent(row.google_event_id);
-    if (!ev.meetLink) return res.status(409).json({ error: 'الرابط لم يجهز بعد — أعد المحاولة بعد قليل' });
+    let ev = await google.getEvent(row.google_event_id);
+    console.log(`[Interview] #${row.id} refresh-link: link=${ev.meetLink ? 'yes' : 'no'} status=${ev.conferenceStatus || 'none'}`);
 
-    await db.run('UPDATE interviews SET meet_link = ?, html_link = ? WHERE id = ?', [ev.meetLink, ev.htmlLink, row.id]);
-    res.json({ ok: true, meetLink: ev.meetLink });
+    // يُشغَّل المراقب الخلفي حين يبقى الطلب معلّقاً عند Google: يحفظ الرابط
+    // ويرسل الإشعار المؤجَّل وحده — ويعوّض مراقباً ضاع بإعادة تشغيل الخادم
+    const watch = async () => {
+      if (row.status !== 'scheduled') return;
+      const applicant = await db.get('SELECT id, full_name, phone, email FROM applicants WHERE id = ?', [row.applicant_id]);
+      if (!applicant) return;
+      const users = await activeInterviewers();
+      const nameByEmail = Object.fromEntries(users.map(u => [u.username, u.full_name || u.username]));
+      meetWatch.watchMeetLink({
+        interview: { ...publicInterview(row, nameByEmail), eventId: row.google_event_id }, applicant,
+        settings: req.ivSettings, actor: req.session.adminName || req.session.adminUser,
+      });
+    };
+
+    if (!ev.meetLink && ev.conferenceStatus === 'pending') {
+      await watch();
+      return res.status(409).json({
+        error: 'الرابط ما زال قيد الإنشاء لدى Google — سيُحفظ ويُرسل الإشعار للمتقدم تلقائياً عند وصوله',
+        code: 'MEET_PENDING',
+      });
+    }
+
+    if (!ev.meetLink) {
+      // failure أو لا طلب اجتماع على الحدث أصلاً: نطلب اجتماعاً جديداً للحدث
+      // نفسه بدل إلغاء الموعد وإعادة الجدولة (وما يتبعهما من رسائل للمتقدم)
+      ev = await google.addConference(row.google_event_id, `artal-${row.applicant_id}-${row.id}-${Date.now()}`);
+      if (!ev.meetLink && ev.conferenceStatus === 'failure') {
+        await db.run('UPDATE interviews SET last_error = ? WHERE id = ?',
+          ['Google رفض إنشاء اجتماع Meet — راجع تفعيل Meet لحساب Workspace المربوط', row.id]);
+        return res.status(409).json({
+          error: 'Google رفض إنشاء اجتماع Meet لهذا الحساب. الإلغاء وإعادة الجدولة لن يفيدا — راجع تفعيل Google Meet للحساب المربوط في إعدادات Workspace',
+          code: 'MEET_FAILURE',
+        });
+      }
+      if (!ev.meetLink) {
+        await watch();
+        return res.status(409).json({
+          error: 'طُلب اجتماع Meet جديد من Google وما زال قيد الإنشاء — سيُحفظ ويُرسل الإشعار تلقائياً عند وصوله',
+          code: 'MEET_PENDING',
+        });
+      }
+    }
+
+    await db.run('UPDATE interviews SET meet_link = ?, html_link = ?, last_error = NULL WHERE id = ?', [ev.meetLink, ev.htmlLink, row.id]);
+
+    // الإشعار كان مؤجَّلاً لغياب الرابط؟ نقولها للموظف بدل أن يظن أن الرابط وحده كافٍ
+    const dlv = await notify.deliveryFor(row.id);
+    const needsResend = row.status === 'scheduled'
+      && !(dlv.whatsapp?.status === 'sent' || dlv.email?.status === 'sent');
+    res.json({ ok: true, meetLink: ev.meetLink, needsResend });
   } catch (err) {
     mapGoogleError(err, res);
   }

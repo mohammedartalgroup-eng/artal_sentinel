@@ -1822,8 +1822,13 @@ function refreshMeetLink() {
   fetch(`/admin/interviews/${IV_ACTIVE.id}/refresh-link`, { method: 'POST' })
     .then(r => r.json())
     .then(d => {
-      if (d.ok) { toast('تم جلب الرابط', 'check_circle'); setTimeout(() => location.reload(), 600); }
-      else toast(d.error || 'الرابط لم يجهز بعد', 'schedule', true);
+      if (d.ok) {
+        // الرابط وحده لا يوصل شيئاً للمتقدم — الإشعار المؤجَّل ينتظر ضغطة «إعادة الإرسال»
+        if (d.needsResend) toast('تم جلب الرابط — اضغط «إعادة الإرسال» ليصل الموعد للمتقدم', 'send', true);
+        else toast('تم جلب الرابط', 'check_circle');
+        setTimeout(() => location.reload(), d.needsResend ? 3200 : 600);
+      }
+      else toast(d.error || 'الرابط لم يجهز بعد', d.code === 'MEET_FAILURE' ? 'error' : 'schedule', true);
     })
     .catch(() => toast('تعذّر الاتصال', 'error', true));
 }

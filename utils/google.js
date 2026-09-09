@@ -301,30 +301,57 @@ async function getEvent(eventId) {
 }
 
 /**
- * إنشاء حدث مع اجتماع Meet.
- * conferenceDataVersion=1 إلزامي وإلا يُتجاهل طلب الاجتماع بصمت.
- *
  * إنشاء الاجتماع غير متزامن: الحدث يعود فوراً والرابط بعده بثوانٍ أحياناً.
  * نستعلم عنه ~5 ثوانٍ داخل الطلب — أطول من ذلك يجمّد شاشة الموظف — وما تأخر
  * عن ذلك يلتقطه utils/meetLinkWatch في الخلفية ويرسل الإشعار المؤجَّل.
+ * يعود بآخر حالة رآها حتى لو بقي الرابط غائباً، ليقرأ المستدعي conferenceStatus.
+ */
+async function awaitMeetLink(out) {
+  let last = out;
+  if (out.meetLink || !out.eventId || out.conferenceStatus === 'failure') return last;
+  for (const wait of [500, 1000, 1500, 2000]) {
+    await new Promise(r => setTimeout(r, wait));
+    try {
+      last = await getEvent(out.eventId);
+      if (last.meetLink || last.conferenceStatus === 'failure') break;
+    } catch (_) { /* الرابط ثانوي — لا نُفشل الطلب بسببه */ }
+  }
+  return last;
+}
+
+/**
+ * إنشاء حدث مع اجتماع Meet.
+ * conferenceDataVersion=1 إلزامي وإلا يُتجاهل طلب الاجتماع بصمت.
  */
 async function createEvent(spec) {
   const data = await gfetch(
     `${CAL}/calendars/${encodeURIComponent(CAL_ID)}/events?conferenceDataVersion=1&sendUpdates=all`,
     { method: 'POST', body: spec, op: 'createEvent' }   // ← بلا إعادة محاولة عمداً
   );
-  let out = shape(data);
-  if (!out.meetLink && out.eventId && out.conferenceStatus !== 'failure') {
-    for (const wait of [500, 1000, 1500, 2000]) {
-      await new Promise(r => setTimeout(r, wait));
-      try {
-        const again = await getEvent(out.eventId);
-        if (again.meetLink || again.conferenceStatus === 'failure') { out = again; break; }
-      } catch (_) { /* الرابط ثانوي — لا نُفشل الجدولة بسببه */ }
-    }
-  }
+  const out = await awaitMeetLink(shape(data));
   if (!out.meetLink) {
     console.warn(`[Google] event ${out.eventId}: رابط Meet لم يجهز داخل الطلب (status=${out.conferenceStatus || 'unknown'})`);
+  }
+  return { ...out, pendingLink: !out.meetLink };
+}
+
+/**
+ * يطلب اجتماع Meet جديداً لحدث قائم — حين فشل الطلب الأول أو غاب عن الحدث.
+ * requestId جديد إلزامي: إعادة القديم تُرجع حالته القديمة (failure) بدل طلب
+ * فعلي. الموعد والمدعوّون كما هم، فلا يصل أحداً إلغاءٌ ثم دعوة جديدة —
+ * وهذا ما يجعله أرحم من «ألغِ وجدول من جديد».
+ */
+async function addConference(eventId, requestId) {
+  const data = await gfetch(
+    `${CAL}/calendars/${encodeURIComponent(CAL_ID)}/events/${encodeURIComponent(eventId)}?conferenceDataVersion=1&sendUpdates=all`,
+    {
+      method: 'PATCH', op: 'addConference',
+      body: { conferenceData: { createRequest: { requestId, conferenceSolutionKey: { type: 'hangoutsMeet' } } } },
+    }
+  );
+  const out = await awaitMeetLink(shape(data));
+  if (!out.meetLink) {
+    console.warn(`[Google] event ${eventId}: طلب Meet جديد لم يُثمر (status=${out.conferenceStatus || 'unknown'})`);
   }
   return { ...out, pendingLink: !out.meetLink };
 }
@@ -379,6 +406,7 @@ module.exports = {
   getAccessToken,
   freeBusy,
   createEvent,
+  addConference,
   getEvent,
   patchEvent,
   deleteEvent,
