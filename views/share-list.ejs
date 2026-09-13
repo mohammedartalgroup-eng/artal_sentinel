@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<%
+/**
+ * قائمة مشاركة — صفحة عمل لا صفحة إدارة.
+ * لا فلاتر ولا إجراءات إدارية: أعمدة العمل، جوال يُتّصل به بنقرة، تفاصيل
+ * تنبسط في مكانها، بحث بالاسم/الهوية فقط، وتأشير «تم الاتصال» يتقدم به
+ * الفريق واحداً واحداً ويراه المُرسِل.
+ */
+const colorMap = {
+  blue:'#1d4ed8', yellow:'#a16207', purple:'#7b1fa2', orange:'#c2410c',
+  green:'#15803d', gray:'#4b5563', red:'#c62828',
+};
+const bgMap = {
+  blue:'#dbeafe', yellow:'#fef9c3', purple:'#f3e5f5', orange:'#ffedd5',
+  green:'#dcfce7', gray:'#f3f4f6', red:'#fee2e2',
+};
+const QUAL = { none:'بدون مؤهل', primary:'ابتدائي', middle:'متوسط', high_school:'ثانوي', university:'جامعي' };
+const digits = p => String(p || '').replace(/\D/g, '');
+const telHref = p => 'tel:+966' + digits(p).replace(/^0/, '');
+const waHref  = p => 'https://wa.me/966' + digits(p).replace(/^0/, '');
+const doneCount = items.filter(i => i.called_at).length;
+%>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title><%= list.title %> — أرتال Sentinel</title>
+  <link rel="icon" type="image/png" href="/images/icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&icon_names=arrow_forward,call,check,check_circle,expand_more,link_off,open_in_new,person,search,verified_user&display=block" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Inter', sans-serif; background: #f2f4f6; color: #191c1e; }
+    h1, h2 { font-family: 'Manrope', sans-serif; }
+    .wrap { max-width: 56rem; margin: 0 auto; padding: 0 1rem 4rem; }
+
+    /* ─── الترويسة ─────────────────────────────────── */
+    .hd { background: #001736; color: #fff; padding: 1rem; position: sticky; top: 0; z-index: 30; }
+    .hd-in { max-width: 56rem; margin: 0 auto; display: flex; flex-direction: column; gap: 0.75rem; }
+    .hd-row { display: flex; align-items: center; gap: 0.75rem; }
+    .hd h1 { font-size: 1.05rem; margin: 0; font-weight: 800; flex: 1; min-width: 0; }
+    .hd .sub { font-size: 0.72rem; color: #b8c9d3; margin-top: 0.15rem; }
+    .chip { background: rgba(255,255,255,0.12); border-radius: 999px; padding: 0.3rem 0.8rem; font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
+    .search { position: relative; }
+    .search input {
+      width: 100%; border: none; border-radius: 0.75rem; padding: 0.7rem 2.6rem 0.7rem 1rem;
+      font: inherit; font-size: 0.9rem; outline: none; background: #fff; color: #191c1e;
+    }
+    .search .material-symbols-outlined { position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%); color: #7594ca; }
+
+    /* ─── شريط التقدم ──────────────────────────────── */
+    .prog { background: #fff; border-radius: 1rem; padding: 1rem 1.25rem; margin: 1rem 0; }
+    .prog-top { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.8rem; color: #43474f; }
+    .prog-top strong { color: #001736; }
+    .prog-bar { height: 8px; background: #eceef0; border-radius: 999px; margin-top: 0.6rem; overflow: hidden; }
+    .prog-bar > div { height: 100%; background: linear-gradient(to left, #15803d, #22c55e); border-radius: 999px; transition: width 0.3s; }
+    .prog-meta { font-size: 0.7rem; color: #8a9099; margin-top: 0.6rem; display: flex; gap: 1rem; flex-wrap: wrap; }
+
+    /* ─── الصفوف ───────────────────────────────────── */
+    .row { background: #fff; border-radius: 1rem; margin-bottom: 0.6rem; overflow: hidden; transition: opacity 0.2s; }
+    .row.done { opacity: 0.62; }
+    .row.done .nm { text-decoration: line-through; text-decoration-color: #8a9099; text-decoration-thickness: 1px; }
+    .row-main { display: flex; align-items: center; gap: 0.75rem; padding: 0.8rem 1rem; cursor: pointer; }
+    .idx { font-size: 0.7rem; color: #8a9099; min-width: 1.6rem; text-align: center; }
+    .who { flex: 1; min-width: 0; }
+    .nm { font-size: 0.92rem; font-weight: 600; color: #001736; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .meta { font-size: 0.72rem; color: #43474f; margin-top: 0.15rem; display: flex; gap: 0.6rem; flex-wrap: wrap; }
+    .meta .idn { font-family: monospace; letter-spacing: 0.03em; }
+    .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 10px; font-weight: 700; }
+    .acts { display: flex; align-items: center; gap: 0.4rem; flex-shrink: 0; }
+    .act {
+      width: 2.4rem; height: 2.4rem; border-radius: 0.7rem; border: none; cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center; text-decoration: none;
+    }
+    .act .material-symbols-outlined { font-size: 1.25rem; }
+    .act.tel { background: #dcfce7; color: #15803d; }
+    .act.wa  { background: #e0f2fe; color: #0369a1; font-weight: 800; font-size: 0.8rem; }
+    .act.ok  { background: #eceef0; color: #8a9099; }
+    .act.ok.on { background: #15803d; color: #fff; }
+    .chev { color: #c4c6d0; transition: transform 0.2s; }
+    .row.open .chev { transform: rotate(180deg); }
+
+    .row-det { display: none; border-top: 1px solid #f0f1f3; padding: 1rem; background: #fafbfc; }
+    .row.open .row-det { display: block; }
+    .dgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr)); gap: 0.7rem; }
+    .dcell .k { font-size: 0.66rem; color: #8a9099; }
+    .dcell .v { font-size: 0.82rem; color: #191c1e; font-weight: 500; margin-top: 0.1rem; }
+    .dfoot { margin-top: 0.9rem; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+    .btn { display: inline-flex; align-items: center; gap: 0.35rem; border: none; cursor: pointer; text-decoration: none;
+           font: inherit; font-size: 0.78rem; font-weight: 600; padding: 0.5rem 0.95rem; border-radius: 0.7rem; }
+    .btn.tel { background: #15803d; color: #fff; }
+    .btn.wa  { background: #0369a1; color: #fff; }
+    .btn.pf  { background: #eceef0; color: #43474f; }
+    .called-by { font-size: 0.68rem; color: #15803d; margin-inline-start: auto; }
+
+    .empty { text-align: center; padding: 3rem 1rem; color: #8a9099; font-size: 0.85rem; }
+    .foot { text-align: center; font-size: 0.68rem; color: #8a9099; padding: 1.5rem 0 0; line-height: 1.8; }
+    #toast { position: fixed; bottom: 1.25rem; right: 50%; transform: translateX(50%); background: #001736; color: #fff;
+             padding: 0.6rem 1.2rem; border-radius: 0.75rem; font-size: 0.8rem; display: none; z-index: 50; }
+    .revoke { background: none; border: none; color: #ffb4ab; font: inherit; font-size: 0.72rem; cursor: pointer; text-decoration: underline; }
+
+    @media (max-width: 480px) {
+      .idx { display: none; }
+      .meta .hide-sm { display: none; }
+    }
+    @media print {
+      .hd, .prog-bar, .acts .ok, .search, .dfoot, .revoke, #toast { display: none !important; }
+      .row { break-inside: avoid; border: 1px solid #ddd; }
+    }
+  </style>
+</head>
+<body>
+
+<% if (expired) { %>
+  <div class="hd"><div class="hd-in"><div class="hd-row">
+    <span class="material-symbols-outlined" style="color:#ffb4ab">link_off</span>
+    <h1><%= list.title %></h1>
+  </div></div></div>
+  <div class="wrap"><div class="empty" style="padding-top:4rem">
+    <span class="material-symbols-outlined" style="font-size:3rem;color:#c4c6d0">link_off</span>
+    <p><strong><%= list.revoked ? 'أُلغيت هذه القائمة من قبل مُنشئها.' : 'انتهت صلاحية هذا الرابط.' %></strong><br>
+    اطلب من <%= list.created_by %> مشاركة قائمة جديدة إن كنت لا تزال بحاجتها.</p>
+  </div></div>
+<% } else { %>
+
+<div class="hd">
+  <div class="hd-in">
+    <div class="hd-row">
+      <div style="flex:1;min-width:0">
+        <h1><%= list.title %></h1>
+        <div class="sub">
+          من <%= list.created_by %> · صالحة حتى <%= new Date(list.expires_at).toLocaleDateString('ar-SA', { timeZone: 'Asia/Riyadh' }) %>
+          <% if (canRevoke) { %> · <button class="revoke" onclick="revokeList()">إلغاء الرابط</button><% } %>
+        </div>
+      </div>
+      <span class="chip"><span id="done-n"><%= doneCount %></span> / <%= items.length %></span>
+    </div>
+    <div class="search">
+      <input id="q" type="search" placeholder="ابحث بالاسم أو رقم الهوية…" autocomplete="off">
+      <span class="material-symbols-outlined">search</span>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="prog">
+    <div class="prog-top">
+      <span>تم الاتصال بـ <strong id="done-t"><%= doneCount %></strong> من <strong><%= items.length %></strong></span>
+      <span id="done-pct"><%= items.length ? Math.round(doneCount / items.length * 100) : 0 %>%</span>
+    </div>
+    <div class="prog-bar"><div id="done-bar" style="width:<%= items.length ? Math.round(doneCount / items.length * 100) : 0 %>%"></div></div>
+    <% if (list.note) { %><div class="prog-meta"><span>📌 <%= list.note %></span></div><% } %>
+  </div>
+
+  <div id="rows">
+    <% items.forEach((a, i) => {
+         const sm = STATUS_META[a.status] || { label: a.status, color: 'gray' }; %>
+    <div class="row <%= a.called_at ? 'done' : '' %>" id="r-<%= a.id %>"
+         data-name="<%= a.full_name %>" data-idn="<%= a.id_number %>">
+      <div class="row-main" onclick="toggleRow(<%= a.id %>, event)">
+        <span class="idx"><%= i + 1 %></span>
+        <div class="who">
+          <div class="nm"><%= a.full_name %></div>
+          <div class="meta">
+            <span class="idn"><%= a.id_number %></span>
+            <span class="hide-sm"><%= a.city || '—' %></span>
+            <span class="hide-sm"><%= a.age ? a.age + ' سنة' : '' %></span>
+            <span class="badge" style="background:<%= bgMap[sm.color] %>;color:<%= colorMap[sm.color] %>"><%= sm.label %></span>
+          </div>
+        </div>
+        <div class="acts">
+          <a class="act tel" href="<%= telHref(a.phone) %>" title="اتصال: <%= a.phone %>" onclick="event.stopPropagation()">
+            <span class="material-symbols-outlined">call</span>
+          </a>
+          <button class="act ok <%= a.called_at ? 'on' : '' %>" id="ok-<%= a.id %>"
+                  title="تأشير تم الاتصال" onclick="event.stopPropagation(); markCalled(<%= a.id %>)">
+            <span class="material-symbols-outlined">check</span>
+          </button>
+          <span class="material-symbols-outlined chev">expand_more</span>
+        </div>
+      </div>
+      <div class="row-det">
+        <div class="dgrid">
+          <div class="dcell"><div class="k">رقم الجوال</div><div class="v" dir="ltr" style="text-align:right"><%= a.phone %></div></div>
+          <div class="dcell"><div class="k">المنطقة</div><div class="v"><%= a.region || '—' %></div></div>
+          <div class="dcell"><div class="k">المدينة / الحي</div><div class="v"><%= a.city || '—' %><%= a.neighborhood ? ' — ' + a.neighborhood : '' %></div></div>
+          <div class="dcell"><div class="k">العمر / الجنس</div><div class="v"><%= a.age || '—' %> · <%= a.gender === 'female' ? 'أنثى' : 'ذكر' %></div></div>
+          <div class="dcell"><div class="k">المؤهل</div><div class="v"><%= QUAL[a.qualification] || a.qualification || '—' %><%= a.specialization ? ' — ' + a.specialization : '' %></div></div>
+          <div class="dcell"><div class="k">إنجليزية / سيارة / رخصة</div><div class="v"><%= a.english ? '✓' : '✗' %> · <%= a.has_car ? '✓' : '✗' %> · <%= a.has_license ? '✓' : '✗' %></div></div>
+          <div class="dcell"><div class="k">تاريخ التقديم</div><div class="v"><%= new Date(a.applied_at).toLocaleDateString('ar-SA', { timeZone: 'Asia/Riyadh' }) %></div></div>
+          <div class="dcell"><div class="k">التقييم</div><div class="v" style="color:#e2c382"><%= '★'.repeat(a.rating || 0) || '—' %></div></div>
+        </div>
+        <div class="dfoot">
+          <a class="btn tel" href="<%= telHref(a.phone) %>"><span class="material-symbols-outlined" style="font-size:1rem">call</span> اتصال</a>
+          <a class="btn wa" href="<%= waHref(a.phone) %>" target="_blank" rel="noopener">واتساب</a>
+          <a class="btn pf" href="/admin/applicants/<%= a.id %>" target="_blank" rel="noopener">
+            <span class="material-symbols-outlined" style="font-size:1rem">open_in_new</span> الملف الكامل
+          </a>
+          <span class="called-by" id="cb-<%= a.id %>">
+            <% if (a.called_at) { %>✓ اتصل: <%= a.called_by || '' %><% } %>
+          </span>
+        </div>
+      </div>
+    </div>
+    <% }) %>
+    <div class="empty" id="no-match" style="display:none">لا نتائج تطابق البحث</div>
+    <% if (!items.length) { %><div class="empty">القائمة فارغة</div><% } %>
+  </div>
+
+  <div class="foot">
+    <span class="material-symbols-outlined" style="font-size:0.9rem;vertical-align:middle;color:#7594ca">verified_user</span>
+    فتح هذه القائمة وكل تأشير اتصال يُسجَّل في سجل التدقيق · أرتال Sentinel
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  var TOKEN = <%- JSON.stringify(list.token) %>;
+
+  function toast(msg) {
+    var t = document.getElementById('toast');
+    t.textContent = msg; t.style.display = 'block';
+    clearTimeout(t._h); t._h = setTimeout(function () { t.style.display = 'none'; }, 2200);
+  }
+
+  function toggleRow(id, e) {
+    if (e.target.closest('a,button')) return;
+    document.getElementById('r-' + id).classList.toggle('open');
+  }
+
+  // ─── تأشير «تم الاتصال» ─────────────────────────────────────────────────
+  async function markCalled(id) {
+    var row = document.getElementById('r-' + id);
+    var on  = !row.classList.contains('done');
+    try {
+      var r = await fetch('/admin/share/' + TOKEN + '/called/' + id, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ called: on }),
+      });
+      var j = await r.json();
+      if (!r.ok) return toast(j.error || 'تعذّر الحفظ');
+      row.classList.toggle('done', on);
+      document.getElementById('ok-' + id).classList.toggle('on', on);
+      document.getElementById('cb-' + id).innerHTML = on ? '✓ اتصل: الآن' : '';
+      var pct = j.total ? Math.round(j.done / j.total * 100) : 0;
+      document.getElementById('done-n').textContent   = j.done;
+      document.getElementById('done-t').textContent   = j.done;
+      document.getElementById('done-pct').textContent = pct + '%';
+      document.getElementById('done-bar').style.width = pct + '%';
+    } catch (e) { toast('تعذّر الاتصال بالخادم'); }
+  }
+
+  // ─── البحث: بالاسم أو رقم الهوية فقط ────────────────────────────────────
+  document.getElementById('q').addEventListener('input', function () {
+    var q = this.value.replace(/\s+/g, ' ').trim();
+    var shown = 0;
+    document.querySelectorAll('#rows .row').forEach(function (r) {
+      var hit = !q || r.dataset.name.indexOf(q) !== -1 || r.dataset.idn.indexOf(q) !== -1;
+      r.style.display = hit ? '' : 'none';
+      if (hit) shown++;
+    });
+    var nm = document.getElementById('no-match');
+    if (nm) nm.style.display = shown ? 'none' : 'block';
+  });
+
+  async function revokeList() {
+    if (!confirm('إلغاء هذا الرابط نهائياً؟ لن يستطيع أحد فتحه بعدها.')) return;
+    try {
+      var r = await fetch('/admin/share/' + TOKEN + '/revoke', { method: 'POST' });
+      var j = await r.json();
+      if (!r.ok) return toast(j.error || 'تعذّر الإلغاء');
+      location.reload();
+    } catch (e) { toast('تعذّر الاتصال بالخادم'); }
+  }
+</script>
+<% } %>
+</body>
+</html>

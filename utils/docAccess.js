@@ -20,7 +20,7 @@ const db   = require('../database/db');
 // تُسجَّل في audit_log لكنها ليست «إنتاجية»: فتح ملف ليس إنجازاً كتغيير حالة.
 // تقرير الأداء وصفحة المستخدمين يستثنيانها بهذه القائمة — ولولا ذلك لتضخّمت
 // أرقام الموظف الذي يتصفّح كثيراً وينجز قليلاً.
-const VIEW_ACTIONS = ['applicant_view', 'doc_view', 'doc_download'];
+const VIEW_ACTIONS = ['applicant_view', 'doc_view', 'doc_download', 'list_open'];
 const VIEW_ACTIONS_SQL = VIEW_ACTIONS.map(a => `'${a}'`).join(',');
 
 // أفعال لا تُحتسب في عدّادات الأداء إطلاقاً (اطّلاع + دخول/خروج)
@@ -57,7 +57,7 @@ function normalizeReason(raw) {
  */
 const DEDUPE_MIN = parseInt(process.env.ACCESS_DEDUPE_MIN) || 10;
 
-async function logView(req, { action, targetId, targetName, details = null, windowMin = DEDUPE_MIN }) {
+async function logView(req, { action, targetId, targetName, details = null, windowMin = DEDUPE_MIN, targetType = 'applicant' }) {
   const win = Math.max(0, parseInt(windowMin) || 0);
   try {
     if (win > 0) {
@@ -65,11 +65,11 @@ async function logView(req, { action, targetId, targetName, details = null, wind
       // حالات نادرة، والاسم موجود دائماً (العمود NOT NULL).
       const dup = await db.get(
         `SELECT id FROM audit_log
-          WHERE username = ? AND action = ? AND target_type = 'applicant' AND target_id = ?
+          WHERE username = ? AND action = ? AND target_type = ? AND target_id = ?
             AND (details <=> ?)
             AND created_at > (NOW() - INTERVAL ${win} MINUTE)
           LIMIT 1`,
-        [req.session.adminUser, action, targetId, details]
+        [req.session.adminUser, action, targetType, targetId, details]
       );
       if (dup) return false;
     }
@@ -79,7 +79,7 @@ async function logView(req, { action, targetId, targetName, details = null, wind
   }
   await db.audit(
     req.session.adminId, req.session.adminUser, action,
-    'applicant', targetId, targetName, details, req.ip
+    targetType, targetId, targetName, details, req.ip
   );
   return true;
 }

@@ -855,6 +855,139 @@ router.post('/applicants/:id/doc/:kind/download', docDownloadLimiter, async (req
   }
 });
 
+// ─── قوائم المشاركة — بديل «صدّر Excel وأرسله» ────────────────────────────────
+//  المُرسِل يفلتر ثم يشارك لقطةً من النتيجة برابط داخلي. البيانات لا تغادر
+//  النظام: الرابط يعمل خلف تسجيل الدخول، وإنشاؤه وفتحه وكل تأشير اتصال
+//  يُسجَّل في audit_log — عكس ملف Excel الذي يخرج ولا سلطان لأحد عليه بعدها.
+
+const SHARE_MAX  = 2000;                 // نفس سقف التحديث الجماعي
+const SHARE_DAYS = [1, 3, 7, 14, 30];    // أعمار صلاحية مسموحة
+
+router.post('/applicants/share', async (req, res) => {
+  try {
+    const title = String(req.body?.title || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+    const note  = String(req.body?.note  || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+    if (title.length < 3) return res.status(400).json({ error: 'اكتب عنواناً للقائمة — 3 أحرف على الأقل' });
+    const days = SHARE_DAYS.includes(parseInt(req.body?.days)) ? parseInt(req.body.days) : 7;
+
+    // لقطة معرّفات مجمّدة بنفس فلتر القائمة الحالي — نفس مصدر الشروط الذي
+    // تستخدمه القائمة نفسها، فما يُشارَك هو ما يراه المُرسِل بالضبط.
+    const { where, params } = buildApplicantFilter(req.query);
+    const rows = await db.all(
+      `SELECT id FROM applicants ${where} ORDER BY created_at DESC LIMIT ${SHARE_MAX + 1}`, params);
+    if (!rows.length) return res.status(400).json({ error: 'لا توجد نتائج مطابقة للفلتر الحالي' });
+
+    const capped = rows.length > SHARE_MAX;
+    const ids = rows.slice(0, SHARE_MAX).map(r => Number(r.id)).filter(Number.isInteger);
+
+    const token = crypto.randomBytes(16).toString('hex');
+    const ins = await db.run(
+      `INSERT INTO shared_lists (token, title, note, created_by, created_by_id, expires_at)
+       VALUES (?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? DAY))`,
+      [token, title, note || null, req.session.adminUser, req.session.adminId, days]
+    );
+    // إدراج العناصر دفعةً واحدة — القيم أرقام مُتحقَّق منها أعلاه
+    await db.run(
+      `INSERT INTO shared_list_items (list_id, applicant_id) VALUES ${ids.map(id => `(${ins.insertId}, ${id})`).join(',')}`
+    );
+
+    await db.audit(req.session.adminId, req.session.adminUser, 'list_share', 'share',
+      ins.insertId, title, `${ids.length} متقدم — صالحة ${days} يوم`, req.ip);
+
+    res.json({ ok: true, url: `/admin/share/${token}`, count: ids.length, capped, max: SHARE_MAX });
+  } catch (err) {
+    console.error('[Share create]', err.message);
+    res.status(500).json({ error: 'تعذّر إنشاء القائمة' });
+  }
+});
+
+// جلب القائمة من الرمز مع فحص الشكل — يشترك فيه العرض والتأشير والإلغاء
+async function resolveShare(tokenRaw) {
+  const token = String(tokenRaw || '');
+  if (!/^[a-f0-9]{32}$/.test(token)) return null;
+  return db.get('SELECT * FROM shared_lists WHERE token = ?', [token]);
+}
+const shareExpired = (l) => Boolean(l.revoked) || new Date(l.expires_at) < new Date();
+
+router.get('/share/:token', async (req, res) => {
+  try {
+    const list = await resolveShare(req.params.token);
+    if (!list) return res.status(404).send('القائمة غير موجودة');
+
+    const expired = shareExpired(list);
+    const items = expired ? [] : await db.all(`
+      SELECT a.id, a.full_name, a.id_number, a.phone, a.age, a.gender, a.region, a.city,
+             a.neighborhood, a.qualification, a.specialization, a.english, a.has_car,
+             a.has_license, a.status, a.rating, a.created_at AS applied_at,
+             i.called_at, i.called_by
+        FROM shared_list_items i
+        JOIN applicants a ON a.id = i.applicant_id
+       WHERE i.list_id = ?
+       ORDER BY i.id ASC`, [list.id]);
+
+    // فتح القائمة اطّلاعٌ يُسجَّل — بكبح ساعة حتى لا يملأ العملُ المتقطع السجلَّ
+    if (!expired) {
+      await docAccess.logView(req, {
+        action: 'list_open', targetType: 'share', targetId: list.id,
+        targetName: list.title, details: `${items.length} متقدم`, windowMin: 60,
+      });
+    }
+
+    res.render('share-list', {
+      list, items, expired, STATUS_META,
+      canRevoke: !expired && (list.created_by === req.session.adminUser || req.session.adminRole === 'manager'),
+    });
+  } catch (err) {
+    console.error('[Share view]', err.message);
+    res.status(500).send('خطأ في فتح القائمة');
+  }
+});
+
+router.post('/share/:token/called/:aid', async (req, res) => {
+  try {
+    const list = await resolveShare(req.params.token);
+    if (!list) return res.status(404).json({ error: 'القائمة غير موجودة' });
+    if (shareExpired(list)) return res.status(410).json({ error: 'انتهت صلاحية هذه القائمة' });
+
+    const called = req.body?.called === true || req.body?.called === 'true';
+    const upd = called
+      ? await db.run('UPDATE shared_list_items SET called_at = NOW(), called_by = ? WHERE list_id = ? AND applicant_id = ?',
+          [req.session.adminUser, list.id, req.params.aid])
+      : await db.run('UPDATE shared_list_items SET called_at = NULL, called_by = NULL WHERE list_id = ? AND applicant_id = ?',
+          [list.id, req.params.aid]);
+    if (!upd.affectedRows) return res.status(404).json({ error: 'المتقدم ليس في هذه القائمة' });
+
+    // يُسجَّل على المتقدم نفسه ليظهر في خطّه الزمني الرقابي، ويُذكر مصدر القائمة
+    const ap = await db.get('SELECT full_name FROM applicants WHERE id = ?', [req.params.aid]).catch(() => null);
+    await db.audit(req.session.adminId, req.session.adminUser, 'call_mark', 'applicant',
+      req.params.aid, ap?.full_name || null,
+      `${called ? 'تم الاتصال' : 'تراجع عن التأشير'} — قائمة: ${list.title}`.slice(0, 500), req.ip);
+
+    const c = await db.get('SELECT COUNT(called_at) done, COUNT(*) total FROM shared_list_items WHERE list_id = ?', [list.id]);
+    res.json({ ok: true, done: Number(c.done), total: Number(c.total) });
+  } catch (err) {
+    console.error('[Share called]', err.message);
+    res.status(500).json({ error: 'تعذّر الحفظ' });
+  }
+});
+
+router.post('/share/:token/revoke', async (req, res) => {
+  try {
+    const list = await resolveShare(req.params.token);
+    if (!list) return res.status(404).json({ error: 'القائمة غير موجودة' });
+    if (list.created_by !== req.session.adminUser && req.session.adminRole !== 'manager') {
+      return res.status(403).json({ error: 'إلغاء القائمة لمُنشئها أو لمدير' });
+    }
+    await db.run('UPDATE shared_lists SET revoked = 1 WHERE id = ?', [list.id]);
+    await db.audit(req.session.adminId, req.session.adminUser, 'list_revoke', 'share',
+      list.id, list.title, null, req.ip);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[Share revoke]', err.message);
+    res.status(500).json({ error: 'تعذّر الإلغاء' });
+  }
+});
+
 // ─── إرسال قالب واتساب يدوي للمتقدم ──────────────────────────────────────────
 //  مسار واحد لكل قوالب utils/waTemplates.js — فعل يدوي صريح لا يمر بمفتاح
 //  الإشعار التلقائي. يُسجَّل في applicant_messages وفي التايملاين ليرى الموظف
@@ -1598,9 +1731,9 @@ router.get('/performance', async (req, res) => {
         u.role,
         u.is_active,
         u.last_login,
-        COUNT(CASE WHEN a.action NOT IN ('login','logout','applicant_view','doc_view','doc_download') THEN 1 END)
+        COUNT(CASE WHEN a.action NOT IN ('login','logout','applicant_view','doc_view','doc_download','list_open') THEN 1 END)
           AS total_actions,
-        COUNT(DISTINCT CASE WHEN a.action NOT IN ('login','logout','applicant_view','doc_view','doc_download') THEN DATE(a.created_at) END)
+        COUNT(DISTINCT CASE WHEN a.action NOT IN ('login','logout','applicant_view','doc_view','doc_download','list_open') THEN DATE(a.created_at) END)
           AS active_days,
         COUNT(CASE WHEN a.action = 'status_change'  THEN 1 END)
           AS status_changes,
@@ -1616,7 +1749,7 @@ router.get('/performance', async (req, res) => {
           AS ratings_given,
         COUNT(DISTINCT CASE WHEN a.target_type = 'applicant' THEN a.target_id END)
           AS unique_applicants,
-        MAX(CASE WHEN a.action NOT IN ('login','logout','applicant_view','doc_view','doc_download') THEN a.created_at END)
+        MAX(CASE WHEN a.action NOT IN ('login','logout','applicant_view','doc_view','doc_download','list_open') THEN a.created_at END)
           AS last_action_at
       FROM admin_users u
       LEFT JOIN audit_log a
@@ -1635,7 +1768,7 @@ router.get('/performance', async (req, res) => {
     await Promise.all(employees.map(async (e) => {
       const row = await db.get(
         `SELECT created_at FROM audit_log
-          WHERE user_id = ? AND action NOT IN ('login','logout','applicant_view','doc_view','doc_download')
+          WHERE user_id = ? AND action NOT IN ('login','logout','applicant_view','doc_view','doc_download','list_open')
           ORDER BY created_at DESC LIMIT 1`,
         [e.id]
       ).catch(() => null);

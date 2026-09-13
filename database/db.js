@@ -248,6 +248,38 @@ async function initialize() {
       ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
     `);
 
+    // ─── قوائم المشاركة الداخلية ─────────────────────────────────────────────
+    //  بديل «تصدير Excel وإرساله»: القائمة تبقى داخل النظام خلف تسجيل الدخول،
+    //  فلا تخرج نسخة من أرقام الهويات والجوالات عن نطاق التدقيق. العناصر
+    //  لقطة معرّفات مجمّدة لحظة المشاركة — «هذه القائمة» التي رآها المُرسِل
+    //  بعينها، لا فلتراً يتغيّر ناتجه كل يوم فيختلف ما يراه الطرفان.
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS shared_lists (
+        id            INT AUTO_INCREMENT PRIMARY KEY,
+        token         CHAR(32)     NOT NULL,
+        title         VARCHAR(120) NOT NULL,
+        note          VARCHAR(300) DEFAULT NULL,
+        created_by    VARCHAR(100) NOT NULL,
+        created_by_id INT          DEFAULT NULL,
+        expires_at    DATETIME     NOT NULL,
+        revoked       TINYINT(1)   NOT NULL DEFAULT 0,
+        created_at    DATETIME     DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_token (token)
+      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+    `);
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS shared_list_items (
+        id           INT AUTO_INCREMENT PRIMARY KEY,
+        list_id      INT NOT NULL,
+        applicant_id INT NOT NULL,
+        called_at    DATETIME     DEFAULT NULL,
+        called_by    VARCHAR(100) DEFAULT NULL,
+        UNIQUE KEY uq_item (list_id, applicant_id),
+        FOREIGN KEY (list_id)      REFERENCES shared_lists(id) ON DELETE CASCADE,
+        FOREIGN KEY (applicant_id) REFERENCES applicants(id)   ON DELETE CASCADE
+      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+    `);
+
     // ─── ترحيل: إضافة role, is_active, last_login إلى admin_users
     const [roleCols] = await conn.query("SHOW COLUMNS FROM admin_users LIKE 'role'");
     if (roleCols.length === 0) {

@@ -128,6 +128,9 @@
                 <option value="doc_view"       <%= filters.action === 'doc_view'       ? 'selected' : '' %>>عرض مرفق</option>
                 <option value="doc_download"   <%= filters.action === 'doc_download'   ? 'selected' : '' %>>تحميل مرفق</option>
                 <option value="export"         <%= filters.action === 'export'         ? 'selected' : '' %>>تصدير Excel</option>
+                <option value="list_share"     <%= filters.action === 'list_share'     ? 'selected' : '' %>>مشاركة قائمة</option>
+                <option value="list_open"      <%= filters.action === 'list_open'      ? 'selected' : '' %>>فتح قائمة مشتركة</option>
+                <option value="call_mark"      <%= filters.action === 'call_mark'      ? 'selected' : '' %>>تأشير اتصال</option>
               </optgroup>
               <optgroup label="الدخول والخروج">
                 <option value="login"          <%= filters.action === 'login'          ? 'selected' : '' %>>تسجيل الدخول</option>
@@ -226,6 +229,10 @@
                     applicant_view:   { label: 'فتح ملف متقدم',     bg: '#eef2ff', color: '#4338ca' },
                     doc_view:         { label: 'عرض مرفق',          bg: '#e0f2fe', color: '#075985' },
                     doc_download:     { label: 'تحميل مرفق',        bg: '#ffedd5', color: '#c2410c' },
+                    list_share:       { label: 'مشاركة قائمة',      bg: '#ede9fe', color: '#6d28d9' },
+                    list_open:        { label: 'فتح قائمة مشتركة',  bg: '#eef2ff', color: '#4338ca' },
+                    list_revoke:      { label: 'إلغاء قائمة',       bg: '#fff0f0', color: '#c62828' },
+                    call_mark:        { label: 'تأشير اتصال',       bg: '#e0f2f1', color: '#00695c' },
                     login:            { label: 'دخول',              bg: '#e8f5e9', color: '#2e7d32' },
                     logout:           { label: 'خروج',              bg: '#f3f4f6', color: '#4b5563' },
                     status_change:    { label: 'تغيير حالة',        bg: '#fff8e1', color: '#f57f17' },

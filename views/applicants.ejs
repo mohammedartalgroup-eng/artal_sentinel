@@ -83,14 +83,22 @@
             else if (v !== '' && v != null) _exportParams.append(k, v);
           }
         %>
-        <% if (locals.adminRole === 'manager') { %>
-        <button type="button" onclick="askExport()"
-          title="تصدير النتائج المفلترة — يتطلب كتابة سبب يُسجَّل في سجل التدقيق"
-          class="bg-green-700 text-white text-sm font-medium px-5 py-2.5 rounded-xl flex items-center gap-2 hover:bg-green-800 transition-colors">
-          <span class="material-symbols-outlined text-base">download</span>
-          تصدير Excel
-        </button>
-        <% } %>
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="openShare()"
+            title="مشاركة النتائج المفلترة كقائمة عمل برابط داخلي — البيانات تبقى في النظام"
+            class="bg-[#001736] text-white text-sm font-medium px-5 py-2.5 rounded-xl flex items-center gap-2 hover:bg-[#002b5b] transition-colors">
+            <span class="material-symbols-outlined text-base">ios_share</span>
+            مشاركة
+          </button>
+          <% if (locals.adminRole === 'manager') { %>
+          <button type="button" onclick="askExport()"
+            title="تصدير النتائج المفلترة — يتطلب كتابة سبب يُسجَّل في سجل التدقيق"
+            class="bg-green-700 text-white text-sm font-medium px-5 py-2.5 rounded-xl flex items-center gap-2 hover:bg-green-800 transition-colors">
+            <span class="material-symbols-outlined text-base">download</span>
+            تصدير Excel
+          </button>
+          <% } %>
+        </div>
       </header>
 
       <main class="p-4 lg:p-8 space-y-4 lg:space-y-6">
@@ -896,6 +904,115 @@
         sync();
       })();
     </script>
+
+<style>
+  #share-modal { border: none; border-radius: 1rem; padding: 0; max-width: 30rem; width: calc(100% - 2rem); }
+  #share-modal::backdrop { background: rgba(0,23,54,0.55); }
+  #share-modal .sm-body { padding: 1.25rem 1.5rem; }
+  #share-modal .sm-foot { padding: 0.875rem 1.5rem; background: #f7f8fa; display: flex; gap: 0.5rem; justify-content: flex-end; }
+  #share-modal label { display: block; font-size: 0.75rem; font-weight: 600; color: #43474f; margin: 0.9rem 0 0.35rem; }
+  #share-modal input[type="text"], #share-modal select { width: 100%; }
+  #share-modal .sm-btn { border-radius: 0.75rem; font-size: 0.875rem; font-weight: 500; padding: 0.55rem 1.25rem; cursor: pointer; border: none; }
+  #share-modal .sm-btn.ghost { background: #eceef0; color: #43474f; }
+  #share-modal .sm-btn.go { background: #001736; color: #fff; }
+  #share-modal .sm-btn[disabled] { opacity: 0.55; cursor: not-allowed; }
+  #share-err { display: none; margin-top: 0.6rem; font-size: 0.78rem; color: #ba1a1a; }
+  #share-result { display: none; }
+  #share-url { width: 100%; font-size: 0.78rem; direction: ltr; text-align: left; background: #f7f8fa; border: 1px solid #e0e3e5; border-radius: 0.6rem; padding: 0.55rem 0.7rem; }
+</style>
+<dialog id="share-modal">
+  <div class="sm-body">
+    <div style="display:flex;align-items:center;gap:0.6rem">
+      <span class="material-symbols-outlined" style="color:#405f91">ios_share</span>
+      <h3 style="font-family:Manrope,sans-serif;font-weight:700;color:#001736;font-size:1rem;margin:0">مشاركة القائمة الحالية</h3>
+    </div>
+
+    <div id="share-form">
+      <p style="font-size:0.78rem;color:#43474f;margin:0.5rem 0 0;line-height:1.6">
+        تُنشأ قائمة عمل من نتيجة الفلترة الحالية (<strong><%= total %></strong> متقدم<%= total > 2000 ? ' — تُقتطع أول 2000' : '' %>)
+        برابط داخلي يفتحه أي موظف مسجَّل. الإنشاء والفتح وكل تأشير اتصال يُسجَّل في سجل التدقيق.
+      </p>
+      <label>عنوان القائمة</label>
+      <input type="text" id="share-title" maxlength="120"
+             value="قائمة اتصال — <%= new Date().toLocaleDateString('ar-SA', { timeZone: 'Asia/Riyadh' }) %>">
+      <label>ملاحظة للمستلم (اختياري)</label>
+      <input type="text" id="share-note" maxlength="300" placeholder="مثال: اتصلوا وحدّثوا الحالة قبل الخميس">
+      <label>صلاحية الرابط</label>
+      <select id="share-days">
+        <option value="1">يوم واحد</option>
+        <option value="3">3 أيام</option>
+        <option value="7" selected>أسبوع</option>
+        <option value="14">أسبوعان</option>
+        <option value="30">شهر</option>
+      </select>
+      <div id="share-err"></div>
+    </div>
+
+    <div id="share-result">
+      <p style="font-size:0.78rem;color:#15803d;margin:0.75rem 0 0.5rem;font-weight:600">
+        ✓ أُنشئت القائمة (<span id="share-count"></span> متقدم) — انسخ الرابط وأرسله:
+      </p>
+      <input type="text" id="share-url" readonly onclick="this.select()">
+      <div style="display:flex;gap:0.5rem;margin-top:0.7rem;flex-wrap:wrap">
+        <button type="button" class="sm-btn go" onclick="copyShare()">نسخ الرابط</button>
+        <a id="share-wa" class="sm-btn" style="background:#0369a1;color:#fff;text-decoration:none" target="_blank" rel="noopener">إرسال بواتساب</a>
+        <a id="share-open" class="sm-btn ghost" style="text-decoration:none" target="_blank" rel="noopener">فتح القائمة</a>
+      </div>
+      <p style="font-size:0.7rem;color:#8a9099;margin:0.7rem 0 0">
+        الرابط يعمل للموظفين المسجَّلين في النظام فقط — لا يفتح لمن لا حساب له.
+      </p>
+    </div>
+  </div>
+  <div class="sm-foot">
+    <button type="button" class="sm-btn ghost" onclick="document.getElementById('share-modal').close()">إغلاق</button>
+    <button type="button" class="sm-btn go" id="share-go" onclick="createShare()">إنشاء الرابط</button>
+  </div>
+</dialog>
+<script>
+  function openShare() {
+    document.getElementById('share-form').style.display = '';
+    document.getElementById('share-result').style.display = 'none';
+    document.getElementById('share-go').style.display = '';
+    document.getElementById('share-err').style.display = 'none';
+    document.getElementById('share-go').disabled = false;
+    document.getElementById('share-modal').showModal();
+  }
+  async function createShare() {
+    var btn = document.getElementById('share-go');
+    var err = document.getElementById('share-err');
+    btn.disabled = true; err.style.display = 'none';
+    try {
+      var r = await fetch(<%- JSON.stringify('/admin/applicants/share?' + _exportParams.toString()).replace(/</g, '\u003c') %>, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: document.getElementById('share-title').value,
+          note:  document.getElementById('share-note').value,
+          days:  document.getElementById('share-days').value,
+        }),
+      });
+      var j = await r.json();
+      if (!r.ok) { btn.disabled = false; err.textContent = j.error || 'تعذّر الإنشاء'; err.style.display = 'block'; return; }
+      var full = location.origin + j.url;
+      document.getElementById('share-url').value = full;
+      document.getElementById('share-count').textContent = j.count + (j.capped ? ' (اقتُطعت عند ' + j.max + ')' : '');
+      document.getElementById('share-open').href = full;
+      document.getElementById('share-wa').href = 'https://wa.me/?text=' +
+        encodeURIComponent(document.getElementById('share-title').value + '\n' + full);
+      document.getElementById('share-form').style.display = 'none';
+      document.getElementById('share-go').style.display = 'none';
+      document.getElementById('share-result').style.display = 'block';
+    } catch (e) {
+      btn.disabled = false;
+      err.textContent = 'تعذّر الاتصال بالخادم'; err.style.display = 'block';
+    }
+  }
+  function copyShare() {
+    var el = document.getElementById('share-url');
+    el.select();
+    navigator.clipboard.writeText(el.value).then(function () { el.blur(); });
+  }
+</script>
 
 <% if (locals.adminRole === 'manager') { %>
 <%- include('partials/download-reason') %>

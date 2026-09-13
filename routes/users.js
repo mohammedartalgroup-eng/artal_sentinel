@@ -15,7 +15,7 @@ router.get('/', async (req, res) => {
       FROM admin_users u
       LEFT JOIN (
         SELECT user_id, COUNT(*) AS c FROM audit_log
-        WHERE action NOT IN ('applicant_view','doc_view','doc_download')
+        WHERE action NOT IN ('applicant_view','doc_view','doc_download','list_open')
         GROUP BY user_id
       ) ac ON ac.user_id = u.id
       ORDER BY u.created_at ASC
