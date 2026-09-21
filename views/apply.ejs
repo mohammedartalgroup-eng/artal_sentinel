@@ -355,10 +355,10 @@
             <p class="err-msg" id="err-phone">رقم الجوال يجب أن يبدأ بـ 05 ويتكون من 10 أرقام</p>
           </div>
 
-          <!-- Email (optional) -->
+          <!-- Email (required) -->
           <div>
             <label for="f-email" class="block text-sm font-semibold text-on-surface-variant mb-2">
-              البريد الإلكتروني <span class="text-slate-500 font-normal">(اختياري)</span>
+              البريد الإلكتروني <span class="text-error">*</span>
             </label>
             <div class="input-wrap" id="wrap-email">
               <input id="f-email" name="email"
@@ -368,6 +368,7 @@
                      inputmode="email"
                      maxlength="120"
                      dir="ltr"
+                     required
                      autocomplete="email"/>
             </div>
             <p class="err-msg" id="err-email">صيغة البريد الإلكتروني غير صحيحة</p>
@@ -1023,10 +1024,14 @@ document.getElementById('applyForm').addEventListener('submit', function (e) {
     clearError('phone');
   }
 
-  // ── البريد الإلكتروني (اختياري — يُتحقق منه فقط إن كُتب)
+  // ── البريد الإلكتروني (إلزامي)
   const emailEl  = document.getElementById('f-email');
   const emailVal = emailEl.value.trim();
-  if (emailVal && !/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(emailVal)) {
+  if (!emailVal) {
+    showError('email', 'البريد الإلكتروني مطلوب');
+    if (!firstError) firstError = 'f-email';
+    valid = false;
+  } else if (!/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(emailVal)) {
     showError('email', 'صيغة البريد الإلكتروني غير صحيحة');
     if (!firstError) firstError = 'f-email';
     valid = false;
