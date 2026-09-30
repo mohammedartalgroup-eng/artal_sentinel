@@ -31,6 +31,8 @@ function templateFor(settings, kind) {
     category: String(settings[`wa_tpl_${kind}_cat`]  || 'UTILITY').trim(),
     vars:     String(settings[`wa_tpl_${kind}_vars`] || '').trim(),
     shape:    settings.wa_params_shape === 'structured' ? 'structured' : 'numbered',
+    // قناة الإرسال جزء من إعداد القالب: القراءة والتحقق والإرسال من صندوق واحد
+    inbox:    chatwoot.inboxFor(settings),
   };
 }
 
@@ -61,14 +63,14 @@ function msgOpts(interview, settings) {
  */
 async function resolveTemplateBody(tpl, params, fallbackText) {
   try {
-    const found = await chatwoot.findTemplate(tpl.name, tpl.language);
+    const found = await chatwoot.findTemplate(tpl.name, tpl.language, { inbox: tpl.inbox });
     if (!found) {
       // ذكر الأسماء الموجودة يحوّل الخطأ من لغز إلى خطوة واحدة: انسخ الاسم الصحيح
-      const names = await chatwoot.templateNames();
+      const names = await chatwoot.templateNames({ inbox: tpl.inbox });
       const hint = names.length ? ` — الموجود لديك: ${names.slice(0, 6).join('، ')}` : '';
       return {
         ok: false,
-        reason: `القالب «${tpl.name}» غير موجود في قوالب Chatwoot${hint}`,
+        reason: `القالب «${tpl.name}» غير موجود في قوالب قناة الإرسال المختارة${hint}`,
       };
     }
     const need = chatwoot.templateVarCount(found);
@@ -132,6 +134,7 @@ async function sendWhatsApp({ applicant, interview, kind, settings, actor }) {
   try {
     const r = await chatwoot.sendTemplate({
       name: applicant.full_name, phone: applicant.phone, content: body.content,
+      inbox: tpl.inbox,
       template: {
         name: tpl.name, language: tpl.language, category: tpl.category,
         processed_params: params,
@@ -304,6 +307,7 @@ async function sendApplicantTemplate({ applicant, tplKey, kind, vars = {}, setti
 
     const r = await chatwoot.sendTemplate({
       name: applicant.full_name, phone: applicant.phone, content: body.content,
+      inbox: tpl.inbox,
       template: {
         name: tpl.name, language: tpl.language, category: tpl.category,
         processed_params: params,

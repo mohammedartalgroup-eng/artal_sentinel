@@ -1011,7 +1011,7 @@ router.get('/wa-template/:key/body', async (req, res) => {
     const cfgTpl = require('../utils/notify').templateFor(settings, tpl.key);
     if (!cfgTpl.name) return res.status(409).json({ error: 'لم يُحدَّد اسم القالب في الإعدادات' });
 
-    const found = await chatwoot.findTemplate(cfgTpl.name, cfgTpl.language);
+    const found = await chatwoot.findTemplate(cfgTpl.name, cfgTpl.language, { inbox: cfgTpl.inbox });
     if (!found) {
       return res.status(409).json({
         error: `القالب «${cfgTpl.name}» غير موجود في قوالب Chatwoot — اضغط «Sync Templates» على صندوق واتساب`,
@@ -1420,6 +1420,11 @@ router.get('/settings', requireManager, async (req, res) => {
     delete settings.google_refresh_token;
     delete settings.google_oauth_state;
 
+    // قائمة «قناة الإرسال» تُقرأ من Chatwoot — تعذّر جلبها لا يمنع فتح الصفحة
+    const waInboxes = chatwoot.isConfigured()
+      ? await chatwoot.listWhatsAppInboxes().catch(e => { console.error('[Settings GET] inboxes:', e.message); return []; })
+      : [];
+
     res.render('settings', {
       settings, success: req.query.saved, adminUser: req.session.adminUser,
       googleMsg: req.query.google || '',
@@ -1433,7 +1438,8 @@ router.get('/settings', requireManager, async (req, res) => {
       interviewsReady: db.INTERVIEWS_SCHEMA_OK,
       settingsError: req.query.err || '',
       mailStatus: mailer.status(),
-      chatwootStatus: chatwoot.status(),
+      chatwootStatus: { ...chatwoot.status(), inbox: chatwoot.inboxFor(settings) },
+      waInboxes,
       msgVars: require('../utils/interviewMsg').VAR_LABELS,
       waTemplateList: Object.values(require('../utils/waTemplates').TEMPLATES),
     });
@@ -1501,6 +1507,24 @@ function validateNotifySettings(b) {
   return null;
 }
 
+// التحقق من «قناة الإرسال» — يُرجع رسالة خطأ أو null.
+// تغيير القناة يُطابَق مع صناديق واتساب في Chatwoot نفسه: رقم صندوق خاطئ كان
+// سيُحفظ بنجاح ثم يُفشل كل إرسال لاحق. إعادة حفظ القيمة الحالية لا تحتاج
+// اتصالاً، فانقطاع Chatwoot لا يمنع حفظ بقية إعدادات الإشعار.
+async function validateWaInbox(b) {
+  if (b.wa_inbox_id === undefined) return null;
+  const id = String(b.wa_inbox_id).trim();
+  if (!/^[1-9]\d{0,8}$/.test(id)) return 'قناة الإرسال غير صالحة';
+  if (Number(id) === chatwoot.inboxFor(await db.getSettings())) return null;
+  let boxes;
+  try {
+    boxes = await chatwoot.listWhatsAppInboxes({ fresh: true });
+  } catch (e) {
+    return 'تعذّر التحقق من قناة الإرسال في Chatwoot — حاول مجدداً';
+  }
+  return boxes.some(x => x.id === Number(id)) ? null : 'قناة الإرسال المختارة ليست صندوق واتساب في Chatwoot';
+}
+
 router.post('/settings', requireManager, async (req, res) => {
   try {
     // القسم يحدد المفاتيح المسموح كتابتها — حتى لا يمس نموذجٌ مفاتيحَ نموذج آخر
@@ -1519,10 +1543,10 @@ router.post('/settings', requireManager, async (req, res) => {
       // checkbox — unchecked sends nothing, so default to false
       if (req.body.accepting_applications === undefined) set('accepting_applications', 'false');
     } else if (section === 'notifications') {
-      const invalid = validateNotifySettings(req.body);
+      const invalid = validateNotifySettings(req.body) || await validateWaInbox(req.body);
       if (invalid) return res.redirect('/admin/settings?err=' + encodeURIComponent(invalid) + '#notify');
 
-      const allowed = ['wa_params_shape', 'default_job_title'];
+      const allowed = ['wa_params_shape', 'default_job_title', 'wa_inbox_id'];
       for (const kind of TPL_KEYS()) {
         allowed.push(`wa_tpl_${kind}_name`, `wa_tpl_${kind}_lang`, `wa_tpl_${kind}_cat`, `wa_tpl_${kind}_vars`);
       }
@@ -1601,7 +1625,7 @@ router.post('/settings/notify-test', requireManager, notifyTestLimiter, async (r
       if (!tpl.name) return res.status(409).json({ error: 'لم يُحدَّد اسم قالب واتساب لإشعار الجدولة' });
       const vars = M.messageVars(demoApplicant, demoInterview, opts);
       await chatwoot.sendTemplate({
-        name: demoApplicant.full_name, phone: target,
+        name: demoApplicant.full_name, phone: target, inbox: tpl.inbox,
         content: M.buildWhatsAppText(demoApplicant, demoInterview, opts),
         template: {
           name: tpl.name, language: tpl.language, category: tpl.category,

@@ -335,6 +335,7 @@
       const ms = typeof mailStatus     !== 'undefined' ? mailStatus     : { configured: false, installed: false };
       const cs = typeof chatwootStatus !== 'undefined' ? chatwootStatus : { configured: false };
       const MV = typeof msgVars !== 'undefined' ? msgVars : {};
+      const WI = typeof waInboxes !== 'undefined' ? waInboxes : [];
       const KINDS = [
         { key: 'scheduled',   label: 'عند جدولة مقابلة',   hint: 'الإشعار الأساسي — يحمل الموعد ورابط Meet' },
         { key: 'rescheduled', label: 'عند إعادة الجدولة',  hint: 'اتركه فارغاً لتعطيل واتساب في هذه الحالة' },
@@ -432,10 +433,35 @@
           <% }); %>
         </div>
 
+        <% if (cs.configured) { %>
+        <div class="field">
+          <label class="block text-xs text-[#43474f] font-semibold uppercase tracking-wider mb-1.5">قناة الإرسال (رقم واتساب)</label>
+          <% if (WI.length) { %>
+          <select name="wa_inbox_id"
+                  style="width:100%;background:white;border:1px solid #e0e3e5;border-radius:.75rem;padding:.75rem 1rem;font-size:.875rem;outline:none;">
+            <% if (!WI.some(function (b) { return b.id === cs.inbox; })) { %>
+            <option value="<%= cs.inbox %>" selected>inbox <%= cs.inbox %> — غير موجود ضمن صناديق واتساب في Chatwoot</option>
+            <% } %>
+            <% WI.forEach(function (b) { %>
+            <option value="<%= b.id %>" <%= b.id === cs.inbox ? 'selected' : '' %>><%= b.name %> — <%= b.phone %> (<%= b.provider %>)</option>
+            <% }); %>
+          </select>
+          <p class="text-[10px] text-[#7594ca] mt-1.5 leading-relaxed">
+            الرقم الذي تخرج منه كل رسائل واتساب للمتقدمين — إشعارات المقابلات والقوالب اليدوية. القوالب أدناه يجب أن تكون
+            معتمدة على الرقم المختار، وزر «إرسال اختبار» أعلاه يستخدم القناة المحفوظة لا المختارة قبل الحفظ.
+          </p>
+          <% } else { %>
+          <p class="text-xs text-[#43474f] leading-relaxed">
+            تعذّر جلب صناديق واتساب من Chatwoot — القناة الحالية <span dir="ltr" class="font-mono">inbox <%= cs.inbox %></span> باقية كما هي. أعد تحميل الصفحة لتغييرها.
+          </p>
+          <% } %>
+        </div>
+        <% } %>
+
         <div class="border-t border-[#e0e3e5] pt-5">
           <div class="text-sm font-bold text-[#001736] mb-1">قوالب واتساب المعتمدة</div>
           <p class="text-xs text-[#43474f] mb-4 leading-relaxed">
-            واتساب لا يسمح ببدء محادثة خارج نافذة الـ 24 ساعة إلا بقالب معتمد. اكتب اسم القالب كما هو حرفياً في Twilio،
+            واتساب لا يسمح ببدء محادثة خارج نافذة الـ 24 ساعة إلا بقالب معتمد. اكتب اسم القالب كما هو حرفياً في قناة الإرسال المختارة،
             ورتّب المتغيّرات بحسب <span dir="ltr" class="font-mono">{{1}}</span>، <span dir="ltr" class="font-mono">{{2}}</span> … في نص القالب.
           </p>
 

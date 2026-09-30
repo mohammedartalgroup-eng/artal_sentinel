@@ -1,7 +1,9 @@
 /**
  * chatwoot.js
  * عميل خفيف لـ Chatwoot Application API — إرسال قوالب واتساب المعتمدة
- * عبر صندوق Twilio المربوط في النسخة المستضافة ذاتياً.
+ * عبر صناديق واتساب المربوطة في النسخة المستضافة ذاتياً (Twilio أو
+ * واتساب مباشر). الصندوق المُرسِل يُختار من الإعدادات («قناة الإرسال»)،
+ * وCHATWOOT_INBOX_ID هو الافتراضي حين لا اختيار محفوظ.
  *
  * لماذا fetch مباشرة بدل حزمة؟ نفس منطق utils/google.js: أربعة نداءات REST
  * فقط، وصفر اعتماديات جديدة ⇒ لا npm install يدوي على الخادم بعد النشر.
@@ -43,6 +45,16 @@ function requireConfigured() {
   if (!isConfigured()) {
     throw new ChatwootError('تكامل Chatwoot غير مهيأ — راجع متغيرات البيئة', 'NOT_CONFIGURED');
   }
+}
+
+/**
+ * الصندوق المُرسِل الفعلي: اختيار «قناة الإرسال» المحفوظ في الإعدادات، وإلا
+ * صندوق .env. كل الإرسال والقوالب تمر من هنا حتى لا تقرأ دالةٌ القالب من
+ * صندوق وتُرسل أخرى من صندوق آخر.
+ */
+function inboxFor(settings) {
+  const chosen = parseInt(settings?.wa_inbox_id, 10);
+  return Number.isFinite(chosen) && chosen > 0 ? chosen : cfg().inbox;
 }
 
 // ملخّص آمن للعرض في صفحة الإعدادات — بلا أي جزء من الرمز السري
@@ -108,24 +120,64 @@ function sourceIdFor(contact, inboxId) {
   return mine?.source_id || null;
 }
 
+// ─── صناديق واتساب ───────────────────────────────────────────────────────────
+//  قائمة «قناة الإرسال» في الإعدادات تُبنى من Chatwoot نفسه لا من أرقام مكتوبة
+//  عندنا: رقم ثالث يُربط لاحقاً يظهر وحده بلا نشر جديد.
+const isWhatsAppInbox = (b) =>
+  b?.channel_type === 'Channel::Whatsapp' ||
+  (b?.channel_type === 'Channel::TwilioSms' && b?.medium === 'whatsapp');
+
+let inboxCache = { at: 0, list: null };
+
+/** @returns {{id:number, name:string, phone:string, provider:string}[]} */
+async function listWhatsAppInboxes({ fresh = false } = {}) {
+  if (!fresh && inboxCache.list && Date.now() - inboxCache.at < TPL_TTL_MS) return inboxCache.list;
+  const data = await cwfetch('/inboxes', { idempotent: true, op: 'inboxes' });
+  const all = data?.payload || data || [];
+  const list = (Array.isArray(all) ? all : []).filter(isWhatsAppInbox).map(b => ({
+    id: Number(b.id),
+    name: String(b.name || '').trim(),
+    phone: String(b.phone_number || '').replace(/^whatsapp:/, ''),
+    provider: b.channel_type === 'Channel::TwilioSms' ? 'twilio' : String(b.provider || 'whatsapp'),
+  }));
+  inboxCache = { at: Date.now(), list };
+  return list;
+}
+
 // ─── القوالب المتزامنة ───────────────────────────────────────────────────────
-//  Chatwoot يحتفظ بنسخة من قوالب Twilio المعتمدة على الصندوق نفسه، وتُحدَّث
-//  بزر «Sync Templates». نقرأها لسببين:
+//  Chatwoot يحتفظ بنسخة من القوالب المعتمدة على كل صندوق، وتُحدَّث بزر
+//  «Sync Templates». نقرأها لسببين:
 //   • بناء نص الرسالة من القالب المعتمد نفسه بدل نسخة مكتوبة يدوياً تتقادم.
 //   • التحقق من عدد المتغيّرات قبل الإرسال، فلا نقع في الخطأ #132000.
 //  قالب غير مزامَن ⇒ يرفضه Chatwoot بـ «Template not found»، ونكشفه مبكراً
 //  برسالة عربية تشرح الحل بدل خطأ غامض بعد الإرسال.
 
-let tplCache = { at: 0, list: null };
+//
+//  ⚠️ شكل القوالب يختلف بنوع الصندوق، فنوحّده إلى { name, language, body }:
+//   • Twilio          ← content_templates.templates: { friendly_name, body }
+//   • واتساب المباشر  ← message_templates: { name, components: [{ type:'BODY', text }] }
+//  والمخبّأ بمفتاح الصندوق: القالب المعتمد على رقم قد يغيب عن الآخر.
+
+const tplCache = new Map();          // inboxId → { at, list }
 const TPL_TTL_MS = 5 * 60 * 1000;
 
-async function listTemplates({ fresh = false } = {}) {
-  if (!fresh && tplCache.list && Date.now() - tplCache.at < TPL_TTL_MS) return tplCache.list;
-  const c = cfg();
-  const data = await cwfetch(`/inboxes/${c.inbox}`, { idempotent: true, op: 'inbox' });
-  const box = data?.payload || data || {};
-  const list = box?.content_templates?.templates || [];
-  tplCache = { at: Date.now(), list };
+function normalizeTemplates(box) {
+  if (Array.isArray(box?.message_templates)) {
+    return box.message_templates.map(t => ({
+      ...t,
+      body: String((t?.components || []).find(c => String(c?.type).toUpperCase() === 'BODY')?.text || ''),
+    }));
+  }
+  return box?.content_templates?.templates || [];
+}
+
+async function listTemplates({ fresh = false, inbox } = {}) {
+  const id = inbox || cfg().inbox;
+  const hit = tplCache.get(id);
+  if (!fresh && hit && Date.now() - hit.at < TPL_TTL_MS) return hit.list;
+  const data = await cwfetch(`/inboxes/${id}`, { idempotent: true, op: 'inbox' });
+  const list = normalizeTemplates(data?.payload || data || {});
+  tplCache.set(id, { at: Date.now(), list });
   return list;
 }
 
@@ -144,7 +196,7 @@ async function findTemplate(name, language, opts = {}) {
   //    اللحظة التي يضغط فيها الموظف الزر بعد «Sync Templates». عدم العثور
   //    عليه ليس نتيجةً نهائية — نُعيد الجلب متجاوزين المخبّأ قبل أن نيأس.
   if (!byName.length && !opts.fresh) {
-    byName = match(await listTemplates({ fresh: true }));
+    byName = match(await listTemplates({ ...opts, fresh: true }));
   }
   if (!byName.length) return null;
 
@@ -153,9 +205,9 @@ async function findTemplate(name, language, opts = {}) {
 }
 
 /** أسماء القوالب المتزامنة — لرسائل الخطأ: «الموجود عندك هو…» */
-async function templateNames() {
+async function templateNames(opts = {}) {
   try {
-    return (await listTemplates()).map(tplName).filter(Boolean);
+    return (await listTemplates(opts)).map(tplName).filter(Boolean);
   } catch (e) {
     return [];
   }
@@ -178,8 +230,8 @@ function renderTemplate(tpl, params) {
  * يبحث عن جهة الاتصال بالرقم، وينشئها إن لم توجد، ويضمن ارتباطها بصندوقنا.
  * @returns {{contactId:number, sourceId:string}}
  */
-async function ensureContact({ name, phone }) {
-  const c = cfg();
+async function ensureContact({ name, phone, inbox }) {
+  const inboxId = inbox || cfg().inbox;
   const e164 = toE164(phone);
   if (!e164) throw new ChatwootError('رقم جوال غير صالح لصيغة E.164', 'HTTP');
 
@@ -201,7 +253,7 @@ async function ensureContact({ name, phone }) {
     try {
       const created = await cwfetch('/contacts', {
         method: 'POST', op: 'createContact',
-        body: { inbox_id: c.inbox, name: String(name || '').trim() || e164, phone_number: e164 },
+        body: { inbox_id: inboxId, name: String(name || '').trim() || e164, phone_number: e164 },
       });
       contact = unwrapContact(created);
     } catch (e) {
@@ -218,11 +270,13 @@ async function ensureContact({ name, phone }) {
   if (!contactId) throw new ChatwootError('تعذّر تحديد جهة الاتصال في Chatwoot', 'HTTP');
 
   // 3) source_id هو مفتاح المحادثة في هذا الصندوق تحديداً — قد يغيب إن أُنشئت
-  //    جهة الاتصال سابقاً من صندوق آخر، فنربطها بصندوقنا صراحةً
-  let sourceId = sourceIdFor(contact, c.inbox);
+  //    جهة الاتصال سابقاً من صندوق آخر، فنربطها بصندوقنا صراحةً.
+  //    ⚠️ يُقرأ من الرد دائماً ولا يُبنى يدوياً: صيغته تختلف بين الصناديق
+  //    (Twilio: whatsapp:+9665… — واتساب المباشر: 9665… بلا + ولا بادئة).
+  let sourceId = sourceIdFor(contact, inboxId);
   if (!sourceId) {
     const linked = await cwfetch(`/contacts/${contactId}/contact_inboxes`, {
-      method: 'POST', op: 'linkInbox', body: { inbox_id: c.inbox },
+      method: 'POST', op: 'linkInbox', body: { inbox_id: inboxId },
     });
     sourceId = linked?.source_id || linked?.payload?.source_id || null;
   }
@@ -234,15 +288,14 @@ async function ensureContact({ name, phone }) {
 // ─── المحادثة ────────────────────────────────────────────────────────────────
 // نُعيد استخدام محادثة مفتوحة إن وُجدت — كل إشعار في محادثة جديدة يُغرق
 // صندوق الوكلاء بمحادثات لمتقدم واحد.
-async function findOpenConversation(contactId) {
-  const c = cfg();
+async function findOpenConversation(contactId, inboxId) {
   try {
     const data = await cwfetch(`/contacts/${contactId}/conversations`, {
       idempotent: true, op: 'listConversations',
     });
     const list = data?.payload || data || [];
     const mine = (Array.isArray(list) ? list : [])
-      .filter(cv => Number(cv?.inbox_id) === Number(c.inbox) && cv?.status !== 'resolved');
+      .filter(cv => Number(cv?.inbox_id) === Number(inboxId) && cv?.status !== 'resolved');
     mine.sort((a, b) => (b?.id || 0) - (a?.id || 0));
     return mine[0]?.id || null;
   } catch (e) {
@@ -259,16 +312,17 @@ async function findOpenConversation(contactId) {
  * @param {string}  a.phone     جوال المتقدم بأي صيغة محلية
  * @param {string}  a.content   النص المُعرَّض — ما يظهر داخل Chatwoot للوكلاء
  * @param {object}  a.template  { name, language, category, processed_params }
+ * @param {number}  [a.inbox]   الصندوق المُرسِل (inboxFor) — الافتراضي صندوق .env
  * @returns {{conversationId:number, messageId:number|null}}
  */
-async function sendTemplate({ name, phone, content, template }) {
+async function sendTemplate({ name, phone, content, template, inbox }) {
   requireConfigured();
-  const c = cfg();
+  const inboxId = inbox || cfg().inbox;
   if (!template?.name || !template?.language) {
     throw new ChatwootError('قالب واتساب غير مكتمل الإعداد (الاسم أو اللغة)', 'NOT_CONFIGURED');
   }
 
-  const { contactId, sourceId } = await ensureContact({ name, phone });
+  const { contactId, sourceId } = await ensureContact({ name, phone, inbox: inboxId });
 
   const template_params = {
     name:     template.name,
@@ -277,7 +331,7 @@ async function sendTemplate({ name, phone, content, template }) {
     processed_params: template.processed_params || {},
   };
 
-  const existing = await findOpenConversation(contactId);
+  const existing = await findOpenConversation(contactId, inboxId);
   if (existing) {
     const msg = await cwfetch(`/conversations/${existing}/messages`, {
       method: 'POST', op: 'sendMessage',
@@ -291,7 +345,7 @@ async function sendTemplate({ name, phone, content, template }) {
     method: 'POST', op: 'createConversation',
     body: {
       source_id: sourceId,
-      inbox_id: c.inbox,
+      inbox_id: inboxId,
       contact_id: contactId,
       status: 'open',
       message: { content, template_params },
@@ -301,6 +355,6 @@ async function sendTemplate({ name, phone, content, template }) {
 }
 
 module.exports = {
-  ChatwootError, isConfigured, status, toE164, ensureContact, sendTemplate,
-  listTemplates, findTemplate, templateNames, templateVarCount, renderTemplate,
+  ChatwootError, isConfigured, status, inboxFor, toE164, ensureContact, sendTemplate,
+  listWhatsAppInboxes, listTemplates, findTemplate, templateNames, templateVarCount, renderTemplate,
 };
