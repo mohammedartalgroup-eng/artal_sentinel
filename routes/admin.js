@@ -1609,6 +1609,7 @@ router.post('/settings/notify-test', requireManager, notifyTestLimiter, async (r
       interviewers: [{ name: req.session.adminName || 'المقابل' }],
     };
     const opts = { companyName: settings.company_name };
+    let waMessage = '';
 
     if (channel === 'email') {
       if (!M.isEmail(target)) return res.status(400).json({ error: 'بريد إلكتروني غير صالح' });
@@ -1624,7 +1625,7 @@ router.post('/settings/notify-test', requireManager, notifyTestLimiter, async (r
       const tpl = require('../utils/notify').templateFor(settings, 'scheduled');
       if (!tpl.name) return res.status(409).json({ error: 'لم يُحدَّد اسم قالب واتساب لإشعار الجدولة' });
       const vars = M.messageVars(demoApplicant, demoInterview, opts);
-      await chatwoot.sendTemplate({
+      const sent = await chatwoot.sendTemplate({
         name: demoApplicant.full_name, phone: target, inbox: tpl.inbox,
         content: M.buildWhatsAppText(demoApplicant, demoInterview, opts),
         template: {
@@ -1632,11 +1633,19 @@ router.post('/settings/notify-test', requireManager, notifyTestLimiter, async (r
           processed_params: M.buildProcessedParams(vars, tpl.vars, tpl.shape),
         },
       });
+
+      // قبول Chatwoot للطلب ليس وصولاً — الاختبار ينتظر حكم المزوّد/ميتا، وإلا
+      // قال «أُرسلت» لقناة ترفض كل رسائلها (قالب مرفوض، مشكلة دفع…)
+      const st = await require('../utils/notify').confirmDelivery(sent);
+      if (st?.status === 'failed') {
+        return res.status(502).json({ error: `رُفضت بعد الإرسال: ${st.error || 'بلا سبب من المزوّد'}` });
+      }
+      if (['delivered', 'read'].includes(st?.status)) waMessage = 'وصلت رسالة الاختبار إلى الجوال ✓';
     }
 
     await db.audit(req.session.adminId, req.session.adminUser, 'notify_test', 'settings',
       null, null, `${channel} → ${target}`, req.ip);
-    res.json({ ok: true, message: 'أُرسلت رسالة الاختبار — تحقق من الوجهة' });
+    res.json({ ok: true, message: waMessage || 'أُرسلت رسالة الاختبار — لم يتأكد وصولها بعد، تحقق من الوجهة' });
   } catch (err) {
     console.error('[Notify test]', err.message);
     res.status(502).json({ error: err.message || 'فشل الإرسال' });

@@ -88,18 +88,71 @@ async function resolveTemplateBody(tpl, params, fallbackText) {
   }
 }
 
+// ─── فحص التسليم بعد الإرسال ─────────────────────────────────────────────────
+//  Chatwoot يقبل الطلب ثم يأتي رفض المزوّد أو ميتا بعد 10–15 ثانية (قالب
+//  مرفوض، مشكلة دفع، تجاوز الحد اليومي). بلا هذا الفحص يبقى السجل «أُرسل»
+//  لرسالة لم تصل — وهو بالضبط الفشل الصامت الذي يمنعه هذا الملف.
+//
+//  مؤجَّل لا داخل الطلب: انتظار 15 ثانية عند كل جدولة يُعطّل الموظف من أجل
+//  حالة نادرة. الفحص الثاني لمن بقيت «sent» بلا حسم في الأول.
+//  أفضل جهد: إعادة تشغيل الخادم خلال المهلة تُسقط الفحص، والحالة تبقى «أُرسل».
+const CHECK_AT_MS = [20000, 90000];
+const LATE_FAIL = (reason) => clip(`رُفضت بعد الإرسال: ${reason || 'بلا سبب من المزوّد'}`);
+
+/** @param {object} sent ناتج chatwoot.sendTemplate — @param {(reason:string)=>Promise} onFailed */
+function watchDelivery(sent, onFailed, attempt = 0) {
+  if (!sent?.conversationId) return;
+  const wait = CHECK_AT_MS[attempt] - (attempt ? CHECK_AT_MS[attempt - 1] : 0);
+  const timer = setTimeout(async () => {
+    try {
+      const st = await chatwoot.messageStatus(sent);
+      if (st?.status === 'failed') {
+        console.error(`[Notify] whatsapp rejected after send — conv ${sent.conversationId}: ${st.error}`);
+        await onFailed(LATE_FAIL(st.error));
+      } else if (!['delivered', 'read'].includes(st?.status) && attempt + 1 < CHECK_AT_MS.length) {
+        watchDelivery(sent, onFailed, attempt + 1);
+      }
+    } catch (e) {
+      console.error('[Notify] delivery check:', e.message);
+    }
+  }, wait);
+  timer.unref();
+}
+
+/**
+ * ينتظر الحالة الفعلية داخل الطلب — لزر «إرسال اختبار» وحده، حيث الانتظار
+ * هو المطلوب: المدير يسأل «هل تصل؟» لا «هل قُبل الطلب؟».
+ * @returns {{status:string, error:string}|null} آخر حالة شوهدت
+ */
+async function confirmDelivery(sent, { timeoutMs = 18000, everyMs = 2500 } = {}) {
+  let last = null;
+  for (let waited = 0; waited < timeoutMs; waited += everyMs) {
+    await new Promise(r => setTimeout(r, everyMs));
+    try {
+      last = await chatwoot.messageStatus(sent) || last;
+    } catch (e) {
+      console.error('[Notify] delivery confirm:', e.message);
+    }
+    if (['failed', 'delivered', 'read'].includes(last?.status)) break;
+  }
+  return last;
+}
+
+/** @returns {number|null} رقم صف السجل — يحتاجه الفحص المؤجَّل ليقلب الحالة */
 async function log({ interviewId, applicantId, channel, kind, status, target, ref, error, actor }) {
   try {
-    await db.run(
+    const r = await db.run(
       `INSERT INTO interview_messages
          (interview_id, applicant_id, channel, kind, status, target, provider_ref, error, created_by)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [interviewId, applicantId, channel, kind, status,
        clip(target, 160), clip(ref, 120), clip(error), clip(actor, 100)]
     );
+    return r.insertId || null;
   } catch (e) {
     // السجل نفسه فشل — نطبع ولا نُفشل الإرسال الذي نجح
     console.error('[Notify] log:', e.message);
+    return null;
   }
 }
 
@@ -143,6 +196,7 @@ async function sendWhatsApp({ applicant, interview, kind, settings, actor }) {
     out.status = 'sent';
     out.ref = r.conversationId ? `conv:${r.conversationId}` : '';
     out.target = phone;
+    out.track = r;                 // للفحص المؤجَّل — يُنزع قبل إعادة النتيجة للواجهة
     console.log(`[Notify] whatsapp sent — interview #${interview.id}, conv ${r.conversationId}`);
     await mirrorToGroup({ applicant, interview, kind, vars, actor });
   } catch (e) {
@@ -245,15 +299,24 @@ async function notifyInterview({ applicant, interview, kind, settings, actor, ch
 
     for (let i = 0; i < list.length; i++) {
       const ch = list[i];
-      const r = settled[i].status === 'fulfilled'
+      const { track, ...r } = settled[i].status === 'fulfilled'
         ? settled[i].value
         : { channel: ch, status: 'failed', reason: settled[i].reason?.message || 'خطأ غير متوقع' };
       result[ch] = r;
 
-      await log({
+      const rowId = await log({
         interviewId: interview.id, applicantId: applicant.id, channel: ch, kind,
         status: r.status, target: r.target, ref: r.ref, error: r.reason, actor,
       });
+
+      // الصف نفسه يُقلب إلى «فشل»: شارة القناة في بطاقة المقابلة تقرأ آخر صف،
+      // فيرى الموظف السبب وزر «إعادة الإرسال» دون أي واجهة جديدة
+      if (track && rowId) {
+        watchDelivery(track, (reason) => db.run(
+          "UPDATE interview_messages SET status = 'failed', error = ? WHERE id = ? AND status = 'sent'",
+          [reason, rowId]
+        ));
+      }
     }
   } catch (e) {
     console.error('[Notify] orchestrator:', e.message);   // الحزام الأخير — لا يخرج خطأ من هنا
@@ -316,6 +379,7 @@ async function sendApplicantTemplate({ applicant, tplKey, kind, vars = {}, setti
     out.status = 'sent';
     out.ref = r.conversationId ? `conv:${r.conversationId}` : '';
     out.vars = v;
+    out.track = r;
     console.log(`[Notify] ${kind} sent — applicant #${applicant.id}, conv ${r.conversationId}`);
   };
 
@@ -328,17 +392,39 @@ async function sendApplicantTemplate({ applicant, tplKey, kind, vars = {}, setti
     console.error(`[Notify] ${kind} FAILED — applicant #${applicant.id}: ${out.reason}`);
   }
 
+  const { track, ...result } = out;
+  let rowId = null;
   try {
-    await db.run(
+    const ins = await db.run(
       `INSERT INTO applicant_messages
          (applicant_id, channel, kind, status, target, provider_ref, error, created_by)
        VALUES (?, 'whatsapp', ?, ?, ?, ?, ?, ?)`,
-      [applicant.id, kind, out.status, clip(out.target, 160), clip(out.ref, 120),
-       clip(out.reason), clip(actor, 100)]
+      [applicant.id, kind, result.status, clip(result.target, 160), clip(result.ref, 120),
+       clip(result.reason), clip(actor, 100)]
     );
+    rowId = ins.insertId || null;
   } catch (e) { console.error('[Notify] applicant log:', e.message); }
 
-  return out;
+  // الرفض المتأخر يُكتب ملاحظةً في ملف المتقدم: المُرسِل سجّل «أُرسلت عبر واتساب»
+  // في التايملاين لحظة الإرسال، وهذه القوالب بلا شارة حالة — فالملاحظة هي
+  // المكان الوحيد الذي يراه الموظف.
+  if (track) {
+    const label = require('./waTemplates').get(tplKey)?.noteLabel || kind;
+    watchDelivery(track, async (reason) => {
+      if (rowId) {
+        await db.run(
+          "UPDATE applicant_messages SET status = 'failed', error = ? WHERE id = ? AND status = 'sent'",
+          [reason, rowId]
+        );
+      }
+      await db.run(
+        'INSERT INTO applicant_notes (applicant_id, content, type, user_name) VALUES (?, ?, ?, ?)',
+        [applicant.id, `⚠️ لم تصل رسالة واتساب «${label}» — ${reason}`, 'follow_up', 'النظام']
+      );
+    });
+  }
+
+  return result;
 }
 
 /**
@@ -362,4 +448,7 @@ async function deliveryFor(interviewId) {
   }
 }
 
-module.exports = { notifyInterview, sendApplicantTemplate, deliveryFor, templateFor, KINDS, NO_LINK_REASON };
+module.exports = {
+  notifyInterview, sendApplicantTemplate, deliveryFor, templateFor, confirmDelivery,
+  KINDS, NO_LINK_REASON,
+};

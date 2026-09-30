@@ -313,11 +313,13 @@ async function findOpenConversation(contactId, inboxId) {
  * @param {string}  a.content   النص المُعرَّض — ما يظهر داخل Chatwoot للوكلاء
  * @param {object}  a.template  { name, language, category, processed_params }
  * @param {number}  [a.inbox]   الصندوق المُرسِل (inboxFor) — الافتراضي صندوق .env
- * @returns {{conversationId:number, messageId:number|null}}
+ * @returns {{conversationId:number, messageId:number|null, since:number}}
+ *          since = لحظة بدء الإرسال، يحتاجها messageStatus حين يغيب messageId
  */
 async function sendTemplate({ name, phone, content, template, inbox }) {
   requireConfigured();
   const inboxId = inbox || cfg().inbox;
+  const since = Date.now();
   if (!template?.name || !template?.language) {
     throw new ChatwootError('قالب واتساب غير مكتمل الإعداد (الاسم أو اللغة)', 'NOT_CONFIGURED');
   }
@@ -337,7 +339,7 @@ async function sendTemplate({ name, phone, content, template, inbox }) {
       method: 'POST', op: 'sendMessage',
       body: { content, message_type: 'outgoing', template_params },
     });
-    return { conversationId: existing, messageId: msg?.id || null };
+    return { conversationId: existing, messageId: msg?.id || null, since };
   }
 
   // محادثة + رسالة في نداء واحد — يقلّل فرصة بقاء محادثة فارغة عند الانقطاع
@@ -351,10 +353,38 @@ async function sendTemplate({ name, phone, content, template, inbox }) {
       message: { content, template_params },
     },
   });
-  return { conversationId: conv?.id || null, messageId: null };
+  return { conversationId: conv?.id || null, messageId: null, since };
+}
+
+// ─── حالة الرسالة بعد الإرسال ────────────────────────────────────────────────
+/**
+ * ⚠️ قبول Chatwoot للطلب (HTTP 200) ليس تسليماً: الرسالة تُسلَّم للمزوّد في
+ *    الخلفية، ورفضه — أو رفض ميتا — يصل بعد 10–15 ثانية ويُكتب على الرسالة
+ *    نفسها (status=failed + external_error). هذه القراءة هي الطريقة الوحيدة
+ *    لمعرفته.
+ *
+ * @param {{conversationId:number, messageId:number|null, since:number}} sent ناتج sendTemplate
+ * @returns {{status:string, error:string}|null}  null = لم نعثر على الرسالة
+ */
+async function messageStatus({ conversationId, messageId, since }) {
+  if (!conversationId) return null;
+  const data = await cwfetch(`/conversations/${conversationId}/messages`, {
+    idempotent: true, op: 'messageStatus',
+  });
+  const outgoing = (data?.payload || []).filter(m => m?.message_type === 1);
+  // محادثة أُنشئت مع رسالتها في نداء واحد لا تُعيد رقم الرسالة — نأخذ أول
+  // صادرة منذ لحظة الإرسال (مع هامش لفرق الساعتين)
+  const msg = messageId
+    ? outgoing.find(m => m.id === messageId)
+    : outgoing.find(m => (m.created_at || 0) * 1000 >= (since || 0) - 5000);
+  if (!msg) return null;
+  return {
+    status: String(msg.status || ''),
+    error: String(msg.content_attributes?.external_error || '').trim(),
+  };
 }
 
 module.exports = {
-  ChatwootError, isConfigured, status, inboxFor, toE164, ensureContact, sendTemplate,
+  ChatwootError, isConfigured, status, inboxFor, toE164, ensureContact, sendTemplate, messageStatus,
   listWhatsAppInboxes, listTemplates, findTemplate, templateNames, templateVarCount, renderTemplate,
 };
