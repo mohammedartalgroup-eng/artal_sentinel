@@ -354,7 +354,7 @@ router.post('/applicants/:id/interview', requireInterviews, scheduleLimiter, asy
     try {
       const ci = PIPE.indexOf(applicant.status);
       const ti = PIPE.indexOf('shortlisted');
-      // on_hold و rejected فهرسهما -1 فتُترك دون مساس — الجدولة لا تُحيي مرفوضاً بصمت
+      // on_hold و on_hold_women و rejected فهرسها -1 فتُترك دون مساس — الجدولة لا تُحيي مرفوضاً بصمت
       if (ci !== -1 && ci < ti) {
         await db.run('UPDATE applicants SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', ['shortlisted', applicant.id]);
         statusChanged = 'shortlisted';

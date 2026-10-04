@@ -42,7 +42,7 @@ const colorMap = {
   blue:'bg-blue-100 text-blue-700', yellow:'bg-yellow-100 text-yellow-800',
   purple:'bg-purple-100 text-purple-700', orange:'bg-orange-100 text-orange-700',
   green:'bg-green-100 text-green-700', gray:'bg-gray-100 text-gray-600',
-  red:'bg-red-100 text-red-700'
+  pink:'bg-pink-100 text-pink-700', red:'bg-red-100 text-red-700'
 };
 const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'gray' };
 %>
@@ -121,6 +121,11 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
                      <%= applicant.status === 'on_hold' ? 'bg-gray-500 text-white border-gray-500' : 'border-[#e0e3e5] text-[#43474f] hover:bg-[#f2f4f6]' %>">
         احتياطي
       </button>
+      <button onclick="updateStatus('on_hold_women')"
+              class="px-4 py-2 rounded-xl text-xs font-semibold border transition-all
+                     <%= applicant.status === 'on_hold_women' ? 'bg-pink-600 text-white border-pink-600' : 'border-[#e0e3e5] text-pink-600 hover:bg-pink-50' %>">
+        احتياطي نساء
+      </button>
       <button onclick="updateStatus('rejected')"
               class="px-4 py-2 rounded-xl text-xs font-semibold border transition-all
                      <%= applicant.status === 'rejected' ? 'bg-red-600 text-white border-red-600' : 'border-[#e0e3e5] text-red-600 hover:bg-red-50' %>">
@@ -134,7 +139,7 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
     <!-- تقديمات سابقة بنفس رقم الهوية (نظرة على تاريخ المرشّح) -->
     <% if (typeof priorApps !== 'undefined' && priorApps && priorApps.length) { %>
     <%
-      const _badgeColor = { blue:'bg-blue-100 text-blue-700', yellow:'bg-yellow-100 text-yellow-700', purple:'bg-purple-100 text-purple-700', orange:'bg-orange-100 text-orange-700', green:'bg-green-100 text-green-700', gray:'bg-gray-100 text-gray-600', red:'bg-red-100 text-red-700' };
+      const _badgeColor = { blue:'bg-blue-100 text-blue-700', yellow:'bg-yellow-100 text-yellow-700', purple:'bg-purple-100 text-purple-700', orange:'bg-orange-100 text-orange-700', green:'bg-green-100 text-green-700', gray:'bg-gray-100 text-gray-600', pink:'bg-pink-100 text-pink-700', red:'bg-red-100 text-red-700' };
       const _fmtDate = (v) => { const d = new Date(v); return isNaN(d) ? v : d.toLocaleDateString('ar-SA', { timeZone:'Asia/Riyadh', year:'numeric', month:'short', day:'numeric' }); };
     %>
     <div class="mb-6 bg-amber-50 border border-amber-200 rounded-2xl p-5">

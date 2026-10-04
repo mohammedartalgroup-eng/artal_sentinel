@@ -109,6 +109,7 @@
             { key:'interviewed', label:'تمت المقابلة',      color:'bg-orange-400', count: stats.interviewed },
             { key:'hired',       label:'تم التعيين',        color:'bg-green-500',  count: stats.hired },
             { key:'on_hold',     label:'احتياطي',           color:'bg-gray-400',   count: stats.on_hold },
+            { key:'on_hold_women', label:'احتياطي نساء',    color:'bg-pink-400',   count: stats.on_hold_women },
             { key:'rejected',    label:'مرفوض',             color:'bg-red-500',    count: stats.rejected },
           ]; %>
           <% statusRows.forEach(s => { %>
@@ -293,7 +294,7 @@
             <% const colorMap = { blue:'bg-blue-100 text-blue-700', yellow:'bg-yellow-100 text-yellow-700',
                                   purple:'bg-purple-100 text-purple-700', orange:'bg-orange-100 text-orange-700',
                                   green:'bg-green-100 text-green-700', gray:'bg-gray-100 text-gray-700',
-                                  red:'bg-red-100 text-red-700' }; %>
+                                  pink:'bg-pink-100 text-pink-700', red:'bg-red-100 text-red-700' }; %>
             <tr class="hover:bg-[#f8f9fb] transition-colors">
               <td class="py-3 font-medium"><%= a.full_name %></td>
               <td class="py-3 text-[#43474f]"><%= a.city || '—' %></td>

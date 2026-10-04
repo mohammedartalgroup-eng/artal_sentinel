@@ -33,6 +33,10 @@ const STATUS_META = {
   interviewed: { label: 'تمت المقابلة',      color: 'orange' },
   hired:       { label: 'تم التعيين',        color: 'green' },
   on_hold:     { label: 'احتياطي',           color: 'gray' },
+  // «احتياطي نساء»: قرار إداري — المرأة التي لا تناسب الشاغر الحالي ليست
+  // مرفوضة بل محفوظة لاحتياج نسائي لاحق. مفتاح مستقل عن rejected حتى يبقى
+  // «مرفوض» في القاعدة بمعناه الحرفي (رجال فقط). الترحيل في database/db.js.
+  on_hold_women: { label: 'احتياطي نساء',    color: 'pink' },
   rejected:    { label: 'مرفوض',             color: 'red' },
 };
 
@@ -306,6 +310,7 @@ router.get('/dashboard', async (req, res) => {
           SUM(status = 'interviewed')        AS interviewed,
           SUM(status = 'hired')              AS hired,
           SUM(status = 'on_hold')            AS on_hold,
+          SUM(status = 'on_hold_women')      AS on_hold_women,
           SUM(status = 'rejected')           AS rejected
         FROM applicants WHERE 1=1 ${pMeta.sql}
       `, p),
@@ -338,6 +343,7 @@ router.get('/dashboard', async (req, res) => {
       interviewed: Number(statsRow?.interviewed) || 0,
       hired:       Number(statsRow?.hired)       || 0,
       on_hold:     Number(statsRow?.on_hold)     || 0,
+      on_hold_women: Number(statsRow?.on_hold_women) || 0,
       rejected:    Number(statsRow?.rejected)    || 0,
     };
 

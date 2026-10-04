@@ -410,6 +410,83 @@ async function initialize() {
       }
     }
 
+    // ─── ترحيل بيانات (مرة واحدة): المرفوضات → «احتياطي نساء» ────────────────
+    //  القرار الإداري: المرأة التي رُفضت ليست مرفوضة بل «احتياطي نساء»، ويبقى
+    //  «مرفوض» للرجال فقط. نُبقي المفتاح rejected بمعناه الحرفي وننقل النساء إلى
+    //  مفتاح جديد on_hold_women — فلا يتغيّر معنى أي سجل قديم في applicant_activity
+    //  أو audit_log (كلاهما يخزّن التسمية نصاً). النتيجة للمستخدم واحدة.
+    //
+    //  الضمانات (القاعدة فيها ~80 ألف متقدم):
+    //   - لا حذف، ولا تعديل لأي عمود غير status. updated_at يُحفَظ كما هو عمداً:
+    //     هذا ترحيل آلي لا لمسة بشرية، وقلبه يرفع عشرات الآلاف إلى صدر «آخر تحديث».
+    //   - دفعات 1000 صف، كلٌّ في معاملة مستقلة بقفل FOR UPDATE: لا قفل طويل يعلّق
+    //     الموقع، ولا تكرار أثر لو أقلعت نسختان من الخادم معاً.
+    //   - أثر لكل سجل في applicant_activity (مرفوض ← احتياطي نساء، بواسطة
+    //     «النظام — ترحيل») فيُعرَف بالضبط من نُقل، ويُتاح التراجع بسطر واحد:
+    //       UPDATE applicants a JOIN applicant_activity x ON x.applicant_id = a.id
+    //         AND x.user_name = 'النظام — ترحيل' AND x.new_value = 'احتياطي نساء'
+    //       SET a.status = 'rejected', a.updated_at = a.updated_at
+    //       WHERE a.status = 'on_hold_women';
+    //   - gender IS NULL أو قيمة غير متوقعة: لا تُمَس (تبقى «مرفوض») وتُطبَع أعدادها.
+    //   - تُنفَّذ مرة واحدة فقط (علم في settings). بعد ذلك «مرفوض» لامرأة قرارٌ
+    //     بشري مقصود ولا يُعاد نقله عند كل إقلاع.
+    //   - أي خطأ هنا لا يُوقف الإقلاع: يُسجَّل، والعلم لا يُكتب، فيُستكمَل في
+    //     الإقلاع التالي من حيث توقّف (المنقولون لا يطابقون الشرط ثانيةً).
+    const MIGR_WOMEN_KEY = 'migr_rejected_women_to_reserve';
+    try {
+      const [[migrDone]] = await conn.query('SELECT value FROM settings WHERE `key` = ?', [MIGR_WOMEN_KEY]);
+      if (!migrDone) {
+        const [[pre]] = await conn.query(`
+          SELECT COUNT(*)                                                      AS total,
+                 COALESCE(SUM(gender = 'female'), 0)                           AS women,
+                 COALESCE(SUM(gender = 'male'), 0)                             AS men,
+                 COALESCE(SUM(gender IS NULL OR gender NOT IN ('male','female')), 0) AS unknown_gender
+          FROM applicants WHERE status = 'rejected'
+        `);
+        console.log(`[DB] Migration (rejected women → on_hold_women): rejected=${pre.total} — women=${pre.women}, men=${pre.men}, unknown gender=${pre.unknown_gender} (untouched)`);
+
+        let moved = 0;
+        for (;;) {
+          await conn.beginTransaction();
+          try {
+            const [rows] = await conn.query(
+              "SELECT id FROM applicants WHERE status = 'rejected' AND gender = 'female' ORDER BY id LIMIT 1000 FOR UPDATE"
+            );
+            if (!rows.length) { await conn.commit(); break; }
+            const ids = rows.map(r => r.id);
+            const ph  = ids.map(() => '?').join(',');
+            await conn.query(
+              `INSERT INTO applicant_activity (applicant_id, action, old_value, new_value, user_name)
+               VALUES ${ids.map(() => "(?, 'تغيير الحالة', 'مرفوض', 'احتياطي نساء', 'النظام — ترحيل')").join(', ')}`,
+              ids
+            );
+            const [upd] = await conn.query(
+              `UPDATE applicants SET status = 'on_hold_women', updated_at = updated_at
+               WHERE id IN (${ph}) AND status = 'rejected' AND gender = 'female'`,
+              ids
+            );
+            await conn.commit();
+            moved += upd.affectedRows;
+            // حارس ضد حلقة لا تنتهي: الصفوف المقفولة هي نفسها المحدَّثة، فصفر هنا شذوذ
+            if (upd.affectedRows === 0) { console.error('[DB] Migration: UPDATE affected 0 rows for a locked batch — stopping'); break; }
+          } catch (e) {
+            await conn.rollback();
+            throw e;
+          }
+        }
+
+        if (moved === Number(pre.women)) {
+          await conn.query('INSERT IGNORE INTO settings (`key`, value) VALUES (?, ?)',
+            [MIGR_WOMEN_KEY, `done ${new Date().toISOString()} moved=${moved} men_kept=${pre.men} unknown_kept=${pre.unknown_gender}`]);
+          console.log(`[DB] Migration: ${moved} rejected women → on_hold_women ✓ (men kept as rejected: ${pre.men})`);
+        } else {
+          console.error(`[DB] Migration: moved ${moved} of ${pre.women} — flag NOT set, will resume on next boot`);
+        }
+      }
+    } catch (e) {
+      console.error('[DB] Migration (rejected women → on_hold_women) failed — سيُستكمَل في الإقلاع التالي:', e.message);
+    }
+
     // ─── ترحيل: تحويل اليوزرنيم الافتراضي إلى إيميل
     const [oldAdmin] = await conn.query("SELECT id FROM admin_users WHERE username = 'admin'");
     if (oldAdmin.length > 0) {
