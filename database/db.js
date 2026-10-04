@@ -446,13 +446,17 @@ async function initialize() {
         console.log(`[DB] Migration (rejected women → on_hold_women): rejected=${pre.total} — women=${pre.women}, men=${pre.men}, unknown gender=${pre.unknown_gender} (untouched)`);
 
         let moved = 0;
+        // «اكتمل» = القراءة المقفولة لم تجد صفاً مطابقاً، لا «نقلتُ أنا كل ما عددتُه»:
+        // الاستضافة تُقلع نسختين من التطبيق معاً فتتقاسمان الدفعات، وعندها لا يساوي
+        // عدّ أيٍّ منهما العدّ الأوّلي أبداً — وهو ما حدث فعلاً في أول نشر (20473 + 17000).
+        let complete = false;
         for (;;) {
           await conn.beginTransaction();
           try {
             const [rows] = await conn.query(
               "SELECT id FROM applicants WHERE status = 'rejected' AND gender = 'female' ORDER BY id LIMIT 1000 FOR UPDATE"
             );
-            if (!rows.length) { await conn.commit(); break; }
+            if (!rows.length) { await conn.commit(); complete = true; break; }
             const ids = rows.map(r => r.id);
             const ph  = ids.map(() => '?').join(',');
             await conn.query(
@@ -475,12 +479,12 @@ async function initialize() {
           }
         }
 
-        if (moved === Number(pre.women)) {
+        if (complete) {
           await conn.query('INSERT IGNORE INTO settings (`key`, value) VALUES (?, ?)',
-            [MIGR_WOMEN_KEY, `done ${new Date().toISOString()} moved=${moved} men_kept=${pre.men} unknown_kept=${pre.unknown_gender}`]);
-          console.log(`[DB] Migration: ${moved} rejected women → on_hold_women ✓ (men kept as rejected: ${pre.men})`);
+            [MIGR_WOMEN_KEY, `done ${new Date().toISOString()} moved_by_this_process=${moved} men_kept=${pre.men} unknown_kept=${pre.unknown_gender}`]);
+          console.log(`[DB] Migration: rejected women → on_hold_women ✓ (this process moved ${moved} of ${pre.women} seen at start; men kept as rejected: ${pre.men})`);
         } else {
-          console.error(`[DB] Migration: moved ${moved} of ${pre.women} — flag NOT set, will resume on next boot`);
+          console.error(`[DB] Migration: stopped after moving ${moved} — flag NOT set, will resume on next boot`);
         }
       }
     } catch (e) {
