@@ -9,6 +9,7 @@ const requireManager = require('../middleware/requireManager');
 const usersRouter    = require('./users');
 const SA_REGIONS     = require('./regions').SA_REGIONS;
 const { checkExternal } = require('../utils/extCheck');
+const emailCheck     = require('../utils/emailCheck').check;   // كشف أخطاء البريد الشائعة (gmal.com …)
 const google         = require('../utils/google');   // لا يرمي عند التحميل — كل تحقق كسول
 const mailer         = require('../utils/mailer');   // ولا هذان — صفر اعتماديات وتحقق كسول
 const chatwoot       = require('../utils/chatwoot');
@@ -512,7 +513,7 @@ router.get('/applicants', async (req, res) => {
     const [countRow, applicants] = await Promise.all([
       db.get(`SELECT COUNT(*) as c FROM applicants ${where}`, params),
       db.all(`
-        SELECT id, full_name, id_number, phone, age, gender, region, city, neighborhood, has_car, has_license,
+        SELECT id, full_name, id_number, phone, email, age, gender, region, city, neighborhood, has_car, has_license,
                english, qualification, specialization, status, rating, created_at,
                ext_check_done, ext_found
         FROM applicants ${where}
@@ -539,6 +540,7 @@ router.get('/applicants', async (req, res) => {
     res.render('applicants', {
       applicants, total, totalPages, pageNum, pageSize: PAGE_SIZE, perPageOptions: PER_PAGE_OPTIONS,
       filters: { q, status, region, city: cities, gender, english, qualification, has_car, has_license, ext_check, source, age_min, age_max, date_from, date_to, sort, order, per_page: PAGE_SIZE },
+      emailCheck,
       STATUS_META, NOTE_TYPES, REGIONS, SA_REGIONS, adminUser: req.session.adminUser
     });
   } catch (err) {
@@ -764,6 +766,7 @@ router.get('/applicants/:id', async (req, res) => {
 
     res.render('applicant-detail', {
       applicant, notes, activity, priorApps, accessLog,
+      emailState: emailCheck(applicant.email),
       STATUS_META, NOTE_TYPES, adminUser: req.session.adminUser,
       interviewsEnabled, googleConnected, activeInterview, waUrl, delivery, notifyChannels, jobTitleGuess,
       waTemplates,
@@ -1282,6 +1285,37 @@ router.post('/applicants/:id/rating', async (req, res) => {
   } catch (err) {
     console.error('[Rating POST]', err.message);
     res.status(500).json({ error: 'خطأ في تحديث التقييم' });
+  }
+});
+
+// ─── تعديل البريد الإلكتروني ─────────────────────────────────────────────────
+//  المتقدمون يخطئون كثيراً في النطاق (gmal.com, hotmail.con) فيرتدّ البريد
+//  لاحقاً بـ Delivery Status Notification. التصحيح من هنا، ويُسجَّل في نشاط
+//  المتقدم وفي التدقيق بالقيمتين القديمة والجديدة.
+router.post('/applicants/:id/email', async (req, res) => {
+  try {
+    const email = String(req.body.email || '').trim().toLowerCase();
+    if (!email || email.length > 120 || !/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(email))
+      return res.status(400).json({ error: 'صيغة البريد الإلكتروني غير صحيحة' });
+
+    const a = await db.get('SELECT full_name, email FROM applicants WHERE id = ?', [req.params.id]);
+    if (!a) return res.status(404).json({ error: 'غير موجود' });
+    if ((a.email || '').toLowerCase() === email)
+      return res.json({ ok: true, email, check: emailCheck(email), unchanged: true });
+
+    await db.run(
+      'UPDATE applicants SET email = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [email, req.params.id]
+    );
+    await Promise.all([
+      db.logActivity(req.params.id, 'تعديل البريد الإلكتروني', a.email || '—', email, req.session.adminName || null),
+      db.audit(req.session.adminId, req.session.adminUser, 'email_change', 'applicant', req.params.id,
+        a.full_name, `${a.email || '—'} ← ${email}`, req.ip),
+    ]);
+    res.json({ ok: true, email, check: emailCheck(email) });
+  } catch (err) {
+    console.error('[Email POST]', err.message);
+    res.status(500).json({ error: 'خطأ في تحديث البريد الإلكتروني' });
   }
 });
 

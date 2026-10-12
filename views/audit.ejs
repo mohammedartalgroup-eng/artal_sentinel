@@ -139,6 +139,7 @@
               <optgroup label="المتقدمون">
                 <option value="status_change"  <%= filters.action === 'status_change'  ? 'selected' : '' %>>تغيير الحالة</option>
                 <option value="rating_change"  <%= filters.action === 'rating_change'  ? 'selected' : '' %>>تغيير التقييم</option>
+                <option value="email_change"   <%= filters.action === 'email_change'   ? 'selected' : '' %>>تعديل البريد</option>
                 <option value="note_add"       <%= filters.action === 'note_add'       ? 'selected' : '' %>>إضافة ملاحظة</option>
                 <option value="note_edit"      <%= filters.action === 'note_edit'      ? 'selected' : '' %>>تعديل ملاحظة</option>
                 <option value="note_delete"    <%= filters.action === 'note_delete'    ? 'selected' : '' %>>حذف ملاحظة</option>
@@ -237,6 +238,7 @@
                     logout:           { label: 'خروج',              bg: '#f3f4f6', color: '#4b5563' },
                     status_change:    { label: 'تغيير حالة',        bg: '#fff8e1', color: '#f57f17' },
                     rating_change:    { label: 'تغيير تقييم',       bg: '#f3e5f5', color: '#7b1fa2' },
+                    email_change:     { label: 'تعديل بريد',        bg: '#fff3e0', color: '#e65100' },
                     note_add:         { label: 'ملاحظة جديدة',      bg: '#e0f2fe', color: '#0277bd' },
                     note_edit:        { label: 'تعديل ملاحظة',      bg: '#e8f4fd', color: '#0369a1' },
                     note_delete:      { label: 'حذف ملاحظة',        bg: '#fff0f0', color: '#c62828' },

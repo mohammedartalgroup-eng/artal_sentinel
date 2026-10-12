@@ -199,13 +199,40 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
             </div>
             <div class="flex items-start gap-3">
               <span class="material-symbols-outlined text-[#43474f] text-lg mt-0.5">mail</span>
-              <div class="min-w-0">
-                <div class="text-xs text-[#43474f] font-semibold uppercase tracking-wider">البريد الإلكتروني</div>
-                <% if (applicant.email) { %>
-                <a href="mailto:<%= applicant.email %>" class="mt-0.5 block text-[#7594ca] hover:underline break-all" dir="ltr"><%= applicant.email %></a>
-                <% } else { %>
-                <div class="mt-0.5 text-[#8a8f98]">—</div>
-                <% } %>
+              <div class="min-w-0 flex-1">
+                <div class="text-xs text-[#43474f] font-semibold uppercase tracking-wider flex items-center gap-1.5">
+                  البريد الإلكتروني
+                  <button type="button" onclick="emailEditOpen()" title="تعديل البريد الإلكتروني"
+                    class="text-[#7594ca] hover:text-[#001736] leading-none">
+                    <span class="material-symbols-outlined" style="font-size:15px">edit</span>
+                  </button>
+                </div>
+                <div id="emailView">
+                  <% if (applicant.email) { %>
+                  <a href="mailto:<%= applicant.email %>" class="mt-0.5 block text-[#7594ca] hover:underline break-all" dir="ltr"><%= applicant.email %></a>
+                  <% } else { %>
+                  <div class="mt-0.5 text-[#8a8f98]">—</div>
+                  <% } %>
+                  <%/* تحذير بسيط عند خطأ شائع في النطاق — مع تصحيح بنقرة واحدة */%>
+                  <% if (emailState && emailState.warn) { %>
+                  <div class="mt-1.5 text-xs bg-amber-100 text-amber-700 rounded-lg px-2.5 py-1.5 leading-relaxed">
+                    <span class="material-symbols-outlined align-middle" style="font-size:14px">warning</span>
+                    <%= emailState.reason %>
+                    <% if (emailState.suggestion) { %>
+                    — هل المقصود
+                    <button type="button" data-suggest="<%= emailState.suggestion %>" onclick="emailSave(this.dataset.suggest)"
+                      class="font-semibold underline hover:text-[#001736] break-all" dir="ltr" title="اعتماد هذا البريد"><%= emailState.suggestion %></button>؟
+                    <% } %>
+                  </div>
+                  <% } %>
+                </div>
+                <form id="emailForm" style="display:none" class="mt-1 gap-1.5 items-center"
+                  onsubmit="event.preventDefault(); emailSave(this.email.value)">
+                  <input name="email" type="email" dir="ltr" value="<%= applicant.email || '' %>" maxlength="120" required
+                    class="flex-1 min-w-0 border border-[#e0e3e5] rounded-lg px-2 py-1 text-sm focus:border-[#7594ca] outline-none">
+                  <button type="submit" class="bg-[#001736] hover:bg-[#002b5b] text-white rounded-lg px-2.5 py-1 text-xs font-semibold">حفظ</button>
+                  <button type="button" onclick="emailEditClose()" class="text-xs text-[#43474f] hover:underline px-1">إلغاء</button>
+                </form>
               </div>
             </div>
             <div class="flex items-start gap-3">
@@ -1394,6 +1421,35 @@ function selectNoteType(type) {
       ? ['bg-[#001736]', 'text-white', 'border-[#001736]']
       : ['border-[#e0e3e5]', 'text-[#43474f]', 'hover:bg-[#f2f4f6]']));
   });
+}
+
+// ─── تعديل البريد الإلكتروني ─────────────────────────────────────────────────
+function emailEditOpen() {
+  document.getElementById('emailView').style.display = 'none';
+  const f = document.getElementById('emailForm');
+  f.style.display = 'flex';
+  f.email.focus(); f.email.select();
+}
+function emailEditClose() {
+  document.getElementById('emailForm').style.display = 'none';
+  document.getElementById('emailView').style.display = '';
+}
+function emailSave(value) {
+  const email = String(value || '').trim();
+  if (!email) return toast('اكتب البريد الإلكتروني أولاً', 'error', true);
+  fetch(`/admin/applicants/${APPLICANT_ID}/email`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email })
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (!d.ok) return toast(d.error || 'تعذّر حفظ البريد', 'error', true);
+    toast(d.unchanged ? 'البريد كما هو' : 'تم تحديث البريد الإلكتروني', 'mail');
+    if (!d.unchanged) setTimeout(() => location.reload(), 700);   // البطاقات الأخرى تعتمد على البريد
+    else emailEditClose();
+  })
+  .catch(() => toast('تعذّر الاتصال بالخادم', 'error', true));
 }
 
 function setRating(val) {
