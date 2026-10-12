@@ -128,14 +128,26 @@
             <% } %>
             <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
 
-              <!-- Search -->
-              <div class="col-span-2">
-                <label class="block text-xs text-[#43474f] font-semibold mb-1">بحث بالاسم / الهوية / الجوال</label>
+              <!-- Search (مضغوط على الشاشات الكبيرة ليجاوره فلتر «سابق») -->
+              <div class="col-span-2 lg:col-span-1">
+                <label class="block text-xs text-[#43474f] font-semibold mb-1">بحث</label>
                 <div class="relative">
-                  <input type="text" name="q" value="<%= filters.q %>" placeholder="اكتب للبحث...">
+                  <input type="text" name="q" value="<%= filters.q %>" placeholder="الاسم / الهوية / الجوال"
+                    title="بحث بالاسم أو رقم الهوية أو الجوال" style="padding-left:2rem">
                   <span
                     class="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-[#43474f] text-base">search</span>
                 </div>
+              </div>
+
+              <!-- سابق: الوجود في النظام السابق (يطابق عمود «سابق» في الجدول) -->
+              <div>
+                <label class="block text-xs text-[#43474f] font-semibold mb-1" title="موجود في النظام السابق؟">سابق</label>
+                <select name="ext_check">
+                  <option value="">الكل</option>
+                  <option value="found" <%=filters.ext_check==='found' ? 'selected' : '' %>>موجود</option>
+                  <option value="not_found" <%=filters.ext_check==='not_found' ? 'selected' : '' %>>غير موجود</option>
+                  <option value="unchecked" <%=filters.ext_check==='unchecked' ? 'selected' : '' %>>لم يُفحص</option>
+                </select>
               </div>
 
               <!-- Status -->
@@ -239,17 +251,6 @@
                   <option value="">الكل</option>
                   <option value="1" <%=filters.has_license==='1' ? 'selected' : '' %>>نعم</option>
                   <option value="0" <%=filters.has_license==='0' ? 'selected' : '' %>>لا</option>
-                </select>
-              </div>
-
-              <!-- Ext Check (النظام السابق) -->
-              <div>
-                <label class="block text-xs text-[#43474f] font-semibold mb-1">قاعدة البيات</label>
-                <select name="ext_check">
-                  <option value="">الكل</option>
-                  <option value="found" <%=filters.ext_check==='found' ? 'selected' : '' %>>موجود</option>
-                  <option value="not_found" <%=filters.ext_check==='not_found' ? 'selected' : '' %>>غير موجود</option>
-                  <option value="unchecked" <%=filters.ext_check==='unchecked' ? 'selected' : '' %>>لم يُفحص</option>
                 </select>
               </div>
 
