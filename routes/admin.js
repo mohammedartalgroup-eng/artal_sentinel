@@ -236,6 +236,19 @@ router.get('/google/status', requireManager, async (req, res) => {
   }
 });
 
+// ─── تشخيص الاتصال الخارجي ──────────────────────────────────────────────────
+// يُجيب من الخادم نفسه: هل يصل إلى artalsys وChatwoot؟ وإن لم يصل، في أي
+// طبقة يفشل (DNS/TCP/TLS/HTTP) وهل الإنترنت عموماً متاح. التفاصيل في utils/netDiag.js.
+router.get('/diag/outbound', requireManager, async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    res.json(await require('../utils/netDiag').run());
+  } catch (err) {
+    console.error('[NetDiag]', err.message);
+    res.status(500).json({ error: 'تعذّر تشغيل التشخيص', detail: err.message });
+  }
+});
+
 // Root redirect
 router.get('/', (req, res) => res.redirect('/admin/dashboard'));
 
