@@ -17,6 +17,7 @@
  */
 
 const TIMEOUT_MS = 12000;
+const netError = require('./netError');   // اسم الفشل الشبكي الحقيقي بدل «انتهت المهلة» للكل
 
 class ChatwootError extends Error {
   constructor(message, code = 'HTTP', status = null, body = null) {
@@ -86,6 +87,7 @@ async function cwfetch(path, { method = 'GET', body, idempotent = false, retried
   requireConfigured();
   const c = cfg();
   let res;
+  const t0 = Date.now();
   try {
     res = await fetch(`${c.host}/api/v1/accounts/${c.account}${path}`, {
       method,
@@ -94,7 +96,11 @@ async function cwfetch(path, { method = 'GET', body, idempotent = false, retried
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch (e) {
-    throw new ChatwootError('انتهت مهلة الاتصال بـ Chatwoot', 'TIMEOUT');
+    // المهلة الحقيقية وفشل DNS ورفض الاتصال كانت كلها «انتهت المهلة» — فلا يُعرف
+    // من السجل أين انكسر الطلب. الآن يُكتب السبب والزمن، ويُميَّز TIMEOUT عن NETWORK.
+    const d = netError.describe(e);
+    console.error(`[Chatwoot] ${op || method} ${path.split('?')[0]} — ${netError.line(e, t0)}`);
+    throw new ChatwootError(`تعذّر الاتصال بـ Chatwoot: ${d.label}`, d.isTimeout ? 'TIMEOUT' : 'NETWORK');
   }
 
   if ((res.status === 429 || res.status >= 500) && idempotent && !retried) {
@@ -244,7 +250,7 @@ async function ensureContact({ name, phone, inbox }) {
     const list = found?.payload || [];
     contact = list.find(x => toE164(x?.phone_number) === e164) || null;
   } catch (e) {
-    if (e.code === 'TIMEOUT') throw e;   // انقطاع شبكة — لا نُنشئ نسخة مكرّرة على العمياء
+    if (e.code === 'TIMEOUT' || e.code === 'NETWORK') throw e;   // انقطاع شبكة — لا نُنشئ نسخة مكرّرة على العمياء
     console.error('[Chatwoot] search:', e.message);
   }
 

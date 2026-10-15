@@ -9,6 +9,7 @@
  */
 
 const TIMEOUT_MS = 20000;
+const netError = require('./netError');
 
 function baseUrl() {
   return String(process.env.ARTALSYS_URL || 'https://artalsys.com').replace(/\/$/, '');
@@ -18,10 +19,28 @@ function isConfigured() {
   return Boolean(process.env.ARTALSYS_PUSH_SECRET) && process.env.ARTALSYS_SYNC_ENABLED !== 'false';
 }
 
+/**
+ * fetch يرمي «fetch failed» أو «The operation was aborted due to timeout» — إنجليزية
+ * بلا سبب، وكانت تصل كما هي إلى شاشة الموظف. هنا تُترجم إلى سببها (DNS، رفض
+ * اتصال، مهلة…) وتُكتب في السجل مع الزمن، فيُعرف من الخادم أين انكسر الطلب.
+ */
+async function netFetch(url, init, what) {
+  const t0 = Date.now();
+  try {
+    return await fetch(url, init);
+  } catch (e) {
+    const d = netError.describe(e);
+    console.error(`[ArtalSys] ${what} — ${netError.line(e, t0)}`);
+    const err = new Error(`تعذّر الاتصال بالنظام الأساسي: ${d.label}`);
+    err.code = d.code;
+    throw err;
+  }
+}
+
 async function call(path, { method = 'GET', body = null, timeout = TIMEOUT_MS } = {}) {
   if (!isConfigured()) throw new Error('تكامل النظام الأساسي غير مهيأ');
 
-  const res = await fetch(`${baseUrl()}${path}`, {
+  const res = await netFetch(`${baseUrl()}${path}`, {
     method,
     headers: {
       'X-Secret': process.env.ARTALSYS_PUSH_SECRET,
@@ -30,7 +49,7 @@ async function call(path, { method = 'GET', body = null, timeout = TIMEOUT_MS } 
     },
     body: body ? JSON.stringify(body) : undefined,
     signal: AbortSignal.timeout(timeout),
-  });
+  }, `${method} ${path.split('?')[0]}`);
 
   const text = await res.text();
   const json = parseLenient(text);
@@ -68,10 +87,10 @@ async function lookupByNationalId(nationalId) {
   if (id.length !== 10) return { found: false };
 
   const secret = process.env.EXT_API_SECRET || 'artal@NID%2026';
-  const res = await fetch(`${baseUrl()}/api/employees/check-national-id?national_id=${encodeURIComponent(id)}`, {
+  const res = await netFetch(`${baseUrl()}/api/employees/check-national-id?national_id=${encodeURIComponent(id)}`, {
     headers: { 'X-Secret': secret, Accept: 'application/json' },
     signal: AbortSignal.timeout(10000),
-  });
+  }, 'GET /api/employees/check-national-id');
   const json = parseLenient(await res.text());
   if (!res.ok || !json) throw new Error(`تعذّر فحص الهوية في النظام الأساسي (HTTP ${res.status})`);
   return json;
@@ -121,12 +140,12 @@ async function uploadAttachment(employeeId, { buffer, fileName, mime, category, 
   if (notes) form.append('notes', notes);
   if (sourceDocumentId != null) form.append('source_document_id', String(sourceDocumentId));
 
-  const res = await fetch(`${baseUrl()}/api/hooks/onboarding/employee/${employeeId}/attachment`, {
+  const res = await netFetch(`${baseUrl()}/api/hooks/onboarding/employee/${employeeId}/attachment`, {
     method: 'POST',
     headers: { 'X-Secret': process.env.ARTALSYS_PUSH_SECRET, Accept: 'application/json' },
     body: form,
     signal: AbortSignal.timeout(60000),
-  });
+  }, `POST /api/hooks/onboarding/employee/${employeeId}/attachment`);
 
   const text = await res.text();
   let json = null;
