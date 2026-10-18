@@ -292,6 +292,12 @@
                 </select>
               </div>
 
+              <!-- Neighborhood — نص حر، مطابقة جزئية في عمود الحي -->
+              <div>
+                <label class="block text-xs text-[#43474f] font-semibold mb-1">الحي</label>
+                <input type="text" name="neighborhood" value="<%= filters.neighborhood || '' %>" placeholder="اسم الحي أو جزء منه" maxlength="100" autocomplete="off">
+              </div>
+
               <!-- Submit -->
               <div class="flex items-end">
                 <button type="submit"

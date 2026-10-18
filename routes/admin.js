@@ -456,6 +456,12 @@ function parseCityList(raw) {
   return String(raw).split(',').map(s => s.trim()).filter(Boolean);
 }
 
+// نص الحي من الفلتر: قيمة واحدة مقصوصة بطول العمود (VARCHAR(100))
+function cleanNeighborhood(raw) {
+  const v = Array.isArray(raw) ? raw[0] : raw;
+  return String(v ?? '').trim().slice(0, 100);
+}
+
 // يبني شرط WHERE لقائمة المتقدمين من الفلاتر — مشترك بين عرض القائمة والتحديث الجماعي
 // (بنفس المصدر يضمن أن "تحديد كل النتائج" يطابق تماماً ما يراه المستخدم في القائمة).
 function buildApplicantFilter(src) {
@@ -465,6 +471,7 @@ function buildApplicantFilter(src) {
     age_min = '', age_max = '', date_from = '', date_to = '',
   } = src;
   const cities = parseCityList(src.city);
+  const neighborhood = cleanNeighborhood(src.neighborhood);
 
   const conditions = [];
   const params = [];
@@ -473,6 +480,8 @@ function buildApplicantFilter(src) {
     conditions.push('(full_name LIKE ? OR id_number LIKE ? OR phone LIKE ?)');
     params.push(`%${q}%`, `%${q}%`, `%${q}%`);
   }
+  // الحي نصٌّ حرّ كما كتبه المتقدم (بلا قائمة مغلقة) — فالمطابقة جزئية: «النسيم» تجد «حي النسيم الشرقي»
+  if (neighborhood) { conditions.push('neighborhood LIKE ?'); params.push(`%${neighborhood}%`); }
   if (status)        { conditions.push('status = ?');        params.push(status); }
   if (region)        { conditions.push('region = ?');        params.push(region); }
   if (cities.length) {
@@ -512,6 +521,7 @@ router.get('/applicants', async (req, res) => {
     } = req.query;
 
     const cities = parseCityList(req.query.city);
+    const neighborhood = cleanNeighborhood(req.query.neighborhood);
 
     // عدد العرض في الصفحة — قيم مسموحة فقط (تفادي LIMIT عشوائي)
     const PER_PAGE_OPTIONS = [20, 30, 50, 70, 100];
@@ -552,7 +562,7 @@ router.get('/applicants', async (req, res) => {
 
     res.render('applicants', {
       applicants, total, totalPages, pageNum, pageSize: PAGE_SIZE, perPageOptions: PER_PAGE_OPTIONS,
-      filters: { q, status, region, city: cities, gender, english, qualification, has_car, has_license, ext_check, source, age_min, age_max, date_from, date_to, sort, order, per_page: PAGE_SIZE },
+      filters: { q, status, region, city: cities, neighborhood, gender, english, qualification, has_car, has_license, ext_check, source, age_min, age_max, date_from, date_to, sort, order, per_page: PAGE_SIZE },
       emailCheck,
       STATUS_META, NOTE_TYPES, REGIONS, SA_REGIONS, adminUser: req.session.adminUser
     });
@@ -585,10 +595,12 @@ async function exportApplicants(req, res) {
     } = req.query;
 
     const cities = parseCityList(req.query.city);
+    const neighborhood = cleanNeighborhood(req.query.neighborhood);
 
     const conditions = [];
     const params = [];
     if (q) { conditions.push('(full_name LIKE ? OR id_number LIKE ? OR phone LIKE ?)'); params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
+    if (neighborhood) { conditions.push('neighborhood LIKE ?'); params.push(`%${neighborhood}%`); }
     if (status)        { conditions.push('status = ?');        params.push(status); }
     if (region)        { conditions.push('region = ?');        params.push(region); }
     if (cities.length) {
