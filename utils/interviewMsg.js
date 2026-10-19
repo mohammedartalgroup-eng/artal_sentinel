@@ -77,6 +77,9 @@ function messageVars(applicant, interview, opts = {}) {
     link:     iv.meetLink || String(opts.link || '').trim(),
     interviewers: (iv.interviewers || []).map(p => p.name || p.email).join('، '),
     reason:   String(opts.reason || '').trim(),
+    // قائمة المستندات في «طلب بيانات إضافية» — نص واحد مفصول بفواصل عربية،
+    // لأن متغيّر قالب واتساب لا يقبل سطراً جديداً.
+    docs:     String(opts.docs || '').trim(),
   };
 }
 
@@ -86,6 +89,7 @@ const VAR_LABELS = {
   date: 'التاريخ', time: 'الوقت', datetime: 'التاريخ والوقت',
   duration: 'المدة بالدقائق', link: 'الرابط (Meet أو استكمال الملف)',
   interviewers: 'أسماء المقابلين', reason: 'سبب الإلغاء',
+  docs: 'المستندات المطلوبة (طلب بيانات إضافية)',
 };
 
 /**
@@ -184,12 +188,28 @@ function buildOnboardingText(applicant, _interview, opts = {}) {
   ].join('\n');
 }
 
+// نص «طلب بيانات إضافية» (ما يراه الوكيل في Chatwoot)
+function buildExtraDocsText(applicant, _interview, opts = {}) {
+  const v = messageVars(applicant, null, opts);
+  return [
+    `مرحباً ${v.name} 👋`,
+    `يحتاج ملفك الوظيفي لدى ${v.company} إلى مستندات إضافية:`,
+    v.docs,
+    '',
+    'افتح الرابط التالي وارفعها من جوالك مباشرة:',
+    v.link,
+    '',
+    'الرابط خاص بك وحدك ولا يُشارك مع أحد. كل مستند يُحفظ فور رفعه.',
+  ].join('\n');
+}
+
 const WA_TEXT = {
   scheduled:   buildWhatsAppText,
   rescheduled: buildRescheduleText,
   cancelled:   buildCancelText,
   screening:    buildScreeningText,
   onboarding:   buildOnboardingText,
+  extra_docs:   buildExtraDocsText,
 };
 
 function buildWaUrl(phone, text) {
@@ -301,6 +321,6 @@ function buildEmailSubject(applicant, interview, opts = {}) {
 module.exports = {
   toIntlPhone, isEmail, deriveJobTitle,
   messageVars, VAR_LABELS, buildProcessedParams, sanitizeParam,
-  buildWhatsAppText, buildRescheduleText, buildCancelText, buildScreeningText, buildOnboardingText, WA_TEXT, buildWaUrl,
+  buildWhatsAppText, buildRescheduleText, buildCancelText, buildScreeningText, buildOnboardingText, buildExtraDocsText, WA_TEXT, buildWaUrl,
   buildEmailHtml, buildEmailText, buildEmailSubject,
 };

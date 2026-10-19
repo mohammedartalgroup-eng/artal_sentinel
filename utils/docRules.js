@@ -269,9 +269,55 @@ const DOC_TYPES = {
     fields: [],
     markers: [],
   },
+
+  // ── مستندات إضافية — تُطلب بقرار لا في كل ملف ────────────────────────────
+  // extra: لا تدخل القائمة الافتراضية ولا تظهر للمرشح إلا إذا طلبها فريق
+  // التوظيف صراحةً من زر «طلب بيانات إضافية». فحص طبي لكل متقدم إنفاقٌ بلا
+  // داعٍ، وتغيير الحساب البنكي لا يخصّ إلا من غيّر حسابه.
+  medical_exam: {
+    label: 'الفحص الطبي',
+    icon: 'medical_services',
+    hint: 'ارفع تقرير الفحص الطبي كاملاً (صورة أو PDF) من المركز الطبي المعتمد.',
+    extra: true,
+    attachmentOnly: true,
+    fields: [],
+    markers: [],
+  },
+
+  criminal_record: {
+    label: 'صحيفة خلو السوابق',
+    icon: 'verified_user',
+    hint: 'ارفع صحيفة خلو السوابق الصادرة من أبشر — بتاريخ حديث.',
+    extra: true,
+    attachmentOnly: true,
+    fields: [],
+    markers: [],
+  },
+
+  // طلب تغيير الحساب البنكي = شهادة آيبان للحساب الجديد: تُقرأ بنفس قواعد
+  // شهادة الآيبان (mod-97 واسم البنك)، ولا تدهس الآيبان الأصلي بل تُحفظ بجواره
+  // ليبقى في السجل أي حساب كان قبل التغيير.
+  bank_change: {
+    label: 'تغيير الحساب البنكي',
+    // ما يُقال للنموذج اللغوي: الاسم الإداري «تغيير الحساب» يجعله يحكم على شهادة
+    // آيبان سليمة بأنها «ليست المستند المتوقَّع» — فيُعطى اسم الوثيقة الفعلية.
+    aiLabel: 'شهادة الآيبان (للحساب البنكي الجديد)',
+    icon: 'swap_horiz',
+    hint: 'ارفع شهادة الآيبان للحساب البنكي الجديد من تطبيق البنك — لا لقطة تحويل.',
+    extra: true,
+    fields: [
+      { key: 'iban',           label: 'رقم الآيبان الجديد', type: 'iban', required: true },
+      { key: 'bank_name',      label: 'البنك',              type: 'text', required: false },
+      { key: 'account_holder', label: 'اسم صاحب الحساب',    type: 'name', required: false },
+    ],
+    markers: ['ايبان', 'آيبان', 'IBAN', 'تعريف بالحساب', 'شهادة الحساب', 'ACCOUNT CERTIFICATE'],
+  },
 };
 
 const DOC_KEYS = Object.keys(DOC_TYPES);
+// الأساسية = ما يُطلب في كل ملف افتراضياً؛ الإضافية = ما يُطلب بقرار من فريق التوظيف
+const BASE_KEYS  = DOC_KEYS.filter(k => !DOC_TYPES[k].extra);
+const EXTRA_KEYS = DOC_KEYS.filter(k => DOC_TYPES[k].extra);
 
 function fieldDef(docType, key) {
   return (DOC_TYPES[docType]?.fields || []).find(f => f.key === key) || null;
@@ -594,7 +640,7 @@ function parse(docType, rawText) {
     put('street',   pickValue(lines, ['الشارع', 'STREET'], { preferArabic: true }), 0.8);
   }
 
-  if (docType === 'iban') {
+  if (docType === 'iban' || docType === 'bank_change') {
     const m = upper.replace(/[^A-Z0-9\n]/g, ' ').match(/SA[\s]?(?:\d[\s]?){22}/);
     const cand = m && m[0].replace(/\s/g, '');
     put('iban', cand && ibanValid(cand) ? cand : (cand || afterLabel(lines, ['IBAN', 'الآيبان', 'ايبان'])), 0.97);
@@ -766,7 +812,7 @@ function derivedFrom(docType, key, value) {
 }
 
 module.exports = {
-  DOC_TYPES, DOC_KEYS, fieldDef, derivedFrom, derivedKeys, nationalityFromId,
+  DOC_TYPES, DOC_KEYS, BASE_KEYS, EXTRA_KEYS, fieldDef, derivedFrom, derivedKeys, nationalityFromId,
   normalizeDigits, normalizeText, debox, digitsOnlyFix, normalizeDate, hijriToGregorian,
   saudiIdValid, ibanValid,
   parse, validate, needsAi, missingRequired, reviewLevel,

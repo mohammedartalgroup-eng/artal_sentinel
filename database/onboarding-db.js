@@ -199,6 +199,12 @@ async function init() {
       ['wa_tpl_onboarding_lang', 'ar'],
       ['wa_tpl_onboarding_cat',  'UTILITY'],
       ['wa_tpl_onboarding_vars', 'name,job,link'],
+      // قالب «طلب بيانات إضافية»: الاسم يبقى فارغاً حتى يُعتمد في ميتا ويُكتب
+      // من الإعدادات — وإلى ذلك الحين يُرسَل الطلب بقالب رابط الاستكمال.
+      ['wa_tpl_extra_docs_name', ''],
+      ['wa_tpl_extra_docs_lang', 'ar'],
+      ['wa_tpl_extra_docs_cat',  'UTILITY'],
+      ['wa_tpl_extra_docs_vars', 'name,docs,link'],
     ];
     for (const [k, v] of tplDefaults) {
       await conn.query('INSERT IGNORE INTO settings (`key`, value) VALUES (?, ?)', [k, v]);

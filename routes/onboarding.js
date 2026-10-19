@@ -69,9 +69,37 @@ function requiredList(session) {
 // المستندات المطلوبة تُحسب من الوظيفة لا من قائمة ثابتة: رخصة القيادة تُطلب
 // ممن سُجّل أنه يقودها فقط، وإجبار الجميع عليها يعطّل رحلة لا علاقة لها بها.
 function defaultRequired(applicant) {
-  // القرار: كل المستندات إلزامية على المرشح في رحلته. أما موظف الاستقطاب فيزامن
-  // البيانات ولو لم يُرفع مستند — الإلزام على المرشح، والمرونة لمن يراجع.
-  return rules.DOC_KEYS.join(',');
+  // القرار: كل المستندات الأساسية إلزامية على المرشح في رحلته. أما موظف الاستقطاب
+  // فيزامن البيانات ولو لم يُرفع مستند — الإلزام على المرشح، والمرونة لمن يراجع.
+  // الإضافية (فحص طبي، خلو سوابق، تغيير حساب) تُطلب بقرار لا افتراضاً.
+  return rules.BASE_KEYS.join(',');
+}
+
+// هل تقبل هذه الجلسة هذا النوع؟ الإضافي لا يُقبل إلا إن طُلب صراحةً — وإلا
+// استطاع حامل الرابط رفع «تغيير حساب بنكي» لم يطلبه أحد فيُركَّب على ملفه.
+function docAllowed(session, docType) {
+  if (!rules.DOC_KEYS.includes(docType)) return false;
+  return !rules.DOC_TYPES[docType].extra || requiredList(session).includes(docType);
+}
+
+// المستندات الإضافية كما تعرضها النافذة: ما طُلب منها فعلاً وما لم يُطلب بعد.
+function extraDocList(required = []) {
+  return rules.EXTRA_KEYS.map(t => {
+    const d = rules.DOC_TYPES[t];
+    return { type: t, label: d.label, icon: d.icon, hint: d.hint, requested: required.includes(t) };
+  });
+}
+
+// جاهزية قوالب واتساب: قالب الاستكمال، وأي قالب يحمل «طلب البيانات الإضافية» —
+// المخصّص إن اعتُمد في ميتا، وإلا قالب الاستكمال (الصفحة نفسها تعرض المطلوب)،
+// وإلا لا شيء فيُرسل الموظف الرابط بنفسه.
+async function waState() {
+  const WT = require('../utils/waTemplates');
+  const settings = await db.getSettings().catch(() => ({}));
+  const cwOk = require('../utils/chatwoot').isConfigured();
+  const waReady = WT.ready(settings, 'onboarding', cwOk);
+  const extraTpl = WT.ready(settings, 'extra_docs', cwOk) ? 'extra_docs' : (waReady ? 'onboarding' : null);
+  return { settings, waReady, extraTpl };
 }
 
 function publicLink(req, token) {
@@ -94,7 +122,12 @@ async function loadDocs(sessionId) {
 // حالة كل مستند كما تراها الواجهتان (المرشح وHR) — مصدر واحد للحقيقة.
 function buildSteps(session, byType, fieldsByType, opts = {}) {
   const required = requiredList(session);
-  return rules.DOC_KEYS.map(type => {
+  // الإضافي يظهر فقط إن طُلب — لا «اختياري» يربك المرشح ولا بطاقة فارغة لفريق التوظيف.
+  // ورحلةٌ فُتحت لمستند إضافي وحده (بعد اكتمال الرحلة الأصلية) لا تعرض الأساسية
+  // «اختيارية»: المرشح رفعها كلها من قبل، وعرضها فارغةً يوحي بأنها ضاعت.
+  const baseWanted = required.some(t => !rules.DOC_TYPES[t].extra);
+  const visible = rules.DOC_KEYS.filter(t => required.includes(t) || (!rules.DOC_TYPES[t].extra && baseWanted));
+  return visible.map(type => {
     const def = rules.DOC_TYPES[type];
     const doc = byType[type] || null;
     const saved = fieldsByType[type] || {};
@@ -108,6 +141,7 @@ function buildSteps(session, byType, fieldsByType, opts = {}) {
       icon: def.icon,
       hint: def.hint,
       attachmentOnly: Boolean(def.attachmentOnly),
+      extra: Boolean(def.extra),
       existingUrl,
       required: required.includes(type),
       status: doc ? doc.status : 'pending',
@@ -294,7 +328,7 @@ publicRouter.post('/:token/upload', uploadLimiter, resolveToken, (req, res, next
   const s = req.obSession;
   try {
     const docType = String(req.body.doc_type || '');
-    if (!rules.DOC_KEYS.includes(docType)) return res.status(400).json({ error: 'نوع مستند غير معروف' });
+    if (!docAllowed(s, docType)) return res.status(400).json({ error: 'نوع مستند غير معروف' });
     if (!req.file) return res.status(400).json({ error: 'لم يصل أي ملف' });
 
     // النسخة السابقة تبقى في السجل للتدقيق ولا تُعتبر المستند الحالي.
@@ -349,7 +383,7 @@ publicRouter.post('/:token/upload', uploadLimiter, resolveToken, (req, res, next
 publicRouter.patch('/:token/field', pageLimiter, resolveToken, async (req, res) => {
   try {
     const { doc_type: docType, field, value } = req.body || {};
-    if (!rules.DOC_KEYS.includes(String(docType))) return res.status(400).json({ error: 'نوع مستند غير معروف' });
+    if (!docAllowed(req.obSession, String(docType))) return res.status(400).json({ error: 'نوع مستند غير معروف' });
     if (!rules.fieldDef(docType, String(field))) return res.status(400).json({ error: 'حقل غير معروف' });
 
     const v = await saveField(req.obSession.id, docType, String(field), String(value ?? ''), 'user', 1);
@@ -391,7 +425,7 @@ publicRouter.post('/:token/confirm', pageLimiter, resolveToken, async (req, res)
   try {
     const s = req.obSession;
     const docType = String(req.body?.doc_type || '');
-    if (!rules.DOC_KEYS.includes(docType)) return res.status(400).json({ error: 'نوع مستند غير معروف' });
+    if (!docAllowed(s, docType)) return res.status(400).json({ error: 'نوع مستند غير معروف' });
 
     const doc = await db.get(
       'SELECT * FROM onboarding_documents WHERE session_id = ? AND doc_type = ? AND is_current = 1',
@@ -472,11 +506,9 @@ adminRouter.get('/summary/:applicantId', async (req, res) => {
       [req.params.applicantId]
     );
     // هل زر «إرسال بواتساب» متاح؟ (Chatwoot مهيأ + اسم القالب محفوظ)
-    const settings = await db.getSettings().catch(() => ({}));
-    const waReady = require('../utils/waTemplates')
-      .ready(settings, 'onboarding', require('../utils/chatwoot').isConfigured());
+    const { waReady, extraTpl } = await waState();
 
-    if (!s) return res.json({ enabled: true, exists: false, waReady });
+    if (!s) return res.json({ enabled: true, exists: false, waReady, extraTpl, extraDocs: extraDocList() });
 
     const { byType, fieldsByType } = await loadDocs(s.id);
     const steps = buildSteps(s, byType, fieldsByType);
@@ -494,6 +526,11 @@ adminRouter.get('/summary/:applicantId', async (req, res) => {
       totalRequired: required.length,
       needsReview: steps.filter(x => x.hasFile && x.review !== 'green').length,
       steps: steps.map(x => ({ type: x.type, label: x.label, required: x.required, status: x.status, review: x.review })),
+      extraTpl,
+      extraDocs: extraDocList(required).map(x => {
+        const st = steps.find(y => y.type === x.type);
+        return { ...x, status: st?.status || null, review: st?.review || null };
+      }),
     });
   } catch (err) {
     console.error('[Onboarding summary]', err.message);
@@ -504,7 +541,7 @@ adminRouter.get('/summary/:applicantId', async (req, res) => {
 // إنشاء الرابط (أو إرجاع الحالي إن كان ساري المفعول)
 // إنشاء الجلسة أو إعادة استخدام السارية — يشترك فيها زر «إنشاء الرابط» وزر
 // «إرسال بواتساب»، فلا يُنشئ الثاني رابطاً ثانياً يُبطل ما نسخه الموظف للتو.
-async function ensureSession(req, applicant) {
+async function ensureSession(req, applicant, { required } = {}) {
   const live = await db.get(
     'SELECT * FROM onboarding_sessions WHERE applicant_id = ? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > NOW()) ORDER BY id DESC LIMIT 1',
     [applicant.id]
@@ -516,7 +553,7 @@ async function ensureSession(req, applicant) {
   await db.run(
     `INSERT INTO onboarding_sessions (applicant_id, token, status, required_docs, expires_at, created_by)
      VALUES (?, ?, 'not_started', ?, ?, ?)`,
-    [applicant.id, token, defaultRequired(applicant), expires, req.session?.adminName || req.session?.adminUser || null]
+    [applicant.id, token, required || defaultRequired(applicant), expires, req.session?.adminName || req.session?.adminUser || null]
   );
   // التدقيق يمرّ بنفس مسار النظام — إنشاء رابط يفتح ملفاً شخصياً حدثٌ يُسجَّل.
   db.audit(req.session?.adminId, req.session?.adminUser || 'system', 'onboarding_link',
@@ -599,6 +636,97 @@ adminRouter.post('/send/:applicantId', sendLimiter, async (req, res) => {
   }
 });
 
+// ─── طلب بيانات إضافية ───────────────────────────────────────────────────────
+//  فحص طبي، صحيفة خلو سوابق، تغيير حساب بنكي — لا تُطلب في كل ملف، بل حين
+//  يقرّر موظف التوظيف. الطلب يضمّ المستندات إلى الرحلة القائمة (أو يفتح رحلة
+//  إن لم تكن) ثم يُرسل القالب المعتمد. الإضافة تُحفظ ولو تعطّل الإرسال: الرابط
+//  يبقى صالحاً، والموظف يستطيع نسخه أو إعادة الإرسال — لا نُسقط قراراً اتُّخذ
+//  لأن رسالة لم تخرج.
+adminRouter.post('/request-extra/:applicantId', sendLimiter, async (req, res) => {
+  if (!featureOn()) return res.status(503).json({ error: 'الميزة غير مفعّلة' });
+  try {
+    const notify = require('../utils/notify');
+    const chatwoot = require('../utils/chatwoot');
+
+    const docs = [...new Set((Array.isArray(req.body?.docs) ? req.body.docs : []).map(String))]
+      .filter(t => rules.EXTRA_KEYS.includes(t));
+    if (!docs.length) return res.status(400).json({ error: 'اختر مستنداً واحداً على الأقل' });
+    const wantSend = req.body?.send !== false;
+
+    const applicant = await db.get(
+      'SELECT id, full_name, phone, region, city, landing_page, has_license FROM applicants WHERE id = ?',
+      [req.params.applicantId]
+    );
+    if (!applicant) return res.status(404).json({ error: 'المتقدم غير موجود' });
+
+    // رحلة جديدة لمن أكمل رحلته السابقة ثم انتهى رابطها: المطلوب هو الإضافي
+    // وحده — لا نعيد طلب هويته وعنوانه لأن رابطاً قديماً انتهى.
+    const prev = await db.get('SELECT progress FROM onboarding_sessions WHERE applicant_id = ? ORDER BY id DESC LIMIT 1', [applicant.id]);
+    const base = prev && Number(prev.progress) >= 100 ? [] : rules.BASE_KEYS;
+    const { token, reused } = await ensureSession(req, applicant, { required: [...base, ...docs].join(',') });
+    let s = await db.get('SELECT * FROM onboarding_sessions WHERE token = ?', [token]);
+
+    // الجلسة القائمة: نضمّ الجديد إلى المطلوب ونمدّ الصلاحية — طلبٌ اليوم على
+    // رابط ينتهي غداً يصل المرشح ميتاً. ويعاد حساب التقدّم: ملف كان 100% صار ناقصاً.
+    const have = requiredList(s);
+    const added = reused ? docs.filter(t => !have.includes(t)) : docs;
+    let progress = s.progress;
+    if (reused) {
+      const minExpiry = new Date(Date.now() + LINK_DAYS * 86400000);
+      await db.run(
+        'UPDATE onboarding_sessions SET required_docs = ?, expires_at = GREATEST(COALESCE(expires_at, ?), ?) WHERE id = ?',
+        [[...have, ...added].join(','), minExpiry, minExpiry, s.id]
+      );
+      s = await db.get('SELECT * FROM onboarding_sessions WHERE id = ?', [s.id]);
+      progress = (await recomputeProgress(s)).progress;
+    }
+
+    const link = publicLink(req, token);
+    const docsText = docs.map(t => rules.DOC_TYPES[t].label).join('، ');
+    const actor = req.session?.adminName || req.session?.adminUser || null;
+
+    // ─ الإرسال: القالب المخصّص إن اعتُمد، وإلا قالب رابط الاستكمال (الصفحة
+    //   نفسها تعرض المطلوب)، وإلا نكتفي بالإضافة ويُرسل الموظف الرابط بنفسه.
+    let sent = false, via = null, reason = '', sentTo = null;
+    if (wantSend) {
+      if (!chatwoot.isConfigured()) {
+        reason = 'تكامل Chatwoot غير مهيأ';
+      } else {
+        const { settings, extraTpl } = await waState();
+        via = extraTpl;
+        if (!via) {
+          reason = 'لا قالب واتساب جاهز — حدّد اسم قالب «طلب بيانات إضافية» أو «رابط الاستكمال» في الإعدادات';
+        } else {
+          const r = await notify.sendApplicantTemplate({
+            applicant, tplKey: via, kind: 'extra_docs',
+            vars: { link, docs: docsText },
+            settings, actor,
+          });
+          sent = r.status === 'sent';
+          reason = sent ? '' : (r.reason || 'تعذّر الإرسال');
+          sentTo = r.target || null;
+        }
+      }
+    }
+
+    // السجل: ما طُلب، وهل وصل، والرابط — حتى يراه أي موظف يفتح الملف لاحقاً.
+    const how = !wantSend ? 'بلا إرسال'
+      : (sent ? `عبر واتساب${via === 'onboarding' ? ' (بقالب رابط الاستكمال)' : ''}` : `لم يُرسل: ${reason}`);
+    const line = `طلب بيانات إضافية (${docsText}) — ${how} — ${link}`;
+    db.run('INSERT INTO applicant_notes (applicant_id, content, type, user_name) VALUES (?, ?, ?, ?)',
+      [applicant.id, line, 'follow_up', actor]).catch(e => console.error('[Onboarding extra] note:', e.message));
+    db.logActivity(applicant.id, 'طلب بيانات إضافية', null, `${docsText} — ${how}`.slice(0, 255), actor)
+      .catch(e => console.error('[Onboarding extra] activity:', e.message));
+    db.audit(req.session?.adminId, req.session?.adminUser || 'system', 'onboarding_extra',
+      'applicant', applicant.id, applicant.full_name, line.slice(0, 500), req.ip).catch(() => {});
+
+    res.json({ ok: true, sent, via, reason, sentTo, link, added, progress, newSession: !reused });
+  } catch (err) {
+    console.error('[Onboarding request-extra]', err.message);
+    res.status(500).json({ error: 'خطأ غير متوقع' });
+  }
+});
+
 adminRouter.post('/revoke/:sessionId', async (req, res) => {
   if (!featureOn()) return res.status(503).json({ error: 'الميزة غير مفعّلة' });
   try {
@@ -642,8 +770,8 @@ adminRouter.get('/view/:applicantId', async (req, res) => {
       link: s ? publicLink(req, s.token) : null,
       DOC_TYPES: rules.DOC_TYPES,
       engine: { ocr: ocr.isConfigured(), ai: ai.isConfigured(), aiProvider: ai.provider(), aiModel: ai.model() },
-      waReady: require('../utils/waTemplates')
-        .ready(await db.getSettings().catch(() => ({})), 'onboarding', require('../utils/chatwoot').isConfigured()),
+      ...(({ waReady, extraTpl }) => ({ waReady, extraTpl }))(await waState()),
+      extraDocs: extraDocList(s ? requiredList(s) : []),
     });
   } catch (err) {
     console.error('[Onboarding admin]', err.message);

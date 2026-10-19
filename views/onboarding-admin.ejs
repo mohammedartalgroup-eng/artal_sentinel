@@ -79,6 +79,9 @@
         <button class="ob-btn p" onclick="createLink()">
           <span class="material-symbols-outlined" style="font-size:18px">link</span> إنشاء رابط الاستكمال
         </button>
+        <button class="ob-btn s" onclick="obExtra()" style="margin-inline-start:6px">
+          <span class="material-symbols-outlined" style="font-size:18px">post_add</span> طلب بيانات إضافية
+        </button>
       </div>
     <% } else { %>
       <!-- ── الرابط والتقدّم ──────────────────────────────────────── -->
@@ -104,6 +107,10 @@
               <span class="material-symbols-outlined" style="font-size:18px">send</span> إرسال بواتساب
             </button>
             <% } %>
+            <!-- فحص طبي / خلو سوابق / تغيير حساب — تُطلب بقرار لا في كل ملف -->
+            <button class="ob-btn s" onclick="obExtra()">
+              <span class="material-symbols-outlined" style="font-size:18px">post_add</span> طلب بيانات إضافية
+            </button>
             <!-- خطة بديلة دائمة: واتساب يدوي من جوال الموظف (لا يحتاج قالباً) -->
             <a class="ob-btn s" target="_blank" rel="noopener"
                href="https://wa.me/<%= String(applicant.phone||'').replace(/^0/,'966') %>?text=<%= encodeURIComponent(`مرحباً ${String(applicant.full_name||'').split(' ')[0]}،\nلاستكمال ملفك الوظيفي في شركة أرتال، افتح الرابط التالي وارفع المستندات المطلوبة:\n${link}`) %>">
@@ -348,7 +355,7 @@
               <div>
                 <div class="font-bold text-[#001736] text-sm"><%= s.label %></div>
                 <div class="text-xs text-[#43474f]">
-                  <%= s.required ? 'مطلوب' : 'اختياري' %>
+                  <%= s.extra ? 'طلب إضافي من فريق التوظيف' : (s.required ? 'مطلوب' : 'اختياري') %>
                   <% if (s.aiUsed) { %> · <span class="ob-src"><%= s.aiVision ? 'قرأ النموذج الصورة مباشرةً' : 'استُعين بنموذج لغوي' %></span><% } %>
                 </div>
               </div>
@@ -716,6 +723,19 @@ async function saveEmployment(e) {
   }
 }
 
+// نافذة «طلب بيانات إضافية» — القائمة من الخادم، وحالة كل مستند من بطاقات الصفحة
+const EXTRA_DOCS = <%- JSON.stringify(extraDocs) %>;
+const EXTRA_TPL  = <%- JSON.stringify(extraTpl) %>;
+const STEP_STATE = <%- JSON.stringify(steps.map(s => ({ type: s.type, status: s.status }))) %>;
+function obExtra() {
+  obExtraOpen({
+    applicantId: APPLICANT_ID,
+    docs: EXTRA_DOCS.map(d => Object.assign({}, d, { status: (STEP_STATE.find(s => s.type === d.type) || {}).status || null })),
+    tpl: EXTRA_TPL,
+    onDone: () => location.reload(),
+  });
+}
+
 async function obSend(btn) {
   if (!confirm('إرسال رابط استكمال الملف للمرشح عبر واتساب؟')) return;
   const old = btn.innerHTML;
@@ -762,5 +782,6 @@ async function review(docId, value) {
   location.reload();
 }
 </script>
+<%- include('partials/ob-extra-modal') %>
 </body>
 </html>

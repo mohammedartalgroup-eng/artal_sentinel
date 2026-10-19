@@ -252,7 +252,7 @@ function renderList() {
         <span class="ico"><span class="material-symbols-outlined">${done ? 'check_circle' : s.icon}</span></span>
         <span class="txt">
           <b>${s.label}</b>
-          <span>${s.existingUrl ? 'مرفقة بطلب التوظيف' : (s.required ? 'مطلوب لإكمال الملف' : 'اختياري')}</span>
+          <span>${s.existingUrl ? 'مرفقة بطلب التوظيف' : (s.extra ? 'طلب إضافي من فريق التوظيف' : (s.required ? 'مطلوب لإكمال الملف' : 'اختياري'))}</span>
         </span>
         <span class="chip ${cls}">${label}</span>
       </button>`;

@@ -1,0 +1,145 @@
+<%
+/**
+ * نافذة «طلب بيانات إضافية» — مشتركة بين صفحة المتقدم وصفحة ملف الاستكمال.
+ *
+ * فحص طبي، صحيفة خلو سوابق، تغيير حساب بنكي: لا تُطلب في كل ملف، فلها زرّها
+ * الخاص يختار منه الموظف ما يحتاجه (واحداً أو أكثر). الطلب يُضاف إلى رحلة
+ * المرشح نفسها — نفس الرابط ونفس الصفحة — ثم يُرسل بقالب واتساب المعتمد.
+ *
+ * الاستدعاء: obExtraOpen({ applicantId, docs, tpl, onDone })
+ *   docs: [{ type, label, icon?, requested?, status? }]  من /admin/onboarding/summary أو من الخادم
+ *   tpl : 'extra_docs' | 'onboarding' | null — القالب الذي سيُرسل (null = إضافة بلا إرسال)
+ */
+%>
+<style>
+  #ob-extra-modal { border: none; border-radius: 1rem; padding: 0; max-width: 30rem; width: calc(100% - 2rem); }
+  #ob-extra-modal::backdrop { background: rgba(0,23,54,0.55); }
+  #ob-extra-modal .obx-head { padding: 1.25rem 1.5rem 0.75rem; }
+  #ob-extra-modal .obx-body { padding: 0 1.5rem 1rem; }
+  #ob-extra-modal .obx-foot { padding: 0.875rem 1.5rem; background: #f7f8fa; display: flex; gap: 0.5rem; justify-content: flex-end; flex-wrap: wrap; }
+  #ob-extra-modal .obx-opt { display: flex; align-items: center; gap: 0.75rem; border: 1px solid #e0e3e5; border-radius: 0.75rem; padding: 0.7rem 0.85rem; cursor: pointer; margin-top: 0.5rem; }
+  #ob-extra-modal .obx-opt:hover { border-color: #7594ca; }
+  #ob-extra-modal .obx-opt input { width: 1.1rem; height: 1.1rem; accent-color: #001736; flex: none; }
+  #ob-extra-modal .obx-opt b { font-size: 0.875rem; color: #001736; display: block; }
+  #ob-extra-modal .obx-opt small { font-size: 0.72rem; color: #43474f; }
+  #ob-extra-modal .obx-btn { border-radius: 0.75rem; font-size: 0.875rem; font-weight: 500; padding: 0.55rem 1.1rem; cursor: pointer; border: none; font-family: inherit; }
+  #ob-extra-modal .obx-btn.ghost { background: #eceef0; color: #43474f; }
+  #ob-extra-modal .obx-btn.soft { background: #eef2f7; color: #001736; }
+  #ob-extra-modal .obx-btn.go { background: #001736; color: #fff; }
+  #ob-extra-modal .obx-btn[disabled] { opacity: 0.55; cursor: not-allowed; }
+  #ob-extra-note { font-size: 0.74rem; color: #43474f; margin-top: 0.75rem; line-height: 1.6; }
+  #ob-extra-err { display: none; margin-top: 0.6rem; font-size: 0.78rem; color: #ba1a1a; }
+</style>
+
+<dialog id="ob-extra-modal">
+  <div class="obx-head">
+    <div style="display:flex;align-items:center;gap:0.6rem">
+      <span class="material-symbols-outlined" style="color:#264778">post_add</span>
+      <h3 style="font-family:Manrope,sans-serif;font-weight:700;color:#001736;font-size:1rem;margin:0">طلب بيانات إضافية</h3>
+    </div>
+    <p style="font-size:0.78rem;color:#43474f;margin:0.5rem 0 0;line-height:1.6">
+      اختر ما تحتاجه من المرشح — يُضاف إلى ملف الاستكمال نفسه ويصله برابطه المعتاد.
+    </p>
+  </div>
+  <div class="obx-body">
+    <div id="ob-extra-list"></div>
+    <div id="ob-extra-note"></div>
+    <div id="ob-extra-err"></div>
+  </div>
+  <div class="obx-foot">
+    <button type="button" class="obx-btn ghost" id="ob-extra-cancel">إلغاء</button>
+    <button type="button" class="obx-btn soft" id="ob-extra-add">إضافة للملف بلا إرسال</button>
+    <button type="button" class="obx-btn go" id="ob-extra-send">
+      <span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">send</span>
+      <span id="ob-extra-send-text">إرسال الطلب بواتساب</span>
+    </button>
+  </div>
+</dialog>
+
+<script>
+(function () {
+  var modal = document.getElementById('ob-extra-modal');
+  if (!modal) return;
+  var list    = document.getElementById('ob-extra-list');
+  var note    = document.getElementById('ob-extra-note');
+  var err     = document.getElementById('ob-extra-err');
+  var btnSend = document.getElementById('ob-extra-send');
+  var btnAdd  = document.getElementById('ob-extra-add');
+  var sendTxt = document.getElementById('ob-extra-send-text');
+  var current = null;
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function fail(msg) { err.textContent = msg; err.style.display = 'block'; }
+  function chosen() {
+    return Array.prototype.map.call(list.querySelectorAll('input:checked'), function (i) { return i.value; });
+  }
+  function setBusy(b, t) {
+    btnSend.disabled = b; btnAdd.disabled = b;
+    sendTxt.textContent = t || 'إرسال الطلب بواتساب';
+  }
+  // حالة المستند كما تهمّ من يطلبه: هل رُفع أصلاً؟ هل طُلب من قبل ولم يصل؟
+  function stateOf(d) {
+    if (d.status === 'confirmed') return 'مرفوع ومؤكَّد — الطلب ثانيةً يعني نسخة أحدث';
+    if (d.status && d.status !== 'pending') return 'مرفوع — بانتظار تأكيد المرشح';
+    if (d.requested) return 'مطلوب مسبقاً — لم يُرفع بعد';
+    return '';
+  }
+
+  window.obExtraOpen = function (opts) {
+    current = opts || {};
+    var docs = current.docs || [];
+    list.innerHTML = docs.map(function (d) {
+      var state = stateOf(d);
+      return '<label class="obx-opt">'
+        + '<input type="checkbox" value="' + esc(d.type) + '">'
+        + '<span class="material-symbols-outlined" style="color:#264778">' + esc(d.icon || 'description') + '</span>'
+        + '<span style="flex:1"><b>' + esc(d.label) + '</b>' + (state ? '<small>' + esc(state) + '</small>' : '') + '</span>'
+        + '</label>';
+    }).join('');
+    err.style.display = 'none';
+    setBusy(false);
+    btnSend.style.display = current.tpl ? '' : 'none';
+    note.textContent = current.tpl === 'extra_docs'
+      ? 'سيصل المرشح قالب «طلب بيانات إضافية» وفيه قائمة المطلوب ورابط ملفه.'
+      : (current.tpl === 'onboarding'
+        ? 'قالب «طلب بيانات إضافية» غير مهيأ في الإعدادات — سيُرسل قالب رابط الاستكمال، وتظهر المستندات المطلوبة في صفحة المرشح نفسها.'
+        : 'لا قالب واتساب جاهز: تُضاف المستندات إلى الملف، وانسخ الرابط وأرسله للمرشح بنفسك.');
+    modal.showModal();
+  };
+
+  document.getElementById('ob-extra-cancel').onclick = function () { modal.close(); };
+
+  async function submit(send) {
+    var docs = chosen();
+    if (!docs.length) return fail('اختر مستنداً واحداً على الأقل');
+    err.style.display = 'none';
+    setBusy(true, send ? 'جارٍ الإرسال…' : 'جارٍ الإضافة…');
+    try {
+      var r = await fetch('/admin/onboarding/request-extra/' + current.applicantId, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ docs: docs, send: send }),
+      });
+      var j = await r.json().catch(function () { return {}; });
+      if (!r.ok) { setBusy(false); return fail(j.error || 'تعذّر تنفيذ الطلب'); }
+      modal.close();
+      if (send && !j.sent) {
+        // الإضافة تمّت والإرسال لا — يُقال صراحةً مع الرابط، لا نجاحٌ زائف ولا فشلٌ كامل
+        alert('أُضيفت المستندات إلى الملف، لكن تعذّر الإرسال: ' + (j.reason || 'سبب غير معروف') + '\nالرابط: ' + (j.link || ''));
+      } else if (send) {
+        alert('تم الإرسال إلى ' + (j.sentTo || 'المرشح'));
+      }
+      if (typeof current.onDone === 'function') current.onDone(j);
+    } catch (e) {
+      setBusy(false);
+      fail('تعذّر الاتصال بالخادم');
+    }
+  }
+  btnSend.onclick = function () { submit(true); };
+  btnAdd.onclick  = function () { submit(false); };
+})();
+</script>

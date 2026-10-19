@@ -523,6 +523,13 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
                 + '<span class="material-symbols-outlined text-base">send</span> إرسال رابط الاستكمال بواتساب</button>'
               : '';
 
+            // طلب بيانات إضافية (فحص طبي، خلو سوابق، تغيير حساب) — زرّ مستقل لأنها
+            // لا تُطلب في كل ملف. النافذة (partials/ob-extra-modal) تُبنى من قائمة الملخّص.
+            window.__obExtra = { docs: d.extraDocs || [], tpl: d.extraTpl || null };
+            const extraBtn = '<button onclick="obExtraOpen({applicantId:' + id + ',docs:window.__obExtra.docs,tpl:window.__obExtra.tpl,onDone:function(){location.reload();}})" '
+              + 'class="w-full text-sm font-semibold py-2.5 rounded-xl border border-[#e0e3e5] text-[#43474f] mt-2 flex items-center justify-center gap-2">'
+              + '<span class="material-symbols-outlined text-base">post_add</span> طلب بيانات إضافية</button>';
+
             if (!d.exists) {
               body.innerHTML =
                 '<p class="text-xs text-[#43474f] mb-3 leading-relaxed">'
@@ -530,7 +537,8 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
                 + sendBtn
                 + '<button onclick="obCreate(' + id + ')" class="w-full text-sm font-semibold py-2.5 rounded-xl '
                 + (d.waReady ? 'bg-[#eef2f7] text-[#001736] mt-2' : 'bg-[#001736] text-white') + '">'
-                + (d.waReady ? 'إنشاء الرابط فقط (بلا إرسال)' : 'إنشاء رابط الاستكمال') + '</button>';
+                + (d.waReady ? 'إنشاء الرابط فقط (بلا إرسال)' : 'إنشاء رابط الاستكمال') + '</button>'
+                + extraBtn;
             } else {
               const chips = d.steps.filter(s => s.required).map(s => {
                 const done = s.status === 'confirmed' && s.review !== 'red';
@@ -550,7 +558,8 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
                 + '<a href="/admin/onboarding/view/' + id + '" class="block text-center w-full text-sm font-semibold py-2.5 rounded-xl bg-[#eef2f7] text-[#001736] mt-3">'
                 + 'فتح الملف والمرفقات</a>'
                 + (d.waReady && !d.revoked ? '<button onclick="obSend(' + id + ',this)" class="w-full text-sm font-semibold py-2.5 rounded-xl border border-[#e0e3e5] text-[#43474f] mt-2 flex items-center justify-center gap-2">'
-                    + '<span class="material-symbols-outlined text-base text-[#25D366]">send</span> إعادة إرسال الرابط بواتساب</button>' : '');
+                    + '<span class="material-symbols-outlined text-base text-[#25D366]">send</span> إعادة إرسال الرابط بواتساب</button>' : '')
+                + extraBtn;
             }
             wrap.style.display = '';
           } catch (e) { /* الصفحة تعمل بدونها */ }
@@ -2102,6 +2111,7 @@ function saveEdit(nid) {
 </script>
 
 <%- include('partials/download-reason') %>
+<%- include('partials/ob-extra-modal') %>
 <script>
   // تحميل مرفق — يمرّ دائماً بنافذة السبب، فلا يوجد مسار تحميل صامت
   function askDocDownload(kind, label) {

@@ -76,10 +76,7 @@ function build({ applicant, fieldsByType, employment, sessionId }) {
       postal_code: val(addr, 'postal_code'),
     },
 
-    bank: {
-      iban: fieldValue(fieldsByType, ['iban'], 'iban'),
-      bank_name: fieldValue(fieldsByType, ['iban'], 'bank_name'),
-    },
+    bank: bankFor(fieldsByType),
 
     employment: {
       job_title: employment?.job_title || null,
@@ -95,6 +92,19 @@ function build({ applicant, fieldsByType, employment, sessionId }) {
   };
 
   return { payload, missing: missingFor(payload) };
+}
+
+/**
+ * الحساب البنكي: الحساب الجديد (إن طُلب تغييره ورُفعت شهادته وأُكِّدت) وإلا
+ * الشهادة الأصلية. الآيبان واسم البنك يؤخذان من المستند نفسه — لا يُركَّب
+ * آيبان جديد على اسم بنك قديم.
+ */
+function bankFor(fieldsByType) {
+  for (const docType of ['bank_change', 'iban']) {
+    const iban = fieldValue(fieldsByType, [docType], 'iban');
+    if (iban) return { iban, bank_name: fieldValue(fieldsByType, [docType], 'bank_name') };
+  }
+  return { iban: null, bank_name: null };
 }
 
 /** عمود DATE يعود كائن تاريخ من MySQL — والطرف الآخر ينتظر YYYY-MM-DD */
@@ -155,6 +165,9 @@ function categoryFor(docType, nationalId) {
     driving_license: 'driving_license',
     cv: 'cv',
     education_certificate: 'educational_certificate',
+    medical_exam: 'medical_exam',
+    criminal_record: 'criminal_record',
+    bank_change: 'bank_iban',          // شهادة آيبان للحساب الجديد — نفس تصنيف الشهادة الأصلية
   }[docType] || 'other';
 }
 

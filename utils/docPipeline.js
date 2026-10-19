@@ -105,7 +105,7 @@ async function processDocument({ docType, filePath, mime, applicant }) {
     try {
       // النص المُفكوك من الخانات لا الخام: النموذج يهلوس على «F J S G 4 5 3 3»
       // ويرجع أول رمز، بينما «FJSG4533» قيمة لا لبس فيها.
-      const out = await ai.extractDocumentFields(def.label, askFor(missing), rules.debox(text));
+      const out = await ai.extractDocumentFields(def.aiLabel || def.label, askFor(missing), rules.debox(text));
       if (out) mergeAi(out, 0.75);
     } catch (e) {
       result.aiError = e.message;
@@ -123,7 +123,7 @@ async function processDocument({ docType, filePath, mime, applicant }) {
   ])];
   if (stillMissing.length && ai.supportsVision() && filePath) {
     try {
-      const out = await ai.extractFromImage(def.label, askFor(stillMissing), filePath, mime);
+      const out = await ai.extractFromImage(def.aiLabel || def.label, askFor(stillMissing), filePath, mime);
       if (out) {
         // قراءة الصورة تفوق قراءة نصٍّ مبعثر — فتدهس قيمة نصية فاشلة التحقق
         for (const k of stillMissing) if (result.fields[k] && !result.fields[k].valid) delete result.fields[k];
