@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>التوصيات — أرتال Sentinel</title>
+  <link rel="icon" type="image/png" href="/images/icon.png">
+  <link rel="stylesheet" href="/css/tailwind.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" onload="this.onload=null;this.rel='stylesheet'"><noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&family=Inter:wght@400;500;600&display=swap"></noscript>
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=block" onload="this.onload=null;this.rel='stylesheet'"><noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=block"></noscript>
+  <!--
+    التوصيات: من ليس متقدماً بعد. الصفحة تضيف وتدعو وتتابع — والتحويل إلى متقدم
+    يحدث من نموذج التقديم العام حين يملأه صاحب التوصية بنفسه.
+  -->
+  <style>
+    body { font-family: 'Inter', sans-serif; background: #f2f4f6; }
+    h1,h2,h3 { font-family: 'Manrope', sans-serif; }
+    .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+    input, select, textarea { background:white; border:1px solid #e0e3e5; border-radius:0.75rem;
+      padding:0.5rem 0.75rem; font-size:0.875rem; width:100%; outline:none; font-family:inherit; }
+    input:focus, select:focus, textarea:focus { border-color:#7594ca; }
+    .panel { display:none; } .panel.open { display:block; }
+    .chip { display:inline-flex; align-items:center; gap:4px; font-size:11.5px; font-weight:600;
+            padding:4px 10px; border-radius:99px; white-space:nowrap; }
+    .c-new { background:#eceef0; color:#43474f }      .c-invited { background:#d6e3ff; color:#001b3d }
+    .c-opened { background:#fef3c7; color:#a16207 }   .c-applied { background:#dcfce7; color:#15803d }
+    .c-closed { background:#ffdad6; color:#ba1a1a }
+    .f-chip { font-size:12px; font-weight:600; padding:6px 12px; border-radius:99px; border:1px solid #e0e3e5; background:#fff; color:#43474f; white-space:nowrap }
+    .f-chip.on { background:#001736; color:#fff; border-color:#001736 }
+    .act { display:inline-flex; align-items:center; gap:4px; border:0; border-radius:10px; padding:6px 10px;
+           font-size:12px; font-weight:600; cursor:pointer; font-family:inherit; white-space:nowrap }
+    .act.p { background:#001736; color:#fff } .act.s { background:#eef2f7; color:#001736 }
+    .act.d { background:#ffdad6; color:#ba1a1a } .act[disabled] { opacity:.5; cursor:not-allowed }
+    .ltr { direction:ltr; unicode-bidi:isolate; font-family:ui-monospace,monospace }
+  </style>
+</head>
+<body class="text-[#191c1e]">
+<%- include('partials/sidebar', { currentPage: 'leads' }) %>
+
+<div class="lg:mr-64 min-h-screen pt-14 lg:pt-0">
+  <header class="bg-white border-b border-[#eceef0] px-4 lg:px-8 py-4 lg:py-5 flex items-center justify-between gap-3 sticky top-14 lg:top-0 z-30">
+    <div class="min-w-0">
+      <h1 class="text-xl font-bold text-[#001736]">التوصيات</h1>
+      <p class="text-xs text-[#43474f] mt-0.5">أشخاص وصلتنا توصية بهم ولم يتقدموا بعد — ندعوهم للتقديم برابط شخصي، ويتحوّلون إلى متقدمين حين يملؤون النموذج بأنفسهم.</p>
+    </div>
+    <button onclick="togglePanel('create-panel')"
+            class="bg-[#001736] text-white text-sm font-semibold px-5 py-2.5 rounded-xl flex items-center gap-2 hover:bg-[#002b5b] transition-colors flex-shrink-0">
+      <span class="material-symbols-outlined text-base">person_add</span>
+      إضافة توصية
+    </button>
+  </header>
+
+  <main class="p-4 lg:p-8 space-y-5">
+
+    <% if (!waReady) { %>
+    <div class="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-5 py-3 flex items-start gap-2 text-sm">
+      <span class="material-symbols-outlined text-base mt-0.5">info</span>
+      <div>قالب واتساب «دعوة للتقديم» غير مهيأ بعد — زر الإرسال معطّل. إلى أن يُعتمد القالب ويُكتب اسمه في الإعدادات، انسخ رابط الدعوة وأرسله يدوياً.</div>
+    </div>
+    <% } %>
+
+    <!-- ── إضافة توصية ─────────────────────────────────────────────── -->
+    <div id="create-panel" class="panel bg-white rounded-2xl p-6 lg:p-7 border-2 border-[#001736]/10">
+      <h2 class="font-bold text-[#001736] text-base mb-1 flex items-center gap-2">
+        <span class="material-symbols-outlined text-lg">person_add</span> توصية جديدة
+      </h2>
+      <p class="text-xs text-[#43474f] mb-5">الجوال وحده يكفي. يُفحص أولاً في المتقدمين وفي التوصيات المفتوحة حتى لا نرسل لشخص دعوتين.</p>
+      <form onsubmit="createLead(event)" class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div>
+          <label class="block text-xs text-[#43474f] font-semibold mb-1">رقم الجوال <span class="text-[#ba1a1a]">*</span></label>
+          <input type="tel" name="phone" placeholder="05XXXXXXXX" inputmode="numeric" dir="ltr" required>
+        </div>
+        <div>
+          <label class="block text-xs text-[#43474f] font-semibold mb-1">الاسم <span class="text-[#747780] font-normal">(إن عُرف)</span></label>
+          <input type="text" name="full_name" placeholder="اسم الشخص" maxlength="200">
+        </div>
+        <div>
+          <label class="block text-xs text-[#43474f] font-semibold mb-1">من رشّحه</label>
+          <input type="text" name="referred_by" placeholder="اسم الموصي أو الجهة" maxlength="120">
+        </div>
+        <div>
+          <label class="block text-xs text-[#43474f] font-semibold mb-1">ملاحظة</label>
+          <input type="text" name="note" placeholder="مثال: خبرة حراسة سابقة، يسكن الدمام" maxlength="500">
+        </div>
+        <div class="md:col-span-4 flex items-center gap-2 flex-wrap">
+          <button type="submit" id="create-btn"
+                  class="bg-[#001736] text-white text-sm font-semibold px-6 py-2.5 rounded-xl hover:bg-[#002b5b] transition-colors">
+            حفظ التوصية
+          </button>
+          <button type="button" onclick="togglePanel('create-panel')"
+                  class="px-4 py-2.5 rounded-xl bg-[#f2f4f6] text-sm text-[#43474f] hover:bg-[#eceef0] transition-colors">
+            إلغاء
+          </button>
+          <div id="create-msg" class="text-sm"></div>
+        </div>
+      </form>
+    </div>
+
+    <!-- ── الفلاتر والبحث ──────────────────────────────────────────── -->
+    <form method="GET" action="/admin/leads" class="bg-white rounded-2xl p-4 flex flex-wrap items-center gap-2">
+      <% [['', 'الكل', total]].concat(Object.keys(STATUS_LABEL).map(k => [k, STATUS_LABEL[k], counts[k] || 0])).forEach(function (f) { %>
+        <a href="/admin/leads?status=<%= f[0] %><%= q ? '&q=' + encodeURIComponent(q) : '' %>" class="f-chip <%= filter === f[0] ? 'on' : '' %>">
+          <%= f[1] %> <span class="opacity-70">(<%= f[2] %>)</span>
+        </a>
+      <% }); %>
+      <div class="flex-1 min-w-[12rem] flex gap-2">
+        <input type="hidden" name="status" value="<%= filter %>">
+        <input type="search" name="q" value="<%= q %>" placeholder="بحث بالجوال أو الاسم أو الموصي">
+        <button class="act s" type="submit"><span class="material-symbols-outlined" style="font-size:18px">search</span></button>
+      </div>
+    </form>
+
+    <!-- ── القائمة ─────────────────────────────────────────────────── -->
+    <div class="bg-white rounded-2xl overflow-hidden">
+      <% if (!leads.length) { %>
+        <div class="p-10 text-center text-[#43474f]">
+          <span class="material-symbols-outlined text-4xl text-[#7594ca]">person_search</span>
+          <div class="mt-2 text-sm"><%= (filter || q) ? 'لا توصيات تطابق هذا الفلتر' : 'لا توصيات بعد — أضف أول توصية من الزر أعلاه' %></div>
+        </div>
+      <% } else { %>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-[#f8f9fb] border-b border-[#eceef0]">
+            <tr class="text-[#43474f] text-xs">
+              <th class="text-right px-5 py-4 font-semibold">الشخص</th>
+              <th class="text-right px-4 py-4 font-semibold">الموصي</th>
+              <th class="text-right px-4 py-4 font-semibold">الحالة</th>
+              <th class="text-right px-4 py-4 font-semibold">الدعوة</th>
+              <th class="text-right px-4 py-4 font-semibold">أُضيفت</th>
+              <th class="text-left px-4 py-4 font-semibold">الإجراءات</th>
+            </tr>
+          </thead>
+          <tbody>
+          <% leads.forEach(function (l) { %>
+            <tr class="border-b border-[#eceef0] last:border-0 align-top">
+              <td class="px-5 py-3">
+                <div class="font-semibold text-[#001736]"><%= l.full_name || 'بلا اسم' %></div>
+                <div class="text-xs text-[#43474f] ltr"><%= l.phone %></div>
+                <% if (l.note) { %><div class="text-[11px] text-[#747780] mt-1 max-w-xs"><%= l.note %></div><% } %>
+              </td>
+              <td class="px-4 py-3 text-[#43474f]"><%= l.referred_by || '—' %></td>
+              <td class="px-4 py-3">
+                <span class="chip c-<%= l.status %>"><%= l.statusLabel %></span>
+                <% if (l.status === 'applied' && l.applicant_id) { %>
+                  <a href="/admin/applicants/<%= l.applicant_id %>" class="block text-xs text-[#405f91] underline mt-1">
+                    ملف المتقدم<%= l.applicant_name ? ' — ' + l.applicant_name : '' %>
+                  </a>
+                <% } else if (l.status === 'closed' && l.close_reason) { %>
+                  <div class="text-[11px] text-[#43474f] mt-1"><%= l.close_reason %></div>
+                <% } else if (l.opened_at) { %>
+                  <div class="text-[11px] text-[#43474f] mt-1">فُتح <%= fmtDateTime(l.opened_at) %></div>
+                <% } %>
+              </td>
+              <td class="px-4 py-3 text-xs text-[#43474f]">
+                <% if (l.invite_count) { %>
+                  <div><%= l.invite_count %> مرة · آخرها <%= fmtDateTime(l.invited_at) %></div>
+                  <% if (l.last_send_status === 'failed') { %>
+                    <div class="text-[#ba1a1a] mt-0.5" title="<%= l.last_send_error || '' %>">⚠ لم تصل — <%= (l.last_send_error || '').slice(0, 60) %></div>
+                  <% } %>
+                <% } else if (l.last_send_status && l.last_send_status !== 'sent') { %>
+                  <div class="text-[#ba1a1a]" title="<%= l.last_send_error || '' %>">⚠ آخر محاولة فشلت</div>
+                <% } else { %>—<% } %>
+              </td>
+              <td class="px-4 py-3 text-xs text-[#43474f]">
+                <div><%= fmtDate(l.created_at) %></div>
+                <div class="text-[#747780]"><%= l.created_by || '' %></div>
+              </td>
+              <td class="px-4 py-3">
+                <div class="flex items-center justify-end gap-1.5 flex-wrap">
+                  <% if (l.status !== 'applied' && l.status !== 'closed') { %>
+                    <button class="act p" onclick="sendInvite(<%= l.id %>, this)" <%= waReady ? '' : 'disabled title="قالب الدعوة غير مهيأ في الإعدادات"' %>>
+                      <span class="material-symbols-outlined" style="font-size:16px">send</span>
+                      <%= l.invite_count ? 'إعادة الإرسال' : 'إرسال الدعوة' %>
+                    </button>
+                    <button class="act s" onclick="copyLink('<%= l.link %>')" title="رابط التقديم الشخصي">
+                      <span class="material-symbols-outlined" style="font-size:16px">content_copy</span> الرابط
+                    </button>
+                    <a class="act s" target="_blank" rel="noopener" title="واتساب يدوي من جوالك"
+                       href="https://wa.me/<%= String(l.phone).replace(/^0/, '966') %>?text=<%= encodeURIComponent(`مرحباً ${l.full_name ? l.full_name.split(' ')[0] : ''}،\nوصلتنا توصية بك للعمل في مجال الحراسة الأمنية لدى شركة أرتال. إن كنت مهتماً، قدّم طلبك من الرابط التالي:\n${l.link}`) %>">
+                      <span class="material-symbols-outlined" style="font-size:16px">chat</span>
+                    </a>
+                    <button class="act d" onclick="closeLead(<%= l.id %>)">إغلاق</button>
+                  <% } else if (l.status === 'closed') { %>
+                    <button class="act s" onclick="reopenLead(<%= l.id %>)">إعادة فتح</button>
+                  <% } %>
+                  <% if (l.status !== 'applied') { %>
+                    <button class="act s" onclick="deleteLead(<%= l.id %>)" title="حذف نهائي">
+                      <span class="material-symbols-outlined" style="font-size:16px">delete</span>
+                    </button>
+                  <% } %>
+                </div>
+              </td>
+            </tr>
+          <% }); %>
+          </tbody>
+        </table>
+      </div>
+      <% } %>
+    </div>
+
+    <p class="text-[11px] text-[#747780] leading-relaxed">
+      الجوال وصلنا من طرف ثالث لا من صاحبه، لذا تُغلق التوصية تلقائياً إن لم يستجب خلال 30 يوماً من الدعوة،
+      وتُحذف غير المحوَّلة بعد 90 يوماً. ما تحوّل إلى طلب يبقى ضمن ملف المتقدم.
+    </p>
+  </main>
+</div>
+
+<script>
+function togglePanel(id) {
+  const p = document.getElementById(id);
+  p.classList.toggle('open');
+  if (p.classList.contains('open')) p.querySelector('input')?.focus();
+}
+
+async function post(url, body) {
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify(body || {}),
+  });
+  const j = await r.json().catch(() => ({}));
+  return { ok: r.ok, status: r.status, j };
+}
+
+async function createLead(e) {
+  e.preventDefault();
+  const form = e.target;
+  const msg = document.getElementById('create-msg');
+  const btn = document.getElementById('create-btn');
+  const body = Object.fromEntries(new FormData(form).entries());
+  btn.disabled = true; msg.textContent = '';
+  try {
+    const { ok, status, j } = await post('/admin/leads', body);
+    if (ok) { location.href = '/admin/leads'; return; }
+    msg.replaceChildren();
+    msg.className = 'text-sm text-[#ba1a1a]';
+    msg.append(j.error || 'تعذّرت الإضافة');
+    // التكرار: نرشد إلى الملف القائم بدل أن نترك الموظف يخمّن
+    if (status === 409 && j.applicant) {
+      const a = document.createElement('a');
+      a.href = '/admin/applicants/' + j.applicant.id; a.className = 'underline mr-2';
+      a.textContent = 'فتح ملف ' + (j.applicant.full_name || 'المتقدم');
+      msg.append(' ', a);
+    } else if (status === 409 && j.lead) {
+      const a = document.createElement('a');
+      a.href = '/admin/leads?q=' + encodeURIComponent(body.phone || ''); a.className = 'underline mr-2';
+      a.textContent = 'عرضها';
+      msg.append(' ', a);
+    }
+  } catch (err) {
+    msg.className = 'text-sm text-[#ba1a1a]'; msg.textContent = 'تعذّر الاتصال بالخادم';
+  } finally { btn.disabled = false; }
+}
+
+async function sendInvite(id, btn) {
+  if (!confirm('إرسال دعوة التقديم عبر واتساب؟')) return;
+  const old = btn.innerHTML;
+  btn.disabled = true; btn.textContent = 'جارٍ الإرسال…';
+  const { ok, j } = await post('/admin/leads/' + id + '/send').catch(() => ({ ok: false, j: {} }));
+  if (!ok) { alert(j.error || 'تعذّر الإرسال'); btn.disabled = false; btn.innerHTML = old; return; }
+  alert('تم الإرسال إلى ' + (j.sentTo || 'الرقم'));
+  location.reload();
+}
+
+function copyLink(link) {
+  navigator.clipboard.writeText(link).then(() => alert('تم نسخ رابط التقديم الشخصي'));
+}
+
+async function closeLead(id) {
+  const reason = prompt('سبب الإغلاق (اختياري):', 'غير مهتم');
+  if (reason === null) return;
+  const { ok, j } = await post('/admin/leads/' + id + '/close', { reason });
+  if (!ok) return alert(j.error || 'تعذّر الإغلاق');
+  location.reload();
+}
+
+async function reopenLead(id) {
+  const { ok, j } = await post('/admin/leads/' + id + '/reopen');
+  if (!ok) return alert(j.error || 'تعذّرت إعادة الفتح');
+  location.reload();
+}
+
+async function deleteLead(id) {
+  if (!confirm('حذف التوصية نهائياً؟ لا يمكن التراجع.')) return;
+  const { ok, j } = await post('/admin/leads/' + id + '/delete');
+  if (!ok) return alert(j.error || 'تعذّر الحذف');
+  location.reload();
+}
+</script>
+</body>
+</html>

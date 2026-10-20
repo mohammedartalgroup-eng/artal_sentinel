@@ -37,6 +37,14 @@ try {
   console.error('[Onboarding] تعذّر تحميل ميزة استكمال الملف — الموقع يعمل طبيعياً:', e.message);
 }
 
+// «التوصيات» — مراسلة من ليس متقدماً بعد. نفس العزل: فشل تحميلها لا يوقف شيئاً.
+let leadsRouter = null;
+try {
+  leadsRouter = require('./routes/leads');
+} catch (e) {
+  console.error('[Leads] تعذّر تحميل ميزة التوصيات — الموقع يعمل طبيعياً:', e.message);
+}
+
 const seoCities     = jobsRouter.CITIES;   // بيانات المدن مضمّنة داخل الراوتر (تُرفَع مع الكود)
 
 const app = express();
@@ -123,6 +131,9 @@ if (hooksRouter) app.use('/api/hooks', hooksRouter);   // إشعارات الت�
 if (onboardingRouter) {
   app.use('/onboarding', onboardingRouter.publicRouter);
   app.use('/admin/onboarding', require('./middleware/auth'), onboardingRouter.adminRouter);
+}
+if (leadsRouter) {
+  app.use('/admin/leads', require('./middleware/auth'), leadsRouter);
 }
 
 // Static fallback (for any other assets in public/)

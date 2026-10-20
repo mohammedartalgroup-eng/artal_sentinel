@@ -63,7 +63,8 @@ function messageVars(applicant, interview, opts = {}) {
   const time = has ? localTime(iv.startMs) : '';
 
   return {
-    name:     String(applicant?.full_name || '').trim(),
+    // opts.name يسبق اسم السجل: توصية بلا اسم تُخاطَب «عزيزنا المرشح» لا بفراغ
+    name:     String(opts.name || applicant?.full_name || '').trim(),
     company:  opts.companyName || 'أرتال للحراسات الأمنية',
     job:      String(opts.jobTitle || '').trim() || deriveJobTitle(applicant, settings),
     region:   String(opts.region  || '').trim() || String(applicant?.region || '').trim(),
@@ -203,6 +204,18 @@ function buildExtraDocsText(applicant, _interview, opts = {}) {
   ].join('\n');
 }
 
+// نص دعوة الموصى به للتقديم (ما يراه الوكيل في Chatwoot)
+function buildInviteText(applicant, _interview, opts = {}) {
+  const v = messageVars(applicant, null, opts);
+  return [
+    `مرحباً ${v.name} 👋`,
+    `وصلتنا توصية بك للعمل في مجال الحراسة الأمنية لدى ${v.company}.`,
+    'إن كنت مهتماً، أكمل بياناتك وقدّم طلبك من الرابط التالي خلال دقائق من جوالك:',
+    v.link,
+    'إن لم تكن مهتماً، تجاهل هذه الرسالة ولن نتواصل معك مجدداً.',
+  ].join('\n');
+}
+
 const WA_TEXT = {
   scheduled:   buildWhatsAppText,
   rescheduled: buildRescheduleText,
@@ -210,6 +223,7 @@ const WA_TEXT = {
   screening:    buildScreeningText,
   onboarding:   buildOnboardingText,
   extra_docs:   buildExtraDocsText,
+  invite:       buildInviteText,
 };
 
 function buildWaUrl(phone, text) {
@@ -321,6 +335,6 @@ function buildEmailSubject(applicant, interview, opts = {}) {
 module.exports = {
   toIntlPhone, isEmail, deriveJobTitle,
   messageVars, VAR_LABELS, buildProcessedParams, sanitizeParam,
-  buildWhatsAppText, buildRescheduleText, buildCancelText, buildScreeningText, buildOnboardingText, buildExtraDocsText, WA_TEXT, buildWaUrl,
+  buildWhatsAppText, buildRescheduleText, buildCancelText, buildScreeningText, buildOnboardingText, buildExtraDocsText, buildInviteText, WA_TEXT, buildWaUrl,
   buildEmailHtml, buildEmailText, buildEmailSubject,
 };

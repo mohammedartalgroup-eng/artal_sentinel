@@ -7,6 +7,11 @@ const jobsCities = require('./jobs').CITIES;   // لسحابة روابط الم
 const legal = require('../utils/legal');
 
 // GET /apply — public application form
+// «التوصيات»: رابط الدعوة الشخصي (/apply?ref=…) يعبّئ الاسم والجوال ويربط الطلب
+// بتوصيته. يُحمَّل بحذر: غياب الميزة أو تعطّلها لا يمسّ التقديم العادي بحرف.
+let leads = null;
+try { leads = require('./leads'); } catch (e) { console.error('[Apply] ميزة التوصيات غير محمّلة:', e.message); }
+
 router.get('/', async (req, res) => {
   try {
     const setting = await db.get("SELECT value FROM settings WHERE `key` = 'accepting_applications'");
@@ -30,7 +35,17 @@ router.get('/', async (req, res) => {
         </html>
       `);
     }
-    res.render('apply', { cities: jobsCities });
+
+    // رابط دعوة شخصي؟ نعبّئ الاسم والجوال ونسجّل أن الرابط فُتح فعلاً
+    let prefill = {};
+    if (leads && req.query.ref) {
+      const lead = await leads.byToken(String(req.query.ref)).catch(() => null);
+      if (lead) {
+        prefill = { full_name: lead.full_name || '', phone: lead.phone, ref: lead.token };
+        leads.markOpened(lead).catch(() => {});
+      }
+    }
+    res.render('apply', { cities: jobsCities, prefill });
   } catch (err) {
     console.error('[Apply GET]', err.message);
     res.render('apply', { cities: jobsCities });
@@ -146,6 +161,30 @@ router.post('/', (req, res) => {
       );
 
       await db.logActivity(result.insertId, 'تقديم جديد', null, 'pending');
+
+      // طلب جاء عبر توصية؟ بالرمز من رابط الدعوة، أو بالجوال إن تقدّم من الرابط
+      // العام. المصدر الحقيقي حينها «توصية» لا ما التقطه كوكي الزيارة الأولى.
+      if (leads) {
+        try {
+          const lead = await leads.linkApplicant({
+            token: String(req.body.lead_ref || ''), phone: phone.trim(), applicantId: result.insertId,
+          });
+          if (lead) {
+            const by = lead.referred_by ? `توصية — ${lead.referred_by}` : 'توصية';
+            await db.run('UPDATE applicants SET source = ?, referrer = ? WHERE id = ?',
+              ['توصية', by.slice(0, 255), result.insertId]);
+            await db.run(
+              'INSERT INTO applicant_notes (applicant_id, content, type, user_name) VALUES (?, ?, ?, ?)',
+              [result.insertId,
+               `تقدّم عبر توصية${lead.referred_by ? ` من ${lead.referred_by}` : ''}${lead.note ? ` — ${lead.note}` : ''} (أضافها ${lead.created_by || 'النظام'})`,
+               'note', 'النظام']
+            );
+            await db.logActivity(result.insertId, 'تقدّم عبر توصية', null, lead.referred_by || null, 'النظام');
+          }
+        } catch (e) {
+          console.error('[Apply] lead link:', e.message);
+        }
+      }
 
       // فحص النظام الخارجي في الخلفية — لا ينتظره ولا يؤثر على التسجيل
       checkExternal(result.insertId, id_number.trim()).catch(() => {});

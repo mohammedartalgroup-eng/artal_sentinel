@@ -338,38 +338,46 @@ async function notifyInterview({ applicant, interview, kind, settings, actor, ch
  * @param {string} a.kind       اسم النوع في السجل (مثل 'screening')
  * @param {object} [a.vars]     تجاوزات المتغيّرات { jobTitle, region, city }
  */
-async function sendApplicantTemplate({ applicant, tplKey, kind, vars = {}, settings, actor }) {
-  // المحاولة في دالة داخلية ليصل كل مسار — بما فيه الخروج المبكر — إلى
-  // التسجيل أدناه. الـ return المباشر كان يتخطّى السجل ويُخفي محاولات skipped.
-  const attempt = async (out) => {
-    if (!chatwoot.isConfigured()) { out.reason = 'تكامل Chatwoot غير مهيأ'; return; }
+/**
+ * الإرسال نفسه — بلا أي تسجيل. مشترك بين قوالب المتقدمين (sendApplicantTemplate)
+ * وقوالب من ليس متقدماً بعد (التوصيات — routes/leads.js): المستلم اسم وجوال،
+ * والقالب من الإعدادات، والمتغيّرات من messageVars. لا يرمي: كل مسار يعود بحالة.
+ *
+ * @param {object} a.recipient  { id?, full_name, phone, region?, landing_page? }
+ * @returns {Promise<{status:'sent'|'skipped'|'failed', reason:string, target?:string, ref?:string, vars?:object, track?:object}>}
+ */
+async function deliverTemplate({ recipient, tplKey, kind, vars = {}, settings }) {
+  const who = recipient?.id ? `applicant #${recipient.id}` : String(recipient?.phone || '');
+  const out = { status: 'skipped', reason: '' };
+  try {
+    if (!chatwoot.isConfigured()) { out.reason = 'تكامل Chatwoot غير مهيأ'; return out; }
 
-    const phone = chatwoot.toE164(applicant.phone);
-    if (!phone) { out.reason = 'لا يوجد رقم جوال صالح'; return; }
+    const phone = chatwoot.toE164(recipient.phone);
+    if (!phone) { out.reason = 'لا يوجد رقم جوال صالح'; return out; }
     out.target = phone;
 
     const tpl = templateFor(settings, tplKey);
-    if (!tpl.name) { out.reason = 'لم يُحدَّد اسم القالب في الإعدادات'; return; }
+    if (!tpl.name) { out.reason = 'لم يُحدَّد اسم القالب في الإعدادات'; return out; }
 
     const opts = { companyName: settings.company_name, settings, ...vars };
-    const v = M.messageVars(applicant, null, opts);
+    const v = M.messageVars(recipient, null, opts);
 
     // متغيّر فارغ يرفضه واتساب — نوقف قبل الإرسال برسالة مفهومة بدل خطأ Meta الغامض
     const needed = String(tpl.vars || '').split(',').map(x => x.trim()).filter(Boolean);
     const empty = needed.filter(k => !String(v[k] ?? '').trim());
     if (empty.length) {
       out.reason = `متغيّرات ناقصة: ${empty.map(k => M.VAR_LABELS[k] || k).join('، ')}`;
-      return;
+      return out;
     }
 
     const params = M.buildProcessedParams(v, tpl.vars, tpl.shape);
-    const fallback = (M.WA_TEXT[kind] || M.buildScreeningText)(applicant, null, opts);
+    const fallback = (M.WA_TEXT[kind] || M.buildScreeningText)(recipient, null, opts);
 
     const body = await resolveTemplateBody(tpl, params, fallback);
-    if (!body.ok) { out.reason = body.reason; return; }
+    if (!body.ok) { out.reason = body.reason; return out; }
 
     const r = await chatwoot.sendTemplate({
-      name: applicant.full_name, phone: applicant.phone, content: body.content,
+      name: recipient.full_name, phone: recipient.phone, content: body.content,
       inbox: tpl.inbox,
       template: {
         name: tpl.name, language: tpl.language, category: tpl.category,
@@ -380,17 +388,19 @@ async function sendApplicantTemplate({ applicant, tplKey, kind, vars = {}, setti
     out.ref = r.conversationId ? `conv:${r.conversationId}` : '';
     out.vars = v;
     out.track = r;
-    console.log(`[Notify] ${kind} sent — applicant #${applicant.id}, conv ${r.conversationId}`);
-  };
-
-  const out = { status: 'skipped', reason: '' };
-  try {
-    await attempt(out);
+    console.log(`[Notify] ${kind} sent — ${who}, conv ${r.conversationId}`);
   } catch (e) {
     out.status = 'failed';
     out.reason = e.message || 'خطأ غير معروف';
-    console.error(`[Notify] ${kind} FAILED — applicant #${applicant.id}: ${out.reason}`);
+    console.error(`[Notify] ${kind} FAILED — ${who}: ${out.reason}`);
   }
+  return out;
+}
+
+async function sendApplicantTemplate({ applicant, tplKey, kind, vars = {}, settings, actor }) {
+  // الإرسال في دالة مستقلة ليصل كل مسار — بما فيه الخروج المبكر — إلى التسجيل
+  // أدناه: المحاولات المتخطّاة تُسجَّل كالفاشلة، لا تختفي.
+  const out = await deliverTemplate({ recipient: applicant, tplKey, kind, vars, settings });
 
   const { track, ...result } = out;
   let rowId = null;
@@ -449,6 +459,6 @@ async function deliveryFor(interviewId) {
 }
 
 module.exports = {
-  notifyInterview, sendApplicantTemplate, deliveryFor, templateFor, confirmDelivery,
+  notifyInterview, sendApplicantTemplate, deliverTemplate, watchDelivery, deliveryFor, templateFor, confirmDelivery,
   KINDS, NO_LINK_REASON,
 };

@@ -300,6 +300,8 @@
         <input type="hidden" name="source" id="f-source">
         <input type="hidden" name="referrer" id="f-referrer">
         <input type="hidden" name="landing_page" id="f-landing">
+        <!-- رمز التوصية: يصل من رابط الدعوة الشخصي (/apply?ref=…) ويربط الطلب بتوصيته -->
+        <input type="hidden" name="lead_ref" value="<%= (locals.prefill && prefill.ref) || '' %>">
 
         <!-- Personal Info Grid -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -312,7 +314,8 @@
             <div class="input-wrap relative" id="wrap-full_name">
               <input id="f-full_name" name="full_name"
                      class="w-full bg-surface-container-low border-0 rounded-lg px-4 py-3.5 focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-slate-500"
-                     placeholder="أدخل اسمك الكامل كما في الهوية" type="text" autocomplete="name"/>
+                     placeholder="أدخل اسمك الكامل كما في الهوية" type="text" autocomplete="name"
+                     value="<%= (locals.prefill && prefill.full_name) || '' %>"/>
               <span aria-hidden="true" class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">person</span>
             </div>
             <p class="err-msg" id="err-full_name">الاسم الرباعي مطلوب (5 أحرف على الأقل)</p>
@@ -349,7 +352,8 @@
                      inputmode="numeric"
                      maxlength="10"
                      dir="ltr"
-                     autocomplete="tel"/>
+                     autocomplete="tel"
+                     value="<%= (locals.prefill && prefill.phone) || '' %>"/>
               <span aria-hidden="true" class="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">smartphone</span>
             </div>
             <p class="err-msg" id="err-phone">رقم الجوال يجب أن يبدأ بـ 05 ويتكون من 10 أرقام</p>
