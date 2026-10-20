@@ -303,8 +303,15 @@ const DOC_TYPES = {
     // آيبان سليمة بأنها «ليست المستند المتوقَّع» — فيُعطى اسم الوثيقة الفعلية.
     aiLabel: 'شهادة الآيبان (للحساب البنكي الجديد)',
     icon: 'swap_horiz',
-    hint: 'ارفع شهادة الآيبان للحساب البنكي الجديد من تطبيق البنك — لا لقطة تحويل.',
+    hint: 'حمّل نموذج الطلب وعبّئه ووقّعه، ثم ارفعه مع هوية صاحب الحساب وشهادة الآيبان للحساب الجديد.',
     extra: true,
+    // الطلب له نموذج ورقي معتمد في الشركة: يُحمَّل ويُعبَّأ ويُوقَّع ويُعاد رفعه مرفقاً
+    // مع هوية صاحب الحساب المحوَّل إليه (قد يكون قريباً لا الموظف نفسه). المستند
+    // الرئيسي يبقى شهادة الآيبان لأنها الوحيدة التي تُقرأ وتُتحقَّق حسابياً.
+    formUrl: '/forms/bank-change-request.pdf',
+    formLabel: 'نموذج طلب تغيير الحساب البنكي',
+    mainLabel: 'شهادة الآيبان للحساب الجديد',
+    attachments: ['bank_change_form', 'bank_change_holder_id'],
     fields: [
       { key: 'iban',           label: 'رقم الآيبان الجديد', type: 'iban', required: true },
       { key: 'bank_name',      label: 'البنك',              type: 'text', required: false },
@@ -312,12 +319,39 @@ const DOC_TYPES = {
     ],
     markers: ['ايبان', 'آيبان', 'IBAN', 'تعريف بالحساب', 'شهادة الحساب', 'ACCOUNT CERTIFICATE'],
   },
+
+  // ── مرفقات تابعة لمستند (subOf) ──────────────────────────────────────────
+  // لا تظهر في قائمة المرشح ولا تُطلب وحدها: تُرفع من داخل شاشة مستندها الأم،
+  // وتُقبل فقط إن كان الأم مطلوباً. تُحفظ صفوفاً عادية في onboarding_documents
+  // فيعمل عليها العرض والمراجعة والمزامنة بلا كود خاص.
+  bank_change_form: {
+    label: 'نموذج طلب التغيير (معبّأ وموقّع)',
+    icon: 'edit_document',
+    hint: 'النموذج بعد تعبئته وتوقيعه — صورة أو PDF.',
+    extra: true,
+    subOf: 'bank_change',
+    attachmentOnly: true,
+    fields: [],
+    markers: [],
+  },
+
+  bank_change_holder_id: {
+    label: 'هوية صاحب الحساب الجديد',
+    icon: 'badge',
+    hint: 'الهوية الوطنية لصاحب الحساب المحوَّل إليه — ولو كان الموظف نفسه.',
+    extra: true,
+    subOf: 'bank_change',
+    attachmentOnly: true,
+    fields: [],
+    markers: [],
+  },
 };
 
 const DOC_KEYS = Object.keys(DOC_TYPES);
-// الأساسية = ما يُطلب في كل ملف افتراضياً؛ الإضافية = ما يُطلب بقرار من فريق التوظيف
+// الأساسية = ما يُطلب في كل ملف افتراضياً؛ الإضافية = ما يُطلب بقرار من فريق التوظيف؛
+// التابعة (subOf) تتبع مستندها ولا تُدرج في أيٍّ من القائمتين.
 const BASE_KEYS  = DOC_KEYS.filter(k => !DOC_TYPES[k].extra);
-const EXTRA_KEYS = DOC_KEYS.filter(k => DOC_TYPES[k].extra);
+const EXTRA_KEYS = DOC_KEYS.filter(k => DOC_TYPES[k].extra && !DOC_TYPES[k].subOf);
 
 function fieldDef(docType, key) {
   return (DOC_TYPES[docType]?.fields || []).find(f => f.key === key) || null;

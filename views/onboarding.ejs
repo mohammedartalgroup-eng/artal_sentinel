@@ -13,7 +13,7 @@
           ظهر اسمها نصاً على الصفحة: الخط المُجزَّأ لا يحمل غير المذكور فيه. -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&icon_names=account_balance,account_circle,arrow_forward,autorenew,badge,check_circle,description,directions_car,error,home_pin,photo_camera,radio_button_unchecked,school,task_alt,upload_file,warning&display=swap" onload="this.onload=null;this.rel='stylesheet'"><noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&icon_names=account_balance,account_circle,arrow_forward,autorenew,badge,check_circle,description,directions_car,error,home_pin,photo_camera,radio_button_unchecked,school,task_alt,upload_file,warning&display=swap"></noscript>
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&icon_names=account_balance,account_circle,arrow_forward,autorenew,badge,check_circle,description,directions_car,download,edit_document,error,home_pin,medical_services,photo_camera,radio_button_unchecked,school,swap_horiz,task_alt,upload_file,verified_user,warning&display=swap" onload="this.onload=null;this.rel='stylesheet'"><noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&icon_names=account_balance,account_circle,arrow_forward,autorenew,badge,check_circle,description,directions_car,download,edit_document,error,home_pin,medical_services,photo_camera,radio_button_unchecked,school,swap_horiz,task_alt,upload_file,verified_user,warning&display=swap"></noscript>
 
   <!--
     ⚠️ هذه الصفحة تحمل تنسيقها بنفسها (بلا Tailwind المُجمَّع مسبقاً) عمداً:
@@ -105,6 +105,20 @@
     .spin{animation:spin 1s linear infinite;display:inline-block}
     @keyframes spin{to{transform:rotate(360deg)}}
 
+    /* نموذج ورقي يُحمَّل ويُعاد رفعه + مرفقات تابعة (تغيير الحساب البنكي) */
+    .formbox{border:1px solid #c9d7ee;background:#f3f6fb;border-radius:16px;padding:14px;margin-bottom:14px}
+    .formbox .fh{display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px}
+    .formbox p{margin:6px 0 12px;font-size:13px;color:var(--muted)}
+    .subtitle{font-size:13.5px;font-weight:700;margin:16px 0 8px}
+    .attach{border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-top:10px;background:#fff}
+    .attach .ah{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px}
+    .attach .ah .material-symbols-outlined{color:var(--navy-soft)}
+    .attach .ah .chip{margin-inline-start:auto}
+    .attach .hint{font-size:12.5px;color:var(--muted);margin:4px 0 10px}
+    .attach .btns{justify-content:flex-start}
+    .attach .btn{padding:9px 14px;font-size:13px}
+    .attach .thumb{margin-top:10px}
+    .attach .thumb img{max-height:160px}
     .thumb{margin-top:14px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#f8f9fb}
     .thumb img{display:block;width:100%;max-height:220px;object-fit:contain}
     .thumb .file{padding:12px 14px;font-size:13px;color:var(--muted)}
@@ -180,6 +194,19 @@
       <h2 id="d-title"></h2>
       <p class="hint" id="d-hint"></p>
 
+      <!-- نموذج ورقي للشركة: يُحمَّل ويُعبَّأ ويُوقَّع ثم يُعاد رفعه مرفقاً -->
+      <div class="formbox hidden" id="d-form">
+        <div class="fh"><span class="material-symbols-outlined">download</span> <span id="d-form-label"></span></div>
+        <p>حمّل النموذج وعبّئه ووقّعه، ثم ارفعه هنا مع صورة هوية صاحب الحساب.</p>
+        <a class="btn primary" id="d-form-link" target="_blank" rel="noopener" download>
+          <span class="material-symbols-outlined">download</span> اضغط للتحميل
+        </a>
+      </div>
+
+      <!-- مرفقات تابعة لهذا المستند (تُبنى من s.attachments) -->
+      <div id="d-attach" class="hidden"></div>
+      <div id="d-main-title" class="subtitle hidden"></div>
+
       <!-- ملف موجود من طلب التوظيف — لا نطلب رفع ما رُفع سابقاً -->
       <div class="have hidden" id="d-have">
         <div class="hh"><span class="material-symbols-outlined">check_circle</span> <span id="d-have-text"></span></div>
@@ -221,6 +248,7 @@ const TOKEN     = <%- JSON.stringify(token) %>;
 const AUTO_READ = <%- autoRead ? 'true' : 'false' %>;
 let STEPS       = <%- JSON.stringify(steps).replace(/</g, '\\u003c') %>;
 let current     = null;   // نوع المستند المفتوح حالياً
+let subTarget   = null;   // مرفق تابع يُرفع الآن (null = المستند الرئيسي)
 
 const $ = (id) => document.getElementById(id);
 const ICONS = { pending:'radio_button_unchecked', extracted:'warning', confirmed:'task_alt' };
@@ -293,6 +321,14 @@ function renderDoc() {
   const hasFile = s.hasFile;
   const haveOld = Boolean(s.existingUrl) && !hasFile;
 
+  // نموذج يُحمَّل + مرفقات تابعة (تغيير الحساب البنكي)
+  $('d-form').classList.toggle('hidden', !s.formUrl);
+  if (s.formUrl) { $('d-form-label').textContent = s.formLabel || 'النموذج'; $('d-form-link').href = s.formUrl; }
+  renderAttachments(s);
+  const hasAtt = Boolean(s.attachments && s.attachments.length);
+  $('d-main-title').classList.toggle('hidden', !hasAtt);
+  if (hasAtt) $('d-main-title').textContent = s.mainLabel || s.label;
+
   $('d-have').classList.toggle('hidden', !haveOld);
   if (haveOld) {
     $('d-have-text').textContent = 'لدينا ' + s.label + ' المرفقة بطلب التوظيف.';
@@ -334,6 +370,41 @@ function renderDoc() {
   $('d-confirm').textContent = s.status === 'confirmed' ? 'حفظ التعديلات' : 'تأكيد وحفظ';
 }
 
+// المرفقات التابعة: كل واحد صندوق رفع مستقل بحالته — لا يمرّ بالقراءة الآلية
+function renderAttachments(s) {
+  const box = $('d-attach');
+  const list = s.attachments || [];
+  box.classList.toggle('hidden', !list.length);
+  if (!list.length) { box.innerHTML = ''; return; }
+  box.innerHTML = list.map(a => {
+    const chip = a.hasFile ? '<span class="chip ok">مرفوع</span>' : '<span class="chip wait">لم يُرفع</span>';
+    const thumb = !a.hasFile ? '' : (/\.pdf$/i.test(a.fileName || '')
+      ? `<div class="thumb"><div class="file">📄 ${a.fileName || 'ملف PDF'}</div></div>`
+      : `<div class="thumb"><img src="/onboarding/${TOKEN}/file/${a.docId}" alt="${a.label}"></div>`);
+    return `
+      <div class="attach" id="att-${a.type}">
+        <div class="ah"><span class="material-symbols-outlined">${a.icon}</span><span>${a.label}</span>${chip}</div>
+        <div class="hint">${a.hint || ''}</div>
+        <div class="btns">
+          <button class="btn primary" onclick="pickSub('${a.type}', true)">
+            <span class="material-symbols-outlined">photo_camera</span> ${a.hasFile ? 'إعادة التصوير' : 'التقاط صورة'}
+          </button>
+          <button class="btn ghost" onclick="pickSub('${a.type}', false)">اختيار ملف</button>
+        </div>
+        <div class="status load hidden" id="att-st-${a.type}"><span class="material-symbols-outlined spin">autorenew</span><span>جاري الرفع…</span></div>
+        ${thumb}
+      </div>`;
+  }).join('');
+}
+
+function pickSub(type, camera) {
+  subTarget = type;
+  const input = $('filein');
+  if (camera) input.setAttribute('capture', 'environment'); else input.removeAttribute('capture');
+  input.value = '';
+  input.click();
+}
+
 function renderFields(s) {
   if (!s.hasFile) { $('d-fields').innerHTML = ''; return; }
   $('d-fields').innerHTML = s.fields.map(f => {
@@ -354,6 +425,7 @@ function renderFields(s) {
 
 // ─── الرفع ───────────────────────────────────────────────────────────────────
 function pick(camera) {
+  subTarget = null;
   const input = $('filein');
   if (camera) input.setAttribute('capture', 'environment'); else input.removeAttribute('capture');
   input.value = '';
@@ -363,6 +435,29 @@ function pick(camera) {
 $('filein').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file || !current) return;
+
+  // مرفق تابع: حالته في صندوقه هو، والخادم يعيد المستند الأم محدَّثاً
+  if (subTarget) {
+    const type = subTarget;
+    subTarget = null;
+    const ast = $('att-st-' + type);
+    if (ast) ast.classList.remove('hidden');
+    const fd = new FormData();
+    fd.append('doc_type', type);
+    fd.append('file', file);
+    try {
+      const r = await fetch(`/onboarding/${TOKEN}/upload`, { method: 'POST', body: fd });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'تعذّر الرفع');
+      STEPS = STEPS.map(s => s.type === j.step.type ? j.step : s);
+      renderDoc();
+      toast('تم رفع المرفق ✓');
+    } catch (err) {
+      if (ast) ast.classList.add('hidden');
+      toast(err.message);
+    }
+    return;
+  }
 
   const st = $('d-status');
   st.classList.remove('hidden');

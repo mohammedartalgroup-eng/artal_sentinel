@@ -385,6 +385,37 @@
             </div>
           </div>
 
+          <% if (s.formUrl || (s.attachments && s.attachments.length)) { %>
+            <!-- نموذج ورقي + مرفقات تابعة (تغيير الحساب البنكي): تُعرض ولو لم يُرفع المستند الرئيسي -->
+            <div class="mt-3 rounded-xl border border-[#eceef0] bg-[#f8f9fb] px-3 py-2.5 text-xs">
+              <% if (s.formUrl) { %>
+                <div class="flex items-center gap-2 flex-wrap mb-2">
+                  <span class="font-semibold text-[#001736]"><%= s.formLabel || 'النموذج' %>:</span>
+                  <a class="text-[#405f91] underline" href="<%= s.formUrl %>" target="_blank" rel="noopener">النموذج الفارغ (PDF)</a>
+                  <span class="ob-src">— يحمّله المرشح ويعبّئه ويوقّعه ثم يعيد رفعه</span>
+                </div>
+              <% } %>
+              <% (s.attachments || []).forEach(function (a) { %>
+                <div class="flex items-center gap-2 flex-wrap py-1.5 border-t border-[#eceef0]">
+                  <span class="material-symbols-outlined text-[#264778]" style="font-size:18px"><%= a.icon %></span>
+                  <span class="font-semibold text-[#001736]"><%= a.label %></span>
+                  <% if (a.hasFile) { %>
+                    <span class="ob-chip <%= a.review === 'red' ? 'r' : 'g' %>"><%= a.review === 'red' ? 'غير مقبول' : 'مرفوع' %></span>
+                    <% if (a.hrDecidedBy) { %><span class="ob-chip n">اعتمده <%= a.hrDecidedBy %></span><% } %>
+                    <a class="ob-btn s" style="padding:4px 10px" target="_blank" rel="noopener" href="/admin/onboarding/file/<%= a.docId %>">
+                      <span class="material-symbols-outlined" style="font-size:16px">visibility</span> عرض
+                    </a>
+                    <button class="ob-btn s" style="padding:4px 10px" onclick="review(<%= a.docId %>,'green')">مقبول</button>
+                    <button class="ob-btn d" style="padding:4px 10px" onclick="review(<%= a.docId %>,'red')">غير مقبول</button>
+                    <% if (a.hrNote) { %><span class="ob-src">— <%= a.hrNote %></span><% } %>
+                  <% } else { %>
+                    <span class="ob-chip n">لم يُرفع</span>
+                  <% } %>
+                </div>
+              <% }) %>
+            </div>
+          <% } %>
+
           <% if (s.hasFile) { %>
             <% if (s.warnings.length) { %>
               <div class="mt-3 text-xs bg-[#fef3c7] text-[#a16207] rounded-xl px-3 py-2 space-y-1">

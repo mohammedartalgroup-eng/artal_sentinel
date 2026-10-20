@@ -79,7 +79,10 @@ function defaultRequired(applicant) {
 // استطاع حامل الرابط رفع «تغيير حساب بنكي» لم يطلبه أحد فيُركَّب على ملفه.
 function docAllowed(session, docType) {
   if (!rules.DOC_KEYS.includes(docType)) return false;
-  return !rules.DOC_TYPES[docType].extra || requiredList(session).includes(docType);
+  const def = rules.DOC_TYPES[docType];
+  // المرفق التابع يتبع مستنده الأم: يُقبل إن كان الأم مطلوباً في هذه الرحلة
+  const owner = def.subOf || docType;
+  return !rules.DOC_TYPES[owner].extra || requiredList(session).includes(owner);
 }
 
 // المستندات الإضافية كما تعرضها النافذة: ما طُلب منها فعلاً وما لم يُطلب بعد.
@@ -126,10 +129,23 @@ function buildSteps(session, byType, fieldsByType, opts = {}) {
   // ورحلةٌ فُتحت لمستند إضافي وحده (بعد اكتمال الرحلة الأصلية) لا تعرض الأساسية
   // «اختيارية»: المرشح رفعها كلها من قبل، وعرضها فارغةً يوحي بأنها ضاعت.
   const baseWanted = required.some(t => !rules.DOC_TYPES[t].extra);
-  const visible = rules.DOC_KEYS.filter(t => required.includes(t) || (!rules.DOC_TYPES[t].extra && baseWanted));
+  const visible = rules.DOC_KEYS
+    .filter(t => !rules.DOC_TYPES[t].subOf)      // التابع يظهر داخل شاشة مستنده لا في القائمة
+    .filter(t => required.includes(t) || (!rules.DOC_TYPES[t].extra && baseWanted));
   return visible.map(type => {
     const def = rules.DOC_TYPES[type];
     const doc = byType[type] || null;
+    // مرفقات تابعة (نموذج موقّع، هوية صاحب الحساب…) — حالتها مع مستندها الأم
+    const attachments = (def.attachments || []).map(t => {
+      const sd = rules.DOC_TYPES[t];
+      const d = byType[t] || null;
+      return {
+        type: t, label: sd.label, icon: sd.icon, hint: sd.hint,
+        hasFile: Boolean(d), fileName: d?.original_name || null, docId: d?.id || null,
+        status: d ? d.status : 'pending', review: d ? d.review : null,
+        hrDecidedBy: d?.hr_decided_by || null, hrNote: d?.hr_note || null,
+      };
+    });
     const saved = fieldsByType[type] || {};
     // السيرة الذاتية المرفقة بطلب التوظيف تُحتسب موجودة — لا معنى لأن نطلب من
     // المرشح رفع ما رفعه قبل أسبوع. ويبقى بوسعه استبدالها بنسخة محدَّثة.
@@ -142,6 +158,10 @@ function buildSteps(session, byType, fieldsByType, opts = {}) {
       hint: def.hint,
       attachmentOnly: Boolean(def.attachmentOnly),
       extra: Boolean(def.extra),
+      formUrl: def.formUrl || null,
+      formLabel: def.formLabel || null,
+      mainLabel: def.mainLabel || null,
+      attachments,
       existingUrl,
       required: required.includes(type),
       status: doc ? doc.status : 'pending',
@@ -369,9 +389,10 @@ publicRouter.post('/:token/upload', uploadLimiter, resolveToken, (req, res, next
 
     const { byType, fieldsByType } = await loadDocs(s.id);
     const cv = await db.get('SELECT cv_path FROM applicants WHERE id = ?', [s.applicant_id]);
+    const ownerType = rules.DOC_TYPES[docType].subOf || docType;
     const step = buildSteps(s, byType, fieldsByType, {
       cvUrl: cv?.cv_path ? `/onboarding/${s.token}/cv` : null,
-    }).find(x => x.type === docType);
+    }).find(x => x.type === ownerType);
     res.json({ ok: true, step, progress: p.progress, autoRead: ocr.isConfigured() });
   } catch (err) {
     console.error('[Onboarding upload]', err.message);
