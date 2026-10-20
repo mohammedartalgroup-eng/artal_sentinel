@@ -571,6 +571,25 @@
       </form>
     </div>
 
+    <!-- Backup -->
+    <div class="bg-white rounded-2xl p-7">
+      <h2 class="font-bold text-[#001736] text-base mb-1 flex items-center gap-2">
+        <span class="material-symbols-outlined text-lg">cloud_download</span>
+        النسخ الاحتياطي
+      </h2>
+      <p class="text-xs text-[#43474f] mb-5 leading-relaxed">
+        ملف SQL مضغوط يحوي كل جداول قاعدة البيانات (المتقدمون، الملاحظات، المقابلات، الاستكمال، التوصيات، الإعدادات، سجل التدقيق).
+        يُستعاد بأمر mysql العادي. لا يشمل الملفات المرفوعة (السير الذاتية والمستندات) — تلك في مجلد الرفع على الخادم.
+        كل تنزيل يُسجَّل باسمك وسببك في سجل التدقيق.
+      </p>
+      <button type="button"
+              onclick="askDownloadReason({ url: '/admin/backup', method: 'POST', label: 'نسخة احتياطية كاملة من قاعدة البيانات — جميع الجداول', fallbackName: 'artal-sentinel-backup.sql.gz' })"
+              class="w-full bg-[#001736] text-white font-bold py-3.5 rounded-xl hover:bg-[#002b5b] transition-colors flex items-center justify-center gap-2">
+        <span class="material-symbols-outlined text-base">cloud_download</span>
+        تنزيل نسخة احتياطية الآن
+      </button>
+    </div>
+
     <!-- System Info -->
     <div class="bg-white rounded-2xl p-7">
       <h2 class="font-bold text-[#001736] text-base mb-4 flex items-center gap-2">
@@ -660,5 +679,6 @@
       .catch(() => { location.href = '/admin/settings?google=error'; });
   }
 </script>
+<%- include('partials/download-reason') %>
 </body>
 </html>

@@ -249,6 +249,45 @@ router.get('/diag/outbound', requireManager, async (req, res) => {
   }
 });
 
+// ─── نسخة احتياطية من قاعدة البيانات ─────────────────────────────────────────
+//  للمديرين فقط، بسبب مكتوب يُسجَّل في التدقيق (نفس نافذة سبب التحميل): ملف يحوي
+//  هويات وجوالات كل المتقدمين لا يخرج بصمت. POST لا GET حتى لا يُنزَّل بمجرد
+//  فتح رابط. الناتج .sql.gz يُستعاد بـ mysql العادي.
+const backupLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000, max: 5,
+  message: { error: 'محاولات كثيرة — انتظر قليلاً' },
+  standardHeaders: true, legacyHeaders: false,
+});
+router.post('/backup', requireManager, backupLimiter, async (req, res) => {
+  const reason = String(req.body?.reason || '').replace(/\s+/g, ' ').trim();
+  if (reason.length < 10) return res.status(400).json({ error: 'اكتب سبباً واضحاً — 10 أحرف على الأقل' });
+
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 13);
+  const fileName = `artal-sentinel-backup-${stamp}.sql.gz`;
+  const gz = require('zlib').createGzip({ level: 6 });
+  try {
+    res.set({
+      'Content-Type': 'application/gzip',
+      'Content-Disposition': `attachment; filename="${fileName}"`,
+      'X-Filename': encodeURIComponent(fileName),
+      'Cache-Control': 'no-store',
+    });
+    gz.pipe(res);
+    const counts = await require('../utils/dbDump').writeDump(gz);
+    gz.end();
+    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    const detail = `${reason} — ${Object.keys(counts).length} جدول، ${total} صف`;
+    await db.audit(req.session.adminId, req.session.adminUser, 'db_backup', 'system', null, fileName, detail.slice(0, 500), req.ip);
+    console.log(`[Backup] ${req.session.adminUser}: ${detail}`);
+  } catch (err) {
+    console.error('[Backup]', err.message);
+    db.audit(req.session.adminId, req.session.adminUser, 'db_backup_failed', 'system', null, fileName, err.message.slice(0, 500), req.ip).catch(() => {});
+    // الترويسات خرجت؟ لا يمكن إرسال JSON — نقطع التدفّق ليعرف المتصفح أن الملف ناقص
+    if (res.headersSent) { gz.destroy(); res.destroy(); return; }
+    res.status(500).json({ error: 'تعذّر إنشاء النسخة الاحتياطية' });
+  }
+});
+
 // Root redirect
 router.get('/', (req, res) => res.redirect('/admin/dashboard'));
 
