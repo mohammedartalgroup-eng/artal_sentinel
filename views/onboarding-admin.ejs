@@ -101,7 +101,14 @@
             <button class="ob-btn s" onclick="copyLink()">
               <span class="material-symbols-outlined" style="font-size:18px">content_copy</span> نسخ
             </button>
-            <% if (waReady) { %>
+            <% const linkDead = Boolean(session.revoked_at) || Boolean(session.expires_at && new Date(session.expires_at) < new Date()); %>
+            <% if (linkDead) { %>
+            <!-- الرابط موقوف أو منتهٍ: الإرسال هنا كان يُنشئ رحلة جديدة فارغة وتختفي المستندات
+                 المرفوعة مع القديمة — فالمخرج الصحيح إعادة تفعيل الرابط نفسه -->
+            <button class="ob-btn p" onclick="reactivateLink(<%= session.id %>)">
+              <span class="material-symbols-outlined" style="font-size:18px">restart_alt</span> إعادة تفعيل الرابط
+            </button>
+            <% } else if (waReady) { %>
             <!-- القالب المعتمد في ميتا — يصل المتقدم حتى خارج نافذة الـ24 ساعة -->
             <button class="ob-btn p" onclick="obSend(this)">
               <span class="material-symbols-outlined" style="font-size:18px">send</span> إرسال بواتساب
@@ -116,7 +123,9 @@
                href="https://wa.me/<%= String(applicant.phone||'').replace(/^0/,'966') %>?text=<%= encodeURIComponent(`مرحباً ${String(applicant.full_name||'').split(' ')[0]}،\nلاستكمال ملفك الوظيفي في شركة أرتال، افتح الرابط التالي وارفع المستندات المطلوبة:\n${link}`) %>">
               <span class="material-symbols-outlined" style="font-size:18px">chat</span> واتساب يدوي
             </a>
+            <% if (!linkDead) { %>
             <button class="ob-btn d" onclick="revokeLink(<%= session.id %>)">إيقاف الرابط</button>
+            <% } %>
           </div>
         </div>
         <div class="ob-link" id="ob-link"><%= link %></div>
@@ -795,8 +804,17 @@ function copyLink() {
     .then(() => alert('تم نسخ الرابط'));
 }
 
+// يعيد الرابط نفسه إلى العمل مع كل المستندات المرفوعة — لا رابطاً جديداً
+async function reactivateLink(id) {
+  if (!confirm('إعادة تفعيل الرابط؟ يعود نفس الرابط للعمل 30 يوماً من الآن، وتبقى المستندات المرفوعة كما هي.')) return;
+  const r = await fetch('/admin/onboarding/reactivate/' + id, { method: 'POST' });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) return alert(j.error || 'تعذّرت إعادة التفعيل');
+  location.reload();
+}
+
 async function revokeLink(id) {
-  if (!confirm('إيقاف الرابط؟ لن يستطيع المرشح فتحه بعدها — وتبقى مستنداته المرفوعة كما هي.')) return;
+  if (!confirm('إيقاف الرابط؟ لن يستطيع المرشح فتحه بعدها — وتبقى مستنداته المرفوعة كما هي. يمكن إعادة تفعيله لاحقاً من الزر نفسه.')) return;
   const r = await fetch('/admin/onboarding/revoke/' + id, { method: 'POST' });
   if (!r.ok) return alert('تعذّر الإيقاف');
   location.reload();

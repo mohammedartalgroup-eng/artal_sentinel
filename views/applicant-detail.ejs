@@ -554,7 +554,11 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
                 + '<div style="height:100%;border-radius:99px;background:#001736;width:' + d.progress + '%"></div></div>'
                 + '<div class="flex flex-wrap gap-1.5 mt-3">' + chips + '</div>'
                 + (d.needsReview ? '<div class="text-[11px] text-[#a16207] mt-2">' + d.needsReview + ' مستند يحتاج مراجعتك</div>' : '')
-                + (d.revoked ? '<div class="text-[11px] text-[#ba1a1a] mt-2">الرابط موقوف</div>' : '')
+                + ((d.revoked || d.expired)
+                    ? '<div class="text-[11px] text-[#ba1a1a] mt-2">' + (d.revoked ? 'الرابط موقوف' : 'انتهت صلاحية الرابط') + '</div>'
+                      + '<button onclick="obReactivate(' + d.sessionId + ',this)" class="w-full text-sm font-semibold py-2.5 rounded-xl bg-[#001736] text-white mt-2 flex items-center justify-center gap-2">'
+                      + '<span class="material-symbols-outlined text-base">restart_alt</span> إعادة تفعيل الرابط نفسه</button>'
+                    : '')
                 + '<a href="/admin/onboarding/view/' + id + '" class="block text-center w-full text-sm font-semibold py-2.5 rounded-xl bg-[#eef2f7] text-[#001736] mt-3">'
                 + 'فتح الملف والمرفقات</a>'
                 + (d.waReady && !d.revoked ? '<button onclick="obSend(' + id + ',this)" class="w-full text-sm font-semibold py-2.5 rounded-xl border border-[#e0e3e5] text-[#43474f] mt-2 flex items-center justify-center gap-2">'
@@ -607,6 +611,16 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
             el.replaceChildren(frag);
           });
         })();
+
+        // الرابط نفسه يعود للعمل بمستنداته — بدل رحلة جديدة فارغة
+        async function obReactivate(sessionId, btn) {
+          if (!confirm('إعادة تفعيل الرابط؟ يعود نفس الرابط للعمل 30 يوماً من الآن، وتبقى المستندات المرفوعة كما هي.')) return;
+          btn.disabled = true;
+          const r = await fetch('/admin/onboarding/reactivate/' + sessionId, { method: 'POST' });
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok) { btn.disabled = false; return alert(j.error || 'تعذّرت إعادة التفعيل'); }
+          location.reload();
+        }
 
         async function obCreate(id) {
           const r = await fetch('/admin/onboarding/create/' + id, { method: 'POST' });

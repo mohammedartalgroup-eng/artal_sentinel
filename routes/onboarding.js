@@ -748,13 +748,70 @@ adminRouter.post('/request-extra/:applicantId', sendLimiter, async (req, res) =>
   }
 });
 
+// ─── إيقاف الرابط وإعادة تفعيله ──────────────────────────────────────────────
+//  الإيقاف يُبطل الرابط ويُبقي المستندات. وإعادة التفعيل تعيد **الرابط نفسه** إلى
+//  العمل — لا رابطاً جديداً: الرابط الجديد يعني رحلة جديدة فارغة، والمستندات
+//  المرفوعة تبقى معلّقة بالرحلة القديمة التي لا تظهر. هذا بالضبط ما يحدث حين
+//  يُوقَف رابط بالخطأ ثم يُضغط «إرسال» — فصار للإيقاف عكسٌ صريح.
+async function sessionAction(req, res) {
+  const s = await db.get('SELECT * FROM onboarding_sessions WHERE id = ?', [req.params.sessionId]);
+  if (!s) { res.status(404).json({ error: 'الرحلة غير موجودة' }); return null; }
+  const applicant = await db.get('SELECT id, full_name FROM applicants WHERE id = ?', [s.applicant_id]);
+  return { s, applicant: applicant || { id: s.applicant_id, full_name: null } };
+}
+const isDead = (s) => Boolean(s.revoked_at) || Boolean(s.expires_at && new Date(s.expires_at) < new Date());
+
 adminRouter.post('/revoke/:sessionId', async (req, res) => {
   if (!featureOn()) return res.status(503).json({ error: 'الميزة غير مفعّلة' });
   try {
-    await db.run('UPDATE onboarding_sessions SET revoked_at = NOW() WHERE id = ?', [req.params.sessionId]);
+    const ctx = await sessionAction(req, res);
+    if (!ctx) return;
+    await db.run('UPDATE onboarding_sessions SET revoked_at = NOW() WHERE id = ?', [ctx.s.id]);
+    const actor = req.session?.adminName || req.session?.adminUser || null;
+    db.logActivity(ctx.applicant.id, 'إيقاف رابط الاستكمال', null, null, actor).catch(() => {});
+    db.audit(req.session?.adminId, req.session?.adminUser || 'system', 'onboarding_revoke',
+      'applicant', ctx.applicant.id, ctx.applicant.full_name, `الرحلة #${ctx.s.id}`, req.ip).catch(() => {});
     res.json({ ok: true });
   } catch (err) {
+    console.error('[Onboarding revoke]', err.message);
     res.status(500).json({ error: 'تعذّر الإيقاف' });
+  }
+});
+
+adminRouter.post('/reactivate/:sessionId', async (req, res) => {
+  if (!featureOn()) return res.status(503).json({ error: 'الميزة غير مفعّلة' });
+  try {
+    const ctx = await sessionAction(req, res);
+    if (!ctx) return;
+    const { s, applicant } = ctx;
+
+    // الواجهتان تعرضان آخر رحلة فقط — إحياء رحلة أقدم يصنع رابطين حيّين لا يُرى أحدهما
+    const latest = await db.get('SELECT id FROM onboarding_sessions WHERE applicant_id = ? ORDER BY id DESC LIMIT 1', [s.applicant_id]);
+    if (latest && latest.id !== s.id) return res.status(409).json({ error: 'هذه ليست آخر رحلة لهذا المتقدم — لا يمكن إعادة تفعيلها' });
+    if (!isDead(s)) return res.status(409).json({ error: 'الرابط يعمل بالفعل' });
+
+    // نفس الرمز، وصلاحية لا تقلّ عن 30 يوماً من الآن (المنتهي يُمدَّد، والساري يبقى)
+    await db.run(
+      `UPDATE onboarding_sessions
+          SET revoked_at = NULL,
+              expires_at = GREATEST(COALESCE(expires_at, NOW()), DATE_ADD(NOW(), INTERVAL ? DAY))
+        WHERE id = ?`,
+      [LINK_DAYS, s.id]
+    );
+    const fresh = await db.get('SELECT expires_at, token FROM onboarding_sessions WHERE id = ?', [s.id]);
+    const link = publicLink(req, fresh.token);
+    const actor = req.session?.adminName || req.session?.adminUser || null;
+    const why = s.revoked_at ? 'كان موقوفاً' : 'كان منتهي الصلاحية';
+    db.run('INSERT INTO applicant_notes (applicant_id, content, type, user_name) VALUES (?, ?, ?, ?)',
+      [applicant.id, `أُعيد تفعيل رابط الاستكمال (${why}) — ${link}`, 'follow_up', actor]).catch(() => {});
+    db.logActivity(applicant.id, 'إعادة تفعيل رابط الاستكمال', null, why, actor).catch(() => {});
+    db.audit(req.session?.adminId, req.session?.adminUser || 'system', 'onboarding_reactivate',
+      'applicant', applicant.id, applicant.full_name, `الرحلة #${s.id} — ${why} — ${link}`, req.ip).catch(() => {});
+
+    res.json({ ok: true, link, expiresAt: fresh.expires_at });
+  } catch (err) {
+    console.error('[Onboarding reactivate]', err.message);
+    res.status(500).json({ error: 'تعذّرت إعادة التفعيل' });
   }
 });
 
