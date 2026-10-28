@@ -567,19 +567,35 @@ async function ensureSession(req, applicant, { required } = {}) {
     'SELECT * FROM onboarding_sessions WHERE applicant_id = ? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > NOW()) ORDER BY id DESC LIMIT 1',
     [applicant.id]
   );
-  if (live) return { token: live.token, reused: true };
+  if (live) return { token: live.token, reused: true, revived: false, sessionId: live.id };
 
   const token = newToken();
   const expires = new Date(Date.now() + LINK_DAYS * 86400000);
-  await db.run(
+  const actor = req.session?.adminName || req.session?.adminUser || null;
+
+  // رحلة ميتة (موقوفة أو منتهية)؟ تُحيا برمز جديد وتبقى مستنداتها وحقولها كلها.
+  // رحلة جديدة فارغة كانت تعني أن ما رفعه المرشح يختفي عن الواجهتين مع القديمة —
+  // وهو ما حدث فعلاً. الرمز يتغيّر عمداً: الرابط القديم (ربما سُرّب فأُوقف) يبقى ميتاً.
+  const dead = await db.get('SELECT * FROM onboarding_sessions WHERE applicant_id = ? ORDER BY id DESC LIMIT 1', [applicant.id]);
+  if (dead) {
+    await db.run(
+      'UPDATE onboarding_sessions SET token = ?, revoked_at = NULL, expires_at = ?, created_by = COALESCE(created_by, ?) WHERE id = ?',
+      [token, expires, actor, dead.id]
+    );
+    db.audit(req.session?.adminId, req.session?.adminUser || 'system', 'onboarding_link',
+      'applicant', applicant.id, applicant.full_name, `أُحييت الرحلة #${dead.id} برمز جديد — صلاحية ${LINK_DAYS} يوماً`, req.ip).catch(() => {});
+    return { token, reused: false, revived: true, sessionId: dead.id };
+  }
+
+  const ins = await db.run(
     `INSERT INTO onboarding_sessions (applicant_id, token, status, required_docs, expires_at, created_by)
      VALUES (?, ?, 'not_started', ?, ?, ?)`,
-    [applicant.id, token, required || defaultRequired(applicant), expires, req.session?.adminName || req.session?.adminUser || null]
+    [applicant.id, token, required || defaultRequired(applicant), expires, actor]
   );
   // التدقيق يمرّ بنفس مسار النظام — إنشاء رابط يفتح ملفاً شخصياً حدثٌ يُسجَّل.
   db.audit(req.session?.adminId, req.session?.adminUser || 'system', 'onboarding_link',
     'applicant', applicant.id, applicant.full_name, `صلاحية ${LINK_DAYS} يوماً`, req.ip).catch(() => {});
-  return { token, reused: false };
+  return { token, reused: false, revived: false, sessionId: ins.insertId };
 }
 
 adminRouter.post('/create/:applicantId', async (req, res) => {
@@ -587,8 +603,8 @@ adminRouter.post('/create/:applicantId', async (req, res) => {
   try {
     const applicant = await db.get('SELECT id, full_name, phone, has_license FROM applicants WHERE id = ?', [req.params.applicantId]);
     if (!applicant) return res.status(404).json({ error: 'المتقدم غير موجود' });
-    const { token, reused } = await ensureSession(req, applicant);
-    res.json({ ok: true, link: publicLink(req, token), reused });
+    const { token, reused, revived } = await ensureSession(req, applicant);
+    res.json({ ok: true, link: publicLink(req, token), reused, revived });
   } catch (err) {
     console.error('[Onboarding create]', err.message);
     res.status(500).json({ error: 'تعذّر إنشاء الرابط' });
@@ -625,7 +641,7 @@ adminRouter.post('/send/:applicantId', sendLimiter, async (req, res) => {
       return res.status(409).json({ error: 'لم يُحدَّد اسم قالب الاستكمال في الإعدادات' });
     }
 
-    const { token, reused } = await ensureSession(req, applicant);
+    const { token, reused, revived } = await ensureSession(req, applicant);
     const link = publicLink(req, token);
     const job = String(req.body?.job || '').trim().slice(0, 100);
 
@@ -642,7 +658,7 @@ adminRouter.post('/send/:applicantId', sendLimiter, async (req, res) => {
     //  والرابط نفسه داخل الملاحظة عمداً: هو ما أُرسل فعلاً، ووجوده في السجل
     //  يعني أن أي موظف يفتح الملف بعد أسبوع يستطيع فتحه أو إعادة إرساله بلا
     //  البحث عنه في مكان آخر.
-    const line = `${tpl.noteLabel} عبر واتساب${reused ? '' : ' (رابط جديد)'} — ${link}`;
+    const line = `${tpl.noteLabel} عبر واتساب${reused ? '' : (revived ? ' (أُحيي الرابط برمز جديد — المستندات السابقة باقية)' : ' (رابط جديد)')} — ${link}`;
     db.run('INSERT INTO applicant_notes (applicant_id, content, type, user_name) VALUES (?, ?, ?, ?)',
       [applicant.id, line, 'follow_up', req.session?.adminName || null]).catch(e => console.error('[Onboarding send] note:', e.message));
     db.logActivity(applicant.id, tpl.noteLabel, null, `واتساب — ${link}`.slice(0, 255), req.session?.adminName || null)
@@ -680,23 +696,22 @@ adminRouter.post('/request-extra/:applicantId', sendLimiter, async (req, res) =>
     );
     if (!applicant) return res.status(404).json({ error: 'المتقدم غير موجود' });
 
-    // رحلة جديدة لمن أكمل رحلته السابقة ثم انتهى رابطها: المطلوب هو الإضافي
-    // وحده — لا نعيد طلب هويته وعنوانه لأن رابطاً قديماً انتهى.
-    const prev = await db.get('SELECT progress FROM onboarding_sessions WHERE applicant_id = ? ORDER BY id DESC LIMIT 1', [applicant.id]);
-    const base = prev && Number(prev.progress) >= 100 ? [] : rules.BASE_KEYS;
-    const { token, reused } = await ensureSession(req, applicant, { required: [...base, ...docs].join(',') });
+    // الرحلة القائمة أو المُحياة تحتفظ بكل مستنداتها ويُضاف إليها المطلوب؛ ولا تُفتح
+    // رحلة جديدة (أساسية + إضافية) إلا لمن لم يكن له رحلة قط.
+    const { token, reused, revived } = await ensureSession(req, applicant, { required: [...rules.BASE_KEYS, ...docs].join(',') });
     let s = await db.get('SELECT * FROM onboarding_sessions WHERE token = ?', [token]);
 
-    // الجلسة القائمة: نضمّ الجديد إلى المطلوب ونمدّ الصلاحية — طلبٌ اليوم على
-    // رابط ينتهي غداً يصل المرشح ميتاً. ويعاد حساب التقدّم: ملف كان 100% صار ناقصاً.
+    // نضمّ الجديد إلى المطلوب ونمدّ الصلاحية — طلبٌ اليوم على رابط ينتهي غداً يصل
+    // المرشح ميتاً. ويعاد حساب التقدّم: ملف كان 100% صار ناقصاً.
     const have = requiredList(s);
-    const added = reused ? docs.filter(t => !have.includes(t)) : docs;
+    const missing = docs.filter(t => !have.includes(t));
+    const added = (reused || revived) ? missing : docs;
     let progress = s.progress;
-    if (reused) {
+    if (reused || revived) {
       const minExpiry = new Date(Date.now() + LINK_DAYS * 86400000);
       await db.run(
         'UPDATE onboarding_sessions SET required_docs = ?, expires_at = GREATEST(COALESCE(expires_at, ?), ?) WHERE id = ?',
-        [[...have, ...added].join(','), minExpiry, minExpiry, s.id]
+        [[...have, ...missing].join(','), minExpiry, minExpiry, s.id]
       );
       s = await db.get('SELECT * FROM onboarding_sessions WHERE id = ?', [s.id]);
       progress = (await recomputeProgress(s)).progress;
@@ -733,7 +748,7 @@ adminRouter.post('/request-extra/:applicantId', sendLimiter, async (req, res) =>
     // السجل: ما طُلب، وهل وصل، والرابط — حتى يراه أي موظف يفتح الملف لاحقاً.
     const how = !wantSend ? 'بلا إرسال'
       : (sent ? `عبر واتساب${via === 'onboarding' ? ' (بقالب رابط الاستكمال)' : ''}` : `لم يُرسل: ${reason}`);
-    const line = `طلب بيانات إضافية (${docsText}) — ${how} — ${link}`;
+    const line = `طلب بيانات إضافية (${docsText}) — ${how}${revived ? ' — أُحيي الرابط برمز جديد والمستندات السابقة باقية' : ''} — ${link}`;
     db.run('INSERT INTO applicant_notes (applicant_id, content, type, user_name) VALUES (?, ?, ?, ?)',
       [applicant.id, line, 'follow_up', actor]).catch(e => console.error('[Onboarding extra] note:', e.message));
     db.logActivity(applicant.id, 'طلب بيانات إضافية', null, `${docsText} — ${how}`.slice(0, 255), actor)
@@ -741,7 +756,7 @@ adminRouter.post('/request-extra/:applicantId', sendLimiter, async (req, res) =>
     db.audit(req.session?.adminId, req.session?.adminUser || 'system', 'onboarding_extra',
       'applicant', applicant.id, applicant.full_name, line.slice(0, 500), req.ip).catch(() => {});
 
-    res.json({ ok: true, sent, via, reason, sentTo, link, added, progress, newSession: !reused });
+    res.json({ ok: true, sent, via, reason, sentTo, link, added, progress, newSession: !reused && !revived, revived });
   } catch (err) {
     console.error('[Onboarding request-extra]', err.message);
     res.status(500).json({ error: 'خطأ غير متوقع' });

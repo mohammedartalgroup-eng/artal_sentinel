@@ -217,10 +217,83 @@ async function init() {
   }
 }
 
+// ─── ترحيل: مستندات يتيمة في رحلة قديمة ─────────────────────────────────────
+//  قبل إصدار 2026-10-28، إيقاف الرابط ثم «إرسال» أو «طلب بيانات إضافية» كان يفتح
+//  رحلة جديدة فارغة وتبقى المستندات معلّقة بالقديمة التي لا تُعرض — فبدا للموظف
+//  أن كل ما رُفع ضاع. الآن الرحلة الميتة تُحيا بدل أن تُستبدل، وهذا الترحيل يضمّ
+//  ما سبق أن تيتّم: إن كانت آخر رحلة بلا مستند واحد وقبلها رحلة فيها مستندات،
+//  تُنقل المستندات والحقول وبيانات التوظيف إلى الأخيرة ويُدمج المطلوب ويُعاد حساب
+//  التقدّم. يُشغَّل مع كل إقلاع ولا يفعل شيئاً إن لم يجد — وآمن مع نسختين تعملان
+//  معاً: قفل الصفّين ثم إعادة الفحص داخل المعاملة.
+async function adoptOrphanDocs() {
+  const rules = require('../utils/docRules');
+  let pairs = [];
+  try {
+    pairs = await db.all(`
+      SELECT l.id AS latest_id, p.id AS prev_id
+        FROM onboarding_sessions l
+        JOIN onboarding_sessions p ON p.applicant_id = l.applicant_id AND p.id < l.id
+       WHERE l.id = (SELECT MAX(id) FROM onboarding_sessions WHERE applicant_id = l.applicant_id)
+         AND p.id = (SELECT MAX(x.id) FROM onboarding_sessions x
+                      WHERE x.applicant_id = l.applicant_id AND x.id < l.id
+                        AND EXISTS (SELECT 1 FROM onboarding_documents d WHERE d.session_id = x.id))
+         AND NOT EXISTS (SELECT 1 FROM onboarding_documents d WHERE d.session_id = l.id)`);
+  } catch (e) {
+    console.error('[Onboarding] adopt scan:', e.message);
+    return;
+  }
+
+  for (const pr of pairs) {
+    const conn = await db.getConnection();
+    try {
+      await conn.beginTransaction();
+      const [[latest]] = await conn.query('SELECT * FROM onboarding_sessions WHERE id = ? FOR UPDATE', [pr.latest_id]);
+      const [[prev]]   = await conn.query('SELECT * FROM onboarding_sessions WHERE id = ? FOR UPDATE', [pr.prev_id]);
+      const [[{ n }]]  = await conn.query('SELECT COUNT(*) AS n FROM onboarding_documents WHERE session_id = ?', [pr.latest_id]);
+      if (!latest || !prev || n > 0) { await conn.rollback(); continue; }   // سبقتنا النسخة الأخرى
+
+      await conn.query('UPDATE onboarding_documents SET session_id = ? WHERE session_id = ?', [latest.id, prev.id]);
+      // الحقول: عند تعارض على نفس الحقل يبقى ما في الأخيرة (الأحدث) ويُهمل القديم
+      await conn.query('UPDATE IGNORE onboarding_fields SET session_id = ? WHERE session_id = ?', [latest.id, prev.id]);
+      await conn.query('DELETE FROM onboarding_fields WHERE session_id = ?', [prev.id]);
+      const [[empLatest]] = await conn.query('SELECT id FROM onboarding_employment WHERE session_id = ?', [latest.id]);
+      if (!empLatest) {
+        await conn.query('UPDATE onboarding_employment SET session_id = ? WHERE session_id = ?', [latest.id, prev.id]);
+      }
+
+      const want = new Set([...String(prev.required_docs || '').split(','), ...String(latest.required_docs || '').split(',')].filter(Boolean));
+      const required = rules.DOC_KEYS.filter(k => want.has(k));
+      const [done] = await conn.query(
+        "SELECT doc_type FROM onboarding_documents WHERE session_id = ? AND is_current = 1 AND status = 'confirmed'", [latest.id]
+      );
+      const doneSet = new Set(done.map(d => d.doc_type));
+      const completed = required.filter(t => doneSet.has(t)).length;
+      const progress = required.length ? Math.round((completed / required.length) * 100) : 0;
+      await conn.query(
+        'UPDATE onboarding_sessions SET required_docs = ?, progress = ?, status = ?, completed_at = ? WHERE id = ?',
+        [required.join(','), progress, progress >= 100 ? 'submitted' : 'in_progress', progress >= 100 ? new Date() : null, latest.id]
+      );
+      await conn.query(
+        'INSERT INTO applicant_notes (applicant_id, content, type, user_name) VALUES (?, ?, ?, ?)',
+        [latest.applicant_id, `ضُمّت مستندات رحلة الاستكمال السابقة (#${prev.id}) إلى الرابط الحالي — لم يضع شيء`, 'note', 'النظام']
+      );
+      await conn.commit();
+      console.log(`[Onboarding] adopt: applicant #${latest.applicant_id} — session #${prev.id} → #${latest.id} (${progress}%)`);
+    } catch (e) {
+      await conn.rollback().catch(() => {});
+      console.error('[Onboarding] adopt failed:', e.message);
+    } finally {
+      conn.release();
+    }
+  }
+}
+
 // لا await ولا process.exit — الفشل يُسجَّل ويُعطِّل الميزة وحدها.
-init().catch(err => {
-  state.error = err.message;
-  console.error('[DB] Onboarding schema failed — ميزة الاستكمال معطّلة، وبقية النظام يعمل:', err.message);
-});
+init()
+  .then(adoptOrphanDocs)
+  .catch(err => {
+    state.error = err.message;
+    console.error('[DB] Onboarding schema failed — ميزة الاستكمال معطّلة، وبقية النظام يعمل:', err.message);
+  });
 
 module.exports = { state, db };
