@@ -1,6 +1,6 @@
 /**
  * notify.js
- * إشعار المتقدم بموعد مقابلته — واتساب (Chatwoot) وبريد (SMTP) معاً.
+ * إشعار المتقدم بموعد مقابلته — واتساب (Chatwoot أو OpenWA حسب الإعدادات) وبريد (SMTP) معاً.
  *
  * ⚠️ العقد الأهم في هذا الملف: **لا يرمي أبداً**. يُنادى بعد أن يكون اجتماع
  *    Google قد أُنشئ فعلاً، فلا يجوز لفشل رسالة أن يُفشل الجدولة أو يحذف
@@ -13,6 +13,7 @@
 const db       = require('../database/db');
 const mailer   = require('./mailer');
 const chatwoot = require('./chatwoot');
+const openwa   = require('./openwa');
 const waGroup  = require('./waGroup');
 const M        = require('./interviewMsg');
 
@@ -22,6 +23,21 @@ const clip = (s, n = 255) => String(s == null ? '' : s).slice(0, n);
 // سبب موحّد لتأجيل الإشعار حين يتأخر رابط Meet عند Google — يظهر للموظف في
 // شارة القناة نصاً، فيعرف أن الرسالة لم تخرج أصلاً (لا أنها خرجت ناقصة)
 const NO_LINK_REASON = 'رابط Meet لم يجهز بعد — يُرسل الإشعار تلقائياً عند وصوله، أو حدّث الرابط ثم أعد الإرسال';
+
+// ─── مزوّد الإرسال ───────────────────────────────────────────────────────────
+//  Chatwoot (قوالب معتمدة — الافتراضي) أو OpenWA (رقم واتساب عادي، نص حر).
+//  الاختيار من الإعدادات، وكل ما عدا الإرسال نفسه مشترك: القالب واسمه
+//  ومتغيّراته، والتسجيل، وفحص التسليم.
+const waProvider = (settings) => (settings?.wa_provider === 'openwa' ? 'openwa' : 'chatwoot');
+
+/** هل مزوّد الإرسال المختار مهيأ؟ — يحل محل chatwoot.isConfigured() في المسارات */
+function waReady(settings) {
+  return waProvider(settings) === 'openwa' ? openwa.isConfigured() : chatwoot.isConfigured();
+}
+
+function waNotReadyReason(settings) {
+  return waProvider(settings) === 'openwa' ? 'تكامل OpenWA غير مهيأ' : 'تكامل Chatwoot غير مهيأ';
+}
 
 // ─── قراءة إعداد القالب لنوع إشعار معيّن ─────────────────────────────────────
 function templateFor(settings, kind) {
@@ -59,9 +75,12 @@ function msgOpts(interview, settings) {
  * لا يرمي: تعذّر القراءة يُرجع { ok:true } بالنص الاحتياطي، فانقطاع مؤقت
  * في Chatwoot لا يمنع محاولة الإرسال.
  *
+ * full = القالب كاملاً بعنوانه وتذييله وأزراره — لمزوّد النص الحر (OpenWA)
+ *        حيث هذا النص هو ما يصل المتقدم فعلاً لا ما يراه الوكيل فقط.
+ *
  * @returns {{ok:boolean, reason?:string, content?:string}}
  */
-async function resolveTemplateBody(tpl, params, fallbackText) {
+async function resolveTemplateBody(tpl, params, fallbackText, { full = false } = {}) {
   try {
     const found = await chatwoot.findTemplate(tpl.name, tpl.language, { inbox: tpl.inbox });
     if (!found) {
@@ -81,12 +100,52 @@ async function resolveTemplateBody(tpl, params, fallbackText) {
         reason: `عدد المتغيّرات لا يطابق القالب: يحتاج ${need} ونرسل ${have} — صحّح «ترتيب المتغيّرات» في الإعدادات`,
       };
     }
-    return { ok: true, content: chatwoot.renderTemplate(found, params) };
+    return { ok: true, content: (full ? chatwoot.renderFullText : chatwoot.renderTemplate)(found, params) };
   } catch (e) {
     console.error('[Notify] template lookup:', e.message);
     return { ok: true, content: fallbackText };   // انقطاع مؤقت — لا نمنع الإرسال
   }
 }
+
+/**
+ * يحسم نص القالب ثم يرسله عبر مزوّد الإرسال المختار.
+ *
+ * OpenWA بلا قوالب: يصل المتقدم نص القالب المعتمد نفسه مقروءاً من Chatwoot
+ * ومعبّأً، فلا تتغيّر الرسالة بتغيّر المزوّد. والتعبئة فيه بالترقيم دائماً —
+ * «بنية المكوّنات» شكلٌ يخص Chatwoot وحده.
+ *
+ * يرمي عند فشل الإرسال نفسه (كما يرمي chatwoot.sendTemplate)، ويُرجع
+ * { skipped } حين يُمنع قبل الإرسال.
+ *
+ * @returns {Promise<{skipped?:string, ref?:string, track?:object}>}
+ *          track = ما يحتاجه فحص التسليم المؤجَّل (watchDelivery)
+ */
+async function sendTemplateVia({ recipient, tpl, vars, fallback, settings }) {
+  const viaOpenwa = waProvider(settings) === 'openwa';
+  const params = M.buildProcessedParams(vars, tpl.vars, viaOpenwa ? 'numbered' : tpl.shape);
+
+  const body = await resolveTemplateBody(tpl, params, fallback, { full: viaOpenwa });
+  if (!body.ok) return { skipped: body.reason };
+
+  if (viaOpenwa) {
+    const r = await openwa.sendText({ phone: recipient.phone, text: body.content });
+    return { ref: `owa:${r.messageId}`, track: r };
+  }
+
+  const r = await chatwoot.sendTemplate({
+    name: recipient.full_name, phone: recipient.phone, content: body.content,
+    inbox: tpl.inbox,
+    template: {
+      name: tpl.name, language: tpl.language, category: tpl.category,
+      processed_params: params,
+    },
+  });
+  return { ref: r.conversationId ? `conv:${r.conversationId}` : '', track: r };
+}
+
+// حالة رسالة أُرسلت — من المزوّد الذي أرسلها، لا من المختار الآن: تبديل
+// المزوّد خلال مهلة الفحص يجب ألّا يسأل Chatwoot عن رسالة خرجت من OpenWA.
+const trackStatus = (sent) => (sent?.provider === 'openwa' ? openwa.messageStatus(sent) : chatwoot.messageStatus(sent));
 
 // ─── فحص التسليم بعد الإرسال ─────────────────────────────────────────────────
 //  Chatwoot يقبل الطلب ثم يأتي رفض المزوّد أو ميتا بعد 10–15 ثانية (قالب
@@ -99,15 +158,15 @@ async function resolveTemplateBody(tpl, params, fallbackText) {
 const CHECK_AT_MS = [20000, 90000];
 const LATE_FAIL = (reason) => clip(`رُفضت بعد الإرسال: ${reason || 'بلا سبب من المزوّد'}`);
 
-/** @param {object} sent ناتج chatwoot.sendTemplate — @param {(reason:string)=>Promise} onFailed */
+/** @param {object} sent track من sendTemplateVia — @param {(reason:string)=>Promise} onFailed */
 function watchDelivery(sent, onFailed, attempt = 0) {
-  if (!sent?.conversationId) return;
+  if (!sent?.conversationId && !sent?.messageId) return;
   const wait = CHECK_AT_MS[attempt] - (attempt ? CHECK_AT_MS[attempt - 1] : 0);
   const timer = setTimeout(async () => {
     try {
-      const st = await chatwoot.messageStatus(sent);
+      const st = await trackStatus(sent);
       if (st?.status === 'failed') {
-        console.error(`[Notify] whatsapp rejected after send — conv ${sent.conversationId}: ${st.error}`);
+        console.error(`[Notify] whatsapp rejected after send — ${sent.provider === 'openwa' ? `owa ${sent.messageId}` : `conv ${sent.conversationId}`}: ${st.error}`);
         await onFailed(LATE_FAIL(st.error));
       } else if (!['delivered', 'read'].includes(st?.status) && attempt + 1 < CHECK_AT_MS.length) {
         watchDelivery(sent, onFailed, attempt + 1);
@@ -129,7 +188,7 @@ async function confirmDelivery(sent, { timeoutMs = 18000, everyMs = 2500 } = {})
   for (let waited = 0; waited < timeoutMs; waited += everyMs) {
     await new Promise(r => setTimeout(r, everyMs));
     try {
-      last = await chatwoot.messageStatus(sent) || last;
+      last = await trackStatus(sent) || last;
     } catch (e) {
       console.error('[Notify] delivery confirm:', e.message);
     }
@@ -161,7 +220,7 @@ async function sendWhatsApp({ applicant, interview, kind, settings, actor }) {
   const out = { channel: 'whatsapp', status: 'skipped', reason: '' };
 
   if (settings.notify_whatsapp_enabled !== 'true') { out.reason = 'قناة واتساب مُطفأة من الإعدادات'; return out; }
-  if (!chatwoot.isConfigured())                    { out.reason = 'تكامل Chatwoot غير مهيأ'; return out; }
+  if (!waReady(settings))                          { out.reason = waNotReadyReason(settings); return out; }
 
   const phone = chatwoot.toE164(applicant.phone);
   if (!phone) { out.reason = 'لا يوجد رقم جوال صالح'; return out; }
@@ -178,26 +237,16 @@ async function sendWhatsApp({ applicant, interview, kind, settings, actor }) {
   const needed = tpl.vars.split(',').map(x => x.trim()).filter(Boolean);
   if (needed.includes('link') && !vars.link) { out.reason = NO_LINK_REASON; return out; }
 
-  const params = M.buildProcessedParams(vars, tpl.vars, tpl.shape);
   const fallback = (M.WA_TEXT[kind] || M.buildWhatsAppText)(applicant, interview, opts);
 
-  const body = await resolveTemplateBody(tpl, params, fallback);
-  if (!body.ok) { out.reason = body.reason; return out; }
-
   try {
-    const r = await chatwoot.sendTemplate({
-      name: applicant.full_name, phone: applicant.phone, content: body.content,
-      inbox: tpl.inbox,
-      template: {
-        name: tpl.name, language: tpl.language, category: tpl.category,
-        processed_params: params,
-      },
-    });
+    const r = await sendTemplateVia({ recipient: applicant, tpl, vars, fallback, settings });
+    if (r.skipped) { out.reason = r.skipped; return out; }
     out.status = 'sent';
-    out.ref = r.conversationId ? `conv:${r.conversationId}` : '';
+    out.ref = r.ref;
     out.target = phone;
-    out.track = r;                 // للفحص المؤجَّل — يُنزع قبل إعادة النتيجة للواجهة
-    console.log(`[Notify] whatsapp sent — interview #${interview.id}, conv ${r.conversationId}`);
+    out.track = r.track;           // للفحص المؤجَّل — يُنزع قبل إعادة النتيجة للواجهة
+    console.log(`[Notify] whatsapp sent — interview #${interview.id}, ${r.ref}`);
     await mirrorToGroup({ applicant, interview, kind, vars, actor });
   } catch (e) {
     out.status = 'failed';
@@ -350,7 +399,7 @@ async function deliverTemplate({ recipient, tplKey, kind, vars = {}, settings })
   const who = recipient?.id ? `applicant #${recipient.id}` : String(recipient?.phone || '');
   const out = { status: 'skipped', reason: '' };
   try {
-    if (!chatwoot.isConfigured()) { out.reason = 'تكامل Chatwoot غير مهيأ'; return out; }
+    if (!waReady(settings)) { out.reason = waNotReadyReason(settings); return out; }
 
     const phone = chatwoot.toE164(recipient.phone);
     if (!phone) { out.reason = 'لا يوجد رقم جوال صالح'; return out; }
@@ -370,25 +419,15 @@ async function deliverTemplate({ recipient, tplKey, kind, vars = {}, settings })
       return out;
     }
 
-    const params = M.buildProcessedParams(v, tpl.vars, tpl.shape);
     const fallback = (M.WA_TEXT[kind] || M.buildScreeningText)(recipient, null, opts);
 
-    const body = await resolveTemplateBody(tpl, params, fallback);
-    if (!body.ok) { out.reason = body.reason; return out; }
-
-    const r = await chatwoot.sendTemplate({
-      name: recipient.full_name, phone: recipient.phone, content: body.content,
-      inbox: tpl.inbox,
-      template: {
-        name: tpl.name, language: tpl.language, category: tpl.category,
-        processed_params: params,
-      },
-    });
+    const r = await sendTemplateVia({ recipient, tpl, vars: v, fallback, settings });
+    if (r.skipped) { out.reason = r.skipped; return out; }
     out.status = 'sent';
-    out.ref = r.conversationId ? `conv:${r.conversationId}` : '';
+    out.ref = r.ref;
     out.vars = v;
-    out.track = r;
-    console.log(`[Notify] ${kind} sent — ${who}, conv ${r.conversationId}`);
+    out.track = r.track;
+    console.log(`[Notify] ${kind} sent — ${who}, ${r.ref}`);
   } catch (e) {
     out.status = 'failed';
     out.reason = e.message || 'خطأ غير معروف';
@@ -460,5 +499,6 @@ async function deliveryFor(interviewId) {
 
 module.exports = {
   notifyInterview, sendApplicantTemplate, deliverTemplate, watchDelivery, deliveryFor, templateFor, confirmDelivery,
+  sendTemplateVia, waProvider, waReady, waNotReadyReason,
   KINDS, NO_LINK_REASON,
 };

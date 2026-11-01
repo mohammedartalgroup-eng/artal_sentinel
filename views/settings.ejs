@@ -336,6 +336,10 @@
       const cs = typeof chatwootStatus !== 'undefined' ? chatwootStatus : { configured: false };
       const MV = typeof msgVars !== 'undefined' ? msgVars : {};
       const WI = typeof waInboxes !== 'undefined' ? waInboxes : [];
+      const ow = typeof openwaStatus !== 'undefined' ? openwaStatus : { configured: false };
+      const owS = ow.session || null;
+      const WP = typeof waProvider !== 'undefined' ? waProvider : 'chatwoot';
+      const OW_STATE = { ready: 'متصل', qr_ready: 'ينتظر مسح QR', disconnected: 'مفصول', initializing: 'يتصل…', authenticating: 'يتصل…', failed: 'متعطّل' };
       const KINDS = [
         { key: 'scheduled',   label: 'عند جدولة مقابلة',   hint: 'الإشعار الأساسي — يحمل الموعد ورابط Meet' },
         { key: 'rescheduled', label: 'عند إعادة الجدولة',  hint: 'اتركه فارغاً لتعطيل واتساب في هذه الحالة' },
@@ -384,6 +388,7 @@
           <div class="flex items-center justify-between mb-2">
             <div class="text-sm font-semibold text-[#001736] flex items-center gap-1.5">
               <span class="material-symbols-outlined text-base">chat</span> واتساب (Chatwoot)
+              <% if (WP === 'chatwoot') { %><span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#001736] text-white">المزوّد الحالي</span><% } %>
             </div>
             <span class="text-[11px] font-semibold px-2.5 py-1 rounded-full <%= cs.configured ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700' %>">
               <%= cs.configured ? 'جاهز' : 'غير مكتمل' %>
@@ -391,16 +396,54 @@
           </div>
           <% if (cs.configured) { %>
           <div class="text-xs text-[#43474f]" dir="ltr"><%= cs.host %> · account <%= cs.account %> · inbox <%= cs.inbox %></div>
+          <% if (WP === 'chatwoot') { %>
           <div class="flex gap-2 mt-3">
             <input type="text" id="wa-test-to" placeholder="جوال للاختبار — 05xxxxxxxx" dir="ltr"
                    style="flex:1;border:1px solid #e0e3e5;border-radius:.6rem;padding:.5rem .7rem;font-size:.75rem;outline:none;">
             <button type="button" onclick="notifyTest('whatsapp', this)"
                     style="background:#001736;color:#fff;border:none;border-radius:.6rem;padding:.5rem .9rem;font-size:.75rem;font-weight:600;cursor:pointer;white-space:nowrap;">إرسال اختبار</button>
           </div>
+          <% } %>
           <% } else { %>
           <div class="text-xs text-[#43474f] leading-relaxed">
             أضف إلى <span dir="ltr" class="font-mono">.env</span>:
             <span dir="ltr" class="font-mono text-[11px]">CHATWOOT_INBOX_ID</span> و<span dir="ltr" class="font-mono text-[11px]">CHATWOOT_API_TOKEN</span>.
+          </div>
+          <% } %>
+        </div>
+
+        <div class="border border-[#e0e3e5] rounded-xl p-4 md:col-span-2">
+          <div class="flex items-center justify-between mb-2">
+            <div class="text-sm font-semibold text-[#001736] flex items-center gap-1.5">
+              <span class="material-symbols-outlined text-base">smartphone</span> واتساب (OpenWA)
+              <% if (WP === 'openwa') { %><span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#001736] text-white">المزوّد الحالي</span><% } %>
+            </div>
+            <% const owOk = ow.configured && owS && owS.status === 'ready'; %>
+            <span class="text-[11px] font-semibold px-2.5 py-1 rounded-full <%= owOk ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700' %>">
+              <%= !ow.configured ? 'غير مكتمل' : (owS && owS.error ? 'تعذّر الاتصال' : (OW_STATE[owS && owS.status] || (owS && owS.status) || '—')) %>
+            </span>
+          </div>
+          <% if (ow.configured) { %>
+          <div class="text-xs text-[#43474f]">
+            <% if (owS && !owS.error) { %>
+            <span dir="ltr"><%= owS.phone ? '+' + owS.phone : '' %></span> <%= owS.name ? '· ' + owS.name : '' %> ·
+            <% } else if (owS && owS.error) { %>
+            <%= owS.error %> ·
+            <% } %>
+            <span dir="ltr"><%= ow.base %></span>
+          </div>
+          <% if (WP === 'openwa') { %>
+          <div class="flex gap-2 mt-3">
+            <input type="text" id="wa-test-to" placeholder="جوال للاختبار — 05xxxxxxxx" dir="ltr"
+                   style="flex:1;border:1px solid #e0e3e5;border-radius:.6rem;padding:.5rem .7rem;font-size:.75rem;outline:none;">
+            <button type="button" onclick="notifyTest('whatsapp', this)"
+                    style="background:#001736;color:#fff;border:none;border-radius:.6rem;padding:.5rem .9rem;font-size:.75rem;font-weight:600;cursor:pointer;white-space:nowrap;">إرسال اختبار</button>
+          </div>
+          <% } %>
+          <% } else { %>
+          <div class="text-xs text-[#43474f] leading-relaxed">
+            أضف إلى <span dir="ltr" class="font-mono">.env</span>:
+            <span dir="ltr" class="font-mono text-[11px]">OPENWA_API_KEY</span> و<span dir="ltr" class="font-mono text-[11px]">OPENWA_SESSION_ID</span>.
           </div>
           <% } %>
         </div>
@@ -431,6 +474,29 @@
             </label>
           </div>
           <% }); %>
+        </div>
+
+        <div class="field">
+          <label class="block text-xs text-[#43474f] font-semibold uppercase tracking-wider mb-1.5">مزوّد الإرسال</label>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <% [
+              ['chatwoot', 'Chatwoot', 'قوالب واتساب المعتمدة من ميتا — الطريقة الحالية', true],
+              ['openwa',   'OpenWA',   'رقم ' + (owS && owS.phone ? '+' + owS.phone : 'artal') + ' — نفس القوالب تُرسل نصاً من الرقم مباشرة', ow.configured || WP === 'openwa'],
+            ].forEach(function (p) { %>
+            <label style="display:flex;gap:.6rem;align-items:flex-start;border:1px solid <%= WP === p[0] ? '#001736' : '#e0e3e5' %>;border-radius:.75rem;padding:.8rem 1rem;cursor:<%= p[3] ? 'pointer' : 'not-allowed' %>;opacity:<%= p[3] ? 1 : .55 %>;">
+              <input type="radio" name="wa_provider" value="<%= p[0] %>" <%= WP === p[0] ? 'checked' : '' %> <%= p[3] ? '' : 'disabled' %> style="margin-top:.2rem;">
+              <span>
+                <span class="block text-sm font-semibold text-[#001736]"><%= p[1] %></span>
+                <span class="block text-[11px] text-[#43474f] mt-0.5"><%= p[2] %></span>
+              </span>
+            </label>
+            <% }); %>
+          </div>
+          <p class="text-[10px] text-[#7594ca] mt-1.5 leading-relaxed">
+            يحكم كل رسائل واتساب للمتقدمين — إشعارات المقابلات والقوالب اليدوية والدعوات. مع OpenWA يُقرأ نص القالب المعتمد من
+            «قناة الإرسال» أدناه ويُعبّأ بالمتغيّرات نفسها ثم يُرسل من الرقم كرسالة عادية، وأزرار الرد السريع تصير خيارات مرقّمة.
+            ردود المتقدمين تصل إلى الرقم نفسه وتظهر في لوحة OpenWA. للرجوع اختر Chatwoot واحفظ.
+          </p>
         </div>
 
         <% if (cs.configured) { %>

@@ -13,6 +13,7 @@ const emailCheck     = require('../utils/emailCheck').check;   // كشف أخط�
 const google         = require('../utils/google');   // لا يرمي عند التحميل — كل تحقق كسول
 const mailer         = require('../utils/mailer');   // ولا هذان — صفر اعتماديات وتحقق كسول
 const chatwoot       = require('../utils/chatwoot');
+const openwa         = require('../utils/openwa');     // مزوّد واتساب البديل — يُختار من الإعدادات
 const crypto         = require('crypto');
 const docAccess      = require('../utils/docAccess');   // تدقيق الاطّلاع والتحميل
 
@@ -786,7 +787,7 @@ router.get('/applicants/:id', async (req, res) => {
     jobTitleGuess = require('../utils/interviewMsg').deriveJobTitle(applicant, settings);
     const WT = require('../utils/waTemplates');
     const waTemplates = {
-      list: WT.available(settings, chatwoot.isConfigured()),
+      list: WT.available(settings, require('../utils/notify').waReady(settings)),
       fields: WT.FIELDS,
       defaults: {
         name: applicant.full_name || '',
@@ -1528,6 +1529,10 @@ router.get('/settings', requireManager, async (req, res) => {
     const waInboxes = chatwoot.isConfigured()
       ? await chatwoot.listWhatsAppInboxes().catch(e => { console.error('[Settings GET] inboxes:', e.message); return []; })
       : [];
+    // حالة رقم OpenWA الحية (متصل / ينتظر QR / مفصول) — تعذّرها لا يمنع فتح الصفحة
+    const openwaSession = openwa.isConfigured()
+      ? await openwa.session().catch(e => ({ error: e.message }))
+      : null;
 
     res.render('settings', {
       settings, success: req.query.saved, adminUser: req.session.adminUser,
@@ -1544,6 +1549,8 @@ router.get('/settings', requireManager, async (req, res) => {
       mailStatus: mailer.status(),
       chatwootStatus: { ...chatwoot.status(), inbox: chatwoot.inboxFor(settings) },
       waInboxes,
+      openwaStatus: { ...openwa.status(), session: openwaSession },
+      waProvider: require('../utils/notify').waProvider(settings),
       msgVars: require('../utils/interviewMsg').VAR_LABELS,
       waTemplateList: Object.values(require('../utils/waTemplates').TEMPLATES),
     });
@@ -1629,6 +1636,25 @@ async function validateWaInbox(b) {
   return boxes.some(x => x.id === Number(id)) ? null : 'قناة الإرسال المختارة ليست صندوق واتساب في Chatwoot';
 }
 
+// التحقق من «مزوّد الإرسال» — يُرجع رسالة خطأ أو null.
+// التحويل إلى OpenWA يُرفض ما لم يكن الرقم متصلاً الآن: رقم مفصول كان سيُحفظ
+// بنجاح ثم يُفشل كل إرسال لاحق. الرجوع إلى Chatwoot لا يحتاج أي فحص — هو
+// طريق العودة، ولا يجوز أن يمنعه انقطاع OpenWA.
+async function validateWaProvider(b) {
+  if (b.wa_provider === undefined) return null;
+  if (!['chatwoot', 'openwa'].includes(b.wa_provider)) return 'مزوّد الإرسال غير صالح';
+  if (b.wa_provider !== 'openwa') return null;
+  if (!openwa.isConfigured()) return 'OpenWA غير مهيأ — أضف OPENWA_API_KEY وOPENWA_SESSION_ID إلى ملف .env';
+  if ((await db.getSettings()).wa_provider === 'openwa') return null;
+  try {
+    const s = await openwa.session();
+    if (s.status !== 'ready') return `رقم OpenWA غير متصل الآن (الحالة: ${s.status || 'غير معروفة'}) — اربطه من لوحة OpenWA ثم أعد الحفظ`;
+  } catch (e) {
+    return `تعذّر التحقق من رقم OpenWA — ${e.message}`;
+  }
+  return null;
+}
+
 router.post('/settings', requireManager, async (req, res) => {
   try {
     // القسم يحدد المفاتيح المسموح كتابتها — حتى لا يمس نموذجٌ مفاتيحَ نموذج آخر
@@ -1647,10 +1673,10 @@ router.post('/settings', requireManager, async (req, res) => {
       // checkbox — unchecked sends nothing, so default to false
       if (req.body.accepting_applications === undefined) set('accepting_applications', 'false');
     } else if (section === 'notifications') {
-      const invalid = validateNotifySettings(req.body) || await validateWaInbox(req.body);
+      const invalid = validateNotifySettings(req.body) || await validateWaInbox(req.body) || await validateWaProvider(req.body);
       if (invalid) return res.redirect('/admin/settings?err=' + encodeURIComponent(invalid) + '#notify');
 
-      const allowed = ['wa_params_shape', 'default_job_title', 'wa_inbox_id'];
+      const allowed = ['wa_params_shape', 'default_job_title', 'wa_inbox_id', 'wa_provider'];
       for (const kind of TPL_KEYS()) {
         allowed.push(`wa_tpl_${kind}_name`, `wa_tpl_${kind}_lang`, `wa_tpl_${kind}_cat`, `wa_tpl_${kind}_vars`);
       }
@@ -1674,7 +1700,7 @@ router.post('/settings', requireManager, async (req, res) => {
 
     await db.setSettings(updates);
     await db.audit(req.session.adminId, req.session.adminUser, 'settings_update', 'settings', null, null,
-      `${section} (${Object.keys(updates).length} مفتاحاً)`, req.ip);
+      `${section} (${Object.keys(updates).length} مفتاحاً)${updates.wa_provider ? ` — مزوّد واتساب: ${updates.wa_provider}` : ''}`, req.ip);
     const anchor = { interviews: '#interviews', notifications: '#notify' }[section] || '';
     res.redirect(`/admin/settings?saved=1${anchor}`);
   } catch (err) {
@@ -1725,30 +1751,30 @@ router.post('/settings/notify-test', requireManager, notifyTestLimiter, async (r
         text: M.buildEmailText(demoApplicant, demoInterview, { ...opts, kind: 'scheduled' }),
       });
     } else {
-      if (!chatwoot.isConfigured()) return res.status(409).json({ error: 'تكامل Chatwoot غير مهيأ — راجع ملف .env' });
-      const tpl = require('../utils/notify').templateFor(settings, 'scheduled');
+      // الاختبار يمرّ بمزوّد الإرسال المحفوظ وبالطريق نفسه الذي يمرّ به إشعار حقيقي
+      const notify = require('../utils/notify');
+      if (!notify.waReady(settings)) return res.status(409).json({ error: `${notify.waNotReadyReason(settings)} — راجع ملف .env` });
+      const tpl = notify.templateFor(settings, 'scheduled');
       if (!tpl.name) return res.status(409).json({ error: 'لم يُحدَّد اسم قالب واتساب لإشعار الجدولة' });
-      const vars = M.messageVars(demoApplicant, demoInterview, opts);
-      const sent = await chatwoot.sendTemplate({
-        name: demoApplicant.full_name, phone: target, inbox: tpl.inbox,
-        content: M.buildWhatsAppText(demoApplicant, demoInterview, opts),
-        template: {
-          name: tpl.name, language: tpl.language, category: tpl.category,
-          processed_params: M.buildProcessedParams(vars, tpl.vars, tpl.shape),
-        },
+      const r = await notify.sendTemplateVia({
+        recipient: demoApplicant, tpl, settings,
+        vars: M.messageVars(demoApplicant, demoInterview, opts),
+        fallback: M.buildWhatsAppText(demoApplicant, demoInterview, opts),
       });
+      if (r.skipped) return res.status(409).json({ error: r.skipped });
 
-      // قبول Chatwoot للطلب ليس وصولاً — الاختبار ينتظر حكم المزوّد/ميتا، وإلا
+      // قبول المزوّد للطلب ليس وصولاً — الاختبار ينتظر حكم المزوّد/ميتا، وإلا
       // قال «أُرسلت» لقناة ترفض كل رسائلها (قالب مرفوض، مشكلة دفع…)
-      const st = await require('../utils/notify').confirmDelivery(sent);
+      const st = await notify.confirmDelivery(r.track);
       if (st?.status === 'failed') {
         return res.status(502).json({ error: `رُفضت بعد الإرسال: ${st.error || 'بلا سبب من المزوّد'}` });
       }
       if (['delivered', 'read'].includes(st?.status)) waMessage = 'وصلت رسالة الاختبار إلى الجوال ✓';
     }
 
+    const via = channel === 'whatsapp' ? ` (${require('../utils/notify').waProvider(settings)})` : '';
     await db.audit(req.session.adminId, req.session.adminUser, 'notify_test', 'settings',
-      null, null, `${channel} → ${target}`, req.ip);
+      null, null, `${channel}${via} → ${target}`, req.ip);
     res.json({ ok: true, message: waMessage || 'أُرسلت رسالة الاختبار — لم يتأكد وصولها بعد، تحقق من الوجهة' });
   } catch (err) {
     console.error('[Notify test]', err.message);

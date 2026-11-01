@@ -138,7 +138,7 @@ const FIELDS = {
 const keys = () => Object.keys(TEMPLATES);
 const get  = (k) => TEMPLATES[k] || null;
 
-/** القوالب الجاهزة للاستخدام: Chatwoot مهيأ + اسم القالب محفوظ في الإعدادات */
+/** القوالب الجاهزة للاستخدام: مزوّد الإرسال مهيأ (notify.waReady) + اسم القالب محفوظ في الإعدادات */
 function available(settings, chatwootReady) {
   if (!chatwootReady) return [];
   return keys()
@@ -147,7 +147,7 @@ function available(settings, chatwootReady) {
     .map(k => TEMPLATES[k]);
 }
 
-/** هل القالب جاهز للإرسال؟ (اسمه محفوظ في الإعدادات وChatwoot مهيأ) */
+/** هل القالب جاهز للإرسال؟ (اسمه محفوظ في الإعدادات ومزوّد الإرسال مهيأ) */
 function ready(settings, key, chatwootReady) {
   return Boolean(chatwootReady && String(settings[`wa_tpl_${key}_name`] || '').trim());
 }

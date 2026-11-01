@@ -99,9 +99,9 @@ function extraDocList(required = []) {
 async function waState() {
   const WT = require('../utils/waTemplates');
   const settings = await db.getSettings().catch(() => ({}));
-  const cwOk = require('../utils/chatwoot').isConfigured();
-  const waReady = WT.ready(settings, 'onboarding', cwOk);
-  const extraTpl = WT.ready(settings, 'extra_docs', cwOk) ? 'extra_docs' : (waReady ? 'onboarding' : null);
+  const waOk = require('../utils/notify').waReady(settings);
+  const waReady = WT.ready(settings, 'onboarding', waOk);
+  const extraTpl = WT.ready(settings, 'extra_docs', waOk) ? 'extra_docs' : (waReady ? 'onboarding' : null);
   return { settings, waReady, extraTpl };
 }
 
@@ -626,7 +626,6 @@ adminRouter.post('/send/:applicantId', sendLimiter, async (req, res) => {
   try {
     const WT = require('../utils/waTemplates');
     const notify = require('../utils/notify');
-    const chatwoot = require('../utils/chatwoot');
     const tpl = WT.get('onboarding');
 
     const applicant = await db.get(
@@ -634,9 +633,9 @@ adminRouter.post('/send/:applicantId', sendLimiter, async (req, res) => {
       [req.params.applicantId]
     );
     if (!applicant) return res.status(404).json({ error: 'المتقدم غير موجود' });
-    if (!chatwoot.isConfigured()) return res.status(409).json({ error: 'تكامل Chatwoot غير مهيأ' });
 
     const settings = await db.getSettings();
+    if (!notify.waReady(settings)) return res.status(409).json({ error: notify.waNotReadyReason(settings) });
     if (!WT.ready(settings, 'onboarding', true)) {
       return res.status(409).json({ error: 'لم يُحدَّد اسم قالب الاستكمال في الإعدادات' });
     }
@@ -683,9 +682,8 @@ adminRouter.post('/request-extra/:applicantId', sendLimiter, async (req, res) =>
   if (!featureOn()) return res.status(503).json({ error: 'الميزة غير مفعّلة' });
   try {
     const notify = require('../utils/notify');
-    const chatwoot = require('../utils/chatwoot');
 
-    const docs = [...new Set((Array.isArray(req.body?.docs) ? req.body.docs : []).map(String))]
+    const docs =[...new Set((Array.isArray(req.body?.docs) ? req.body.docs : []).map(String))]
       .filter(t => rules.EXTRA_KEYS.includes(t));
     if (!docs.length) return res.status(400).json({ error: 'اختر مستنداً واحداً على الأقل' });
     const wantSend = req.body?.send !== false;
@@ -725,10 +723,10 @@ adminRouter.post('/request-extra/:applicantId', sendLimiter, async (req, res) =>
     //   نفسها تعرض المطلوب)، وإلا نكتفي بالإضافة ويُرسل الموظف الرابط بنفسه.
     let sent = false, via = null, reason = '', sentTo = null;
     if (wantSend) {
-      if (!chatwoot.isConfigured()) {
-        reason = 'تكامل Chatwoot غير مهيأ';
+      const { settings, extraTpl } = await waState();
+      if (!notify.waReady(settings)) {
+        reason = notify.waNotReadyReason(settings);
       } else {
-        const { settings, extraTpl } = await waState();
         via = extraTpl;
         if (!via) {
           reason = 'لا قالب واتساب جاهز — حدّد اسم قالب «طلب بيانات إضافية» أو «رابط الاستكمال» في الإعدادات';

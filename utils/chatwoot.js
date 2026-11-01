@@ -231,6 +231,33 @@ function renderTemplate(tpl, params) {
   return String(tpl?.body || '').replace(/\{\{\s*(\d+)\s*\}\}/g, (m, n) => (p[n] != null ? p[n] : m));
 }
 
+/**
+ * القالب كاملاً نصاً حراً — لمزوّد بلا قوالب (utils/openwa.js) يرسل ما يُعرض هنا
+ * حرفياً. فوق المتن: العنوان النصي والتذييل وأزرار الرد السريع، وكلها جزء مما
+ * يراه المتقدم في القالب المعتمد. الأزرار تصير خيارات مرقّمة يرد بها كتابةً.
+ *
+ * عنوان بمتغيّر يُسقط: متغيّراته ليست ضمن processed_params فلا قيمة له عندنا.
+ * قوالب Twilio بلا components، فتعود متناً وحده كما في renderTemplate.
+ */
+function renderFullText(tpl, params) {
+  const comps = Array.isArray(tpl?.components) ? tpl.components : [];
+  const part = (type) => comps.find(c => String(c?.type).toUpperCase() === type);
+
+  const header = part('HEADER');
+  const head = String(header?.format || 'TEXT').toUpperCase() === 'TEXT' ? String(header?.text || '').trim() : '';
+  const replies = (part('BUTTONS')?.buttons || [])
+    .filter(b => String(b?.type).toUpperCase() === 'QUICK_REPLY' && String(b?.text || '').trim())
+    .map((b, i) => `${i + 1}️⃣ ${String(b.text).trim()}`);
+  const footer = String(part('FOOTER')?.text || '').trim();
+
+  return [
+    head && !/\{\{/.test(head) ? `*${head}*` : '',
+    renderTemplate(tpl, params).trim(),
+    replies.length ? `للرد أرسل رقم اختيارك:\n${replies.join('\n')}` : '',
+    footer ? `_${footer}_` : '',
+  ].filter(Boolean).join('\n\n');
+}
+
 // ─── جهة الاتصال ─────────────────────────────────────────────────────────────
 /**
  * يبحث عن جهة الاتصال بالرقم، وينشئها إن لم توجد، ويضمن ارتباطها بصندوقنا.
@@ -392,5 +419,5 @@ async function messageStatus({ conversationId, messageId, since }) {
 
 module.exports = {
   ChatwootError, isConfigured, status, inboxFor, toE164, ensureContact, sendTemplate, messageStatus,
-  listWhatsAppInboxes, listTemplates, findTemplate, templateNames, templateVarCount, renderTemplate,
+  listWhatsAppInboxes, listTemplates, findTemplate, templateNames, templateVarCount, renderTemplate, renderFullText,
 };

@@ -103,7 +103,7 @@ router.get('/', async (req, res) => {
 
     const settings = await db.getSettings().catch(() => ({}));
     const WT = require('../utils/waTemplates');
-    const chatwoot = require('../utils/chatwoot');
+    const notify = require('../utils/notify');
 
     res.render('leads', {
       leads: rows.map(l => ({ ...l, link: applyLink(req, l.token), statusLabel: STATUS_LABEL[l.status] || l.status })),
@@ -111,7 +111,7 @@ router.get('/', async (req, res) => {
       total: Object.values(counts).reduce((a, b) => a + b, 0),
       filter, q,
       STATUS_LABEL,
-      waReady: WT.ready(settings, 'invite', chatwoot.isConfigured()),
+      waReady: WT.ready(settings, 'invite', notify.waReady(settings)),
     });
   } catch (err) {
     console.error('[Leads page]', err.message);
@@ -172,10 +172,9 @@ router.post('/:id/send', writeLimiter, async (req, res) => {
     }
 
     const notify   = require('../utils/notify');
-    const chatwoot = require('../utils/chatwoot');
     const WT       = require('../utils/waTemplates');
-    if (!chatwoot.isConfigured()) return res.status(409).json({ error: 'تكامل Chatwoot غير مهيأ' });
     const settings = await db.getSettings();
+    if (!notify.waReady(settings)) return res.status(409).json({ error: notify.waNotReadyReason(settings) });
     if (!WT.ready(settings, 'invite', true)) {
       return res.status(409).json({ error: 'لم يُحدَّد اسم قالب «دعوة للتقديم» في الإعدادات' });
     }
