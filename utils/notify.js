@@ -14,6 +14,7 @@ const db       = require('../database/db');
 const mailer   = require('./mailer');
 const chatwoot = require('./chatwoot');
 const openwa   = require('./openwa');
+const waLog    = require('./waLog');
 const waGroup  = require('./waGroup');
 const M        = require('./interviewMsg');
 
@@ -117,30 +118,51 @@ async function resolveTemplateBody(tpl, params, fallbackText, { full = false } =
  * يرمي عند فشل الإرسال نفسه (كما يرمي chatwoot.sendTemplate)، ويُرجع
  * { skipped } حين يُمنع قبل الإرسال.
  *
+ * كل عملية إرسال — ناجحة أو فاشلة — تُكتب في سجل الاستقرار (utils/waLog.js).
+ * المتخطّاة قبل الإرسال لا تُكتب: سببها إعداد عندنا لا تعثّر المزوّد.
+ *
  * @returns {Promise<{skipped?:string, ref?:string, track?:object}>}
  *          track = ما يحتاجه فحص التسليم المؤجَّل (watchDelivery)
  */
-async function sendTemplateVia({ recipient, tpl, vars, fallback, settings }) {
-  const viaOpenwa = waProvider(settings) === 'openwa';
+async function sendTemplateVia({ recipient, tpl, vars, fallback, settings, kind }) {
+  const provider = waProvider(settings);
+  const viaOpenwa = provider === 'openwa';
   const params = M.buildProcessedParams(vars, tpl.vars, viaOpenwa ? 'numbered' : tpl.shape);
 
   const body = await resolveTemplateBody(tpl, params, fallback, { full: viaOpenwa });
   if (!body.ok) return { skipped: body.reason };
 
-  if (viaOpenwa) {
-    const r = await openwa.sendText({ phone: recipient.phone, text: body.content });
-    return { ref: `owa:${r.messageId}`, track: r };
+  const t0 = Date.now();
+  try {
+    let ref, track;
+    if (viaOpenwa) {
+      track = await openwa.sendText({ phone: recipient.phone, text: body.content });
+      ref = `owa:${track.messageId}`;
+    } else {
+      track = await chatwoot.sendTemplate({
+        name: recipient.full_name, phone: recipient.phone, content: body.content,
+        inbox: tpl.inbox,
+        template: {
+          name: tpl.name, language: tpl.language, category: tpl.category,
+          processed_params: params,
+        },
+      });
+      ref = track.conversationId ? `conv:${track.conversationId}` : '';
+    }
+    // نجاح بعد إعادة: يُكتب معه خطأ المحاولة التي تجاوزها — هو ما يُراجَع
+    track.logId = await waLog.record({
+      provider, kind, outcome: 'sent', attempts: track.attempts || 1, ref,
+      errorCode: track.lastError?.code, error: track.lastError?.detail, latencyMs: Date.now() - t0,
+    });
+    return { ref, track };
+  } catch (e) {
+    await waLog.record({
+      provider, kind, outcome: 'failed', attempts: e.attempts || 1,
+      errorCode: e.status ? `HTTP_${e.status}` : (e.code || 'ERROR'),
+      error: e.detail || e.message, latencyMs: Date.now() - t0,
+    });
+    throw e;
   }
-
-  const r = await chatwoot.sendTemplate({
-    name: recipient.full_name, phone: recipient.phone, content: body.content,
-    inbox: tpl.inbox,
-    template: {
-      name: tpl.name, language: tpl.language, category: tpl.category,
-      processed_params: params,
-    },
-  });
-  return { ref: r.conversationId ? `conv:${r.conversationId}` : '', track: r };
 }
 
 // حالة رسالة أُرسلت — من المزوّد الذي أرسلها، لا من المختار الآن: تبديل
@@ -165,6 +187,7 @@ function watchDelivery(sent, onFailed, attempt = 0) {
   const timer = setTimeout(async () => {
     try {
       const st = await trackStatus(sent);
+      await waLog.markDelivery(sent.logId, st?.status);
       if (st?.status === 'failed') {
         console.error(`[Notify] whatsapp rejected after send — ${sent.provider === 'openwa' ? `owa ${sent.messageId}` : `conv ${sent.conversationId}`}: ${st.error}`);
         await onFailed(LATE_FAIL(st.error));
@@ -194,6 +217,7 @@ async function confirmDelivery(sent, { timeoutMs = 18000, everyMs = 2500 } = {})
     }
     if (['failed', 'delivered', 'read'].includes(last?.status)) break;
   }
+  await waLog.markDelivery(sent?.logId, last?.status);
   return last;
 }
 
@@ -240,7 +264,7 @@ async function sendWhatsApp({ applicant, interview, kind, settings, actor }) {
   const fallback = (M.WA_TEXT[kind] || M.buildWhatsAppText)(applicant, interview, opts);
 
   try {
-    const r = await sendTemplateVia({ recipient: applicant, tpl, vars, fallback, settings });
+    const r = await sendTemplateVia({ recipient: applicant, tpl, vars, fallback, settings, kind });
     if (r.skipped) { out.reason = r.skipped; return out; }
     out.status = 'sent';
     out.ref = r.ref;
@@ -421,7 +445,7 @@ async function deliverTemplate({ recipient, tplKey, kind, vars = {}, settings })
 
     const fallback = (M.WA_TEXT[kind] || M.buildScreeningText)(recipient, null, opts);
 
-    const r = await sendTemplateVia({ recipient, tpl, vars: v, fallback, settings });
+    const r = await sendTemplateVia({ recipient, tpl, vars: v, fallback, settings, kind });
     if (r.skipped) { out.reason = r.skipped; return out; }
     out.status = 'sent';
     out.ref = r.ref;

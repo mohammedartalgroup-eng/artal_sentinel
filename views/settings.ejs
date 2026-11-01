@@ -20,6 +20,8 @@
       outline: none; transition: border-color 0.15s; font-family: 'Inter', sans-serif;
     }
     .field input:focus, .field textarea:focus { border-color: #7594ca; box-shadow: 0 0 0 3px rgba(117,148,202,0.15); }
+    .wa-prov { border: 1px solid #e0e3e5; }
+    .wa-prov:has(input:checked) { border-color: #001736; box-shadow: 0 0 0 1px #001736; }
   </style>
 </head>
 <body class="text-[#191c1e]">
@@ -476,15 +478,16 @@
           <% }); %>
         </div>
 
-        <div class="field">
-          <label class="block text-xs text-[#43474f] font-semibold uppercase tracking-wider mb-1.5">مزوّد الإرسال</label>
+        <%# خارج .field عمداً: قاعدة «.field input» تمدّ أي input بعرض كامل وحشوة — ومنها أزرار الاختيار %>
+        <div>
+          <div class="block text-xs text-[#43474f] font-semibold uppercase tracking-wider mb-1.5">مزوّد الإرسال</div>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
             <% [
               ['chatwoot', 'Chatwoot', 'قوالب واتساب المعتمدة من ميتا — الطريقة الحالية', true],
               ['openwa',   'OpenWA',   'رقم ' + (owS && owS.phone ? '+' + owS.phone : 'artal') + ' — نفس القوالب تُرسل نصاً من الرقم مباشرة', ow.configured || WP === 'openwa'],
             ].forEach(function (p) { %>
-            <label style="display:flex;gap:.6rem;align-items:flex-start;border:1px solid <%= WP === p[0] ? '#001736' : '#e0e3e5' %>;border-radius:.75rem;padding:.8rem 1rem;cursor:<%= p[3] ? 'pointer' : 'not-allowed' %>;opacity:<%= p[3] ? 1 : .55 %>;">
-              <input type="radio" name="wa_provider" value="<%= p[0] %>" <%= WP === p[0] ? 'checked' : '' %> <%= p[3] ? '' : 'disabled' %> style="margin-top:.2rem;">
+            <label class="wa-prov" style="display:flex;gap:.6rem;align-items:flex-start;border-radius:.75rem;padding:.8rem 1rem;cursor:<%= p[3] ? 'pointer' : 'not-allowed' %>;opacity:<%= p[3] ? 1 : .55 %>;">
+              <input type="radio" name="wa_provider" value="<%= p[0] %>" <%= WP === p[0] ? 'checked' : '' %> <%= p[3] ? '' : 'disabled' %> style="margin-top:.2rem;width:1rem;height:1rem;flex-shrink:0;accent-color:#001736;">
               <span>
                 <span class="block text-sm font-semibold text-[#001736]"><%= p[1] %></span>
                 <span class="block text-[11px] text-[#43474f] mt-0.5"><%= p[2] %></span>
@@ -606,6 +609,112 @@
           حفظ إعدادات الإشعار
         </button>
       </form>
+    </div>
+
+    <!-- استقرار إرسال واتساب -->
+    <%
+      const WS = typeof waStats !== 'undefined' ? waStats : null;
+      const PROV = { openwa: 'OpenWA', chatwoot: 'Chatwoot' };
+      const KIND = { scheduled: 'دعوة مقابلة', rescheduled: 'إعادة جدولة', cancelled: 'إلغاء مقابلة', screening: 'التحقق من الجاهزية',
+                     onboarding: 'رابط الاستكمال', extra_docs: 'بيانات إضافية', invite: 'دعوة توصية', test: 'اختبار' };
+      const secs = (ms) => ms == null ? '—' : (ms / 1000).toFixed(1) + ' ث';
+      const fmtWhen = typeof fmtDateTime === 'function' ? fmtDateTime : (d) => String(d);
+      const statProviders = WS ? [...new Set(WS.periods.flatMap(p => p.providers.map(x => x.provider)))] : [];
+      const th = 'padding:.5rem .6rem;font-weight:600;color:#43474f;text-align:right;white-space:nowrap;';
+      const td = 'padding:.5rem .6rem;border-top:1px solid #f2f4f6;white-space:nowrap;';
+    %>
+    <div class="bg-white rounded-2xl p-7" id="wa-stats">
+      <h2 class="font-bold text-[#001736] text-base mb-1 flex items-center gap-2">
+        <span class="material-symbols-outlined text-lg">monitoring</span>
+        استقرار إرسال واتساب
+      </h2>
+      <p class="text-xs text-[#43474f] mb-5 leading-relaxed">
+        كل رسالة واتساب يرسلها أي موظف تُسجَّل هنا بنتيجتها: خرجت من أول مرة، أو احتاجت إعادة محاولة تلقائية، أو فشلت، أو قُبلت ثم رُفضت بعد الإرسال.
+        الإعادة التلقائية (مع OpenWA) صامتة للموظف — هنا وحدها تظهر.
+      </p>
+
+      <% if (!WS) { %>
+      <p class="text-xs text-amber-700">تعذّر قراءة سجل الاستقرار.</p>
+      <% } else if (!statProviders.length) { %>
+      <p class="text-xs text-[#43474f]">لا إرسال مسجّل بعد — تبدأ الإحصائية مع أول رسالة.</p>
+      <% } else { %>
+      <% statProviders.forEach(function (prov) { %>
+      <div class="text-sm font-semibold text-[#001736] mb-2"><%= PROV[prov] || prov %></div>
+      <div style="overflow-x:auto;" class="mb-5">
+        <table style="width:100%;border-collapse:collapse;font-size:.75rem;">
+          <thead><tr style="background:#f8f9fb;">
+            <th style="<%= th %>">الفترة</th><th style="<%= th %>">الرسائل</th><th style="<%= th %>">من أول مرة</th>
+            <th style="<%= th %>">بعد تعثّر</th><th style="<%= th %>">فشلت</th><th style="<%= th %>">رُفضت بعد الإرسال</th>
+            <th style="<%= th %>">نسبة النجاح</th><th style="<%= th %>">متوسط الزمن</th>
+          </tr></thead>
+          <tbody>
+          <% WS.periods.forEach(function (p) { const s = p.providers.find(x => x.provider === prov); %>
+            <tr>
+              <td style="<%= td %>font-weight:600;color:#001736;"><%= p.label %></td>
+              <% if (!s) { %>
+              <td style="<%= td %>color:#7594ca;" colspan="7">لا إرسال</td>
+              <% } else { %>
+              <td style="<%= td %>"><%= s.total %></td>
+              <td style="<%= td %>"><%= s.firstTry %></td>
+              <td style="<%= td %><%= s.afterRetry ? 'color:#b45309;font-weight:600;' : '' %>"><%= s.afterRetry %></td>
+              <td style="<%= td %><%= s.failed ? 'color:#b91c1c;font-weight:600;' : '' %>"><%= s.failed %></td>
+              <td style="<%= td %><%= s.rejected ? 'color:#b91c1c;font-weight:600;' : '' %>"><%= s.rejected %></td>
+              <td style="<%= td %>font-weight:700;color:<%= s.successPct >= 98 ? '#15803d' : (s.successPct >= 90 ? '#b45309' : '#b91c1c') %>;"><%= s.successPct %>%</td>
+              <td style="<%= td %>" dir="ltr"><%= secs(s.avgMs) %></td>
+              <% } %>
+            </tr>
+          <% }); %>
+          </tbody>
+        </table>
+      </div>
+      <% }); %>
+
+      <% if (WS.errorCodes.length) { %>
+      <div class="text-xs font-semibold text-[#43474f] mb-2">أكثر الأخطاء تكراراً (30 يوماً)</div>
+      <div class="flex flex-wrap gap-1.5 mb-5">
+        <% WS.errorCodes.forEach(function (e) { %>
+        <span class="bg-[#f8f9fb] border border-[#e0e3e5] rounded-full px-2.5 py-1 text-[11px] text-[#43474f]">
+          <%= PROV[e.provider] || e.provider %> · <span dir="ltr" class="font-mono"><%= e.error_code %></span> × <%= e.n %>
+        </span>
+        <% }); %>
+      </div>
+      <% } %>
+
+      <div class="text-xs font-semibold text-[#43474f] mb-2">آخر التعثّرات (30 يوماً)</div>
+      <% if (!WS.issues.length) { %>
+      <p class="text-xs text-green-700">لا تعثّر — كل الرسائل خرجت من أول مرة ✓</p>
+      <% } else { %>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:.72rem;">
+          <thead><tr style="background:#f8f9fb;">
+            <th style="<%= th %>">الوقت</th><th style="<%= th %>">المزوّد</th><th style="<%= th %>">الرسالة</th>
+            <th style="<%= th %>">النتيجة</th><th style="<%= th %>">المحاولات</th><th style="<%= th %>">الزمن</th><th style="<%= th %>">الخطأ</th>
+          </tr></thead>
+          <tbody>
+          <% WS.issues.forEach(function (i) {
+               const res = i.outcome === 'failed' ? ['فشلت', '#b91c1c']
+                 : (i.delivery === 'failed' ? ['رُفضت بعد الإرسال', '#b91c1c']
+                 : (i.attempts > 1 ? ['نجحت بعد إعادة', '#b45309'] : ['نجحت (تأخر الرد)', '#b45309'])); %>
+            <tr>
+              <td style="<%= td %>"><%= fmtWhen(i.created_at) %></td>
+              <td style="<%= td %>"><%= PROV[i.provider] || i.provider %></td>
+              <td style="<%= td %>"><%= KIND[i.kind] || i.kind || '—' %></td>
+              <td style="<%= td %>color:<%= res[1] %>;font-weight:600;"><%= res[0] %></td>
+              <td style="<%= td %>"><%= i.attempts %></td>
+              <td style="<%= td %>" dir="ltr"><%= secs(i.latency_ms) %></td>
+              <td style="padding:.5rem .6rem;border-top:1px solid #f2f4f6;color:#43474f;min-width:9rem;">
+                <% if (i.error_code) { %><span dir="ltr" class="font-mono text-[10px]"><%= i.error_code %></span> <% } %><%= i.error || '' %>
+              </td>
+            </tr>
+          <% }); %>
+          </tbody>
+        </table>
+      </div>
+      <% } %>
+      <% } %>
+      <p class="text-[10px] text-[#7594ca] mt-4">
+        السجل الكامل بصيغة JSON: <a href="/admin/diag/wa-stats" target="_blank" class="underline" dir="ltr">/admin/diag/wa-stats</a>
+      </p>
     </div>
 
     <!-- Change Password -->

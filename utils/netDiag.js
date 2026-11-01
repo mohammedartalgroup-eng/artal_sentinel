@@ -159,6 +159,18 @@ function targets() {
     });
   }
 
+  const owKey = String(process.env.OPENWA_API_KEY || '').trim();
+  const owSession = String(process.env.OPENWA_SESSION_ID || '').trim();
+  if (owKey && owSession) {
+    const owBase = (String(process.env.OPENWA_BASE_URL || '').trim() || 'https://whatsapp.intshar.sa/api').replace(/\/+$/, '');
+    list.push({
+      name: 'openwa', role: 'target',
+      url: `${owBase}/sessions/${encodeURIComponent(owSession)}`,
+      headers: { 'X-API-Key': owKey, Accept: 'application/json' },
+      expectStatus: [200],
+    });
+  }
+
   // مراجع: إنترنت عام لا علاقة له بخوادمنا. Google تستخدمه المقابلات (Meet)
   // فعلاً، وCloudflare/ipify يكشفان عنوان الخروج الذي يراه الهدف — وهو ما
   // يُدرج في القائمة البيضاء لجدار الهدف إن تبيّن أنه يحجبنا

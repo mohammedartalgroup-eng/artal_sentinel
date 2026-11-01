@@ -250,6 +250,15 @@ router.get('/diag/outbound', requireManager, async (req, res) => {
   }
 });
 
+// إحصائية استقرار مزوّدي واتساب كاملة (JSON) — نفس ما يعرضه قسم الإعدادات،
+// لمراجعة أعمق أو للصق في محادثة دون لقطات شاشة.
+router.get('/diag/wa-stats', requireManager, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const stats = await require('../utils/waLog').stats();
+  if (!stats) return res.status(500).json({ error: 'تعذّر قراءة سجل الاستقرار' });
+  res.json(stats);
+});
+
 // ─── نسخة احتياطية من قاعدة البيانات ─────────────────────────────────────────
 //  للمديرين فقط، بسبب مكتوب يُسجَّل في التدقيق (نفس نافذة سبب التحميل): ملف يحوي
 //  هويات وجوالات كل المتقدمين لا يخرج بصمت. POST لا GET حتى لا يُنزَّل بمجرد
@@ -1533,6 +1542,7 @@ router.get('/settings', requireManager, async (req, res) => {
     const openwaSession = openwa.isConfigured()
       ? await openwa.session().catch(e => ({ error: e.message }))
       : null;
+    const waStats = await require('../utils/waLog').stats();
 
     res.render('settings', {
       settings, success: req.query.saved, adminUser: req.session.adminUser,
@@ -1550,6 +1560,7 @@ router.get('/settings', requireManager, async (req, res) => {
       chatwootStatus: { ...chatwoot.status(), inbox: chatwoot.inboxFor(settings) },
       waInboxes,
       openwaStatus: { ...openwa.status(), session: openwaSession },
+      waStats,
       waProvider: require('../utils/notify').waProvider(settings),
       msgVars: require('../utils/interviewMsg').VAR_LABELS,
       waTemplateList: Object.values(require('../utils/waTemplates').TEMPLATES),
@@ -1757,7 +1768,7 @@ router.post('/settings/notify-test', requireManager, notifyTestLimiter, async (r
       const tpl = notify.templateFor(settings, 'scheduled');
       if (!tpl.name) return res.status(409).json({ error: 'لم يُحدَّد اسم قالب واتساب لإشعار الجدولة' });
       const r = await notify.sendTemplateVia({
-        recipient: demoApplicant, tpl, settings,
+        recipient: demoApplicant, tpl, settings, kind: 'test',
         vars: M.messageVars(demoApplicant, demoInterview, opts),
         fallback: M.buildWhatsAppText(demoApplicant, demoInterview, opts),
       });

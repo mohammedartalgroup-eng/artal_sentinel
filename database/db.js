@@ -248,6 +248,30 @@ async function initialize() {
       ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
     `);
 
+    // ─── سجل استقرار مزوّدي واتساب ───────────────────────────────────────────
+    //  صف لكل عملية إرسال (لا لكل محاولة): نتيجتها، وكم محاولة احتاجت، وزمنها،
+    //  وآخر خطأ صادفته — ثم حكم التسليم حين يصل. منه تُبنى إحصائية الإعدادات
+    //  التي تجيب: هل كان المزوّد مستقراً؟ التفاصيل في utils/waLog.js.
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS wa_send_log (
+        id          INT AUTO_INCREMENT PRIMARY KEY,
+        provider    VARCHAR(12)  NOT NULL,
+        kind        VARCHAR(30)  DEFAULT NULL,
+        outcome     VARCHAR(8)   NOT NULL,
+        attempts    TINYINT      NOT NULL DEFAULT 1,
+        error_code  VARCHAR(30)  DEFAULT NULL,
+        error       VARCHAR(255) DEFAULT NULL,
+        latency_ms  INT          DEFAULT NULL,
+        delivery    VARCHAR(12)  DEFAULT NULL,
+        ref         VARCHAR(120) DEFAULT NULL,
+        created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_created  (created_at),
+        INDEX idx_provider (provider, created_at)
+      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+    `);
+    //  outcome:  sent | failed
+    //  delivery: delivered | read | failed — من فحص التسليم المؤجَّل (NULL = لم يُحسم)
+
     // ─── قوائم المشاركة الداخلية ─────────────────────────────────────────────
     //  بديل «تصدير Excel وإرساله»: القائمة تبقى داخل النظام خلف تسجيل الدخول،
     //  فلا تخرج نسخة من أرقام الهويات والجوالات عن نطاق التدقيق. العناصر
