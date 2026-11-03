@@ -265,6 +265,7 @@ function toast(msg) {
 function chipFor(s) {
   if (s.status === 'confirmed' && s.review === 'red') return ['bad', 'يحتاج إعادة رفع'];
   if (s.status === 'confirmed') return ['ok', 'مكتمل'];
+  if (s.done) return ['ok', 'اعتمده فريق التوظيف'];
   if (s.existingUrl) return ['ok', 'موجودة من طلبك'];
   if (s.status === 'extracted' && s.review === 'red') return ['bad', 'مستند غير مطابق'];
   if (s.status === 'extracted') return ['warn', 'راجِع البيانات'];
@@ -274,7 +275,7 @@ function chipFor(s) {
 function renderList() {
   $('cards').innerHTML = STEPS.map(s => {
     const [cls, label] = chipFor(s);
-    const done = (s.status === 'confirmed' && s.review !== 'red') || Boolean(s.existingUrl);
+    const done = Boolean(s.done) || Boolean(s.existingUrl);
     return `
       <button class="card ${done ? 'done' : ''}" onclick="openDoc('${s.type}')">
         <span class="ico"><span class="material-symbols-outlined">${done ? 'check_circle' : s.icon}</span></span>
@@ -287,7 +288,7 @@ function renderList() {
   }).join('');
 
   const req = STEPS.filter(s => s.required);
-  const done = req.filter(s => s.status === 'confirmed').length;
+  const done = req.filter(s => s.done).length;
   const pct = req.length ? Math.round(done / req.length * 100) : 0;
   $('bar-fill').style.width = pct + '%';
   $('bar-text').textContent = 'تم إكمال ' + done + ' من ' + req.length;
@@ -355,6 +356,9 @@ function renderDoc() {
   } else if (s.status === 'confirmed') {
     st.className = 'status ok';
     st.innerHTML = '<span class="material-symbols-outlined">check_circle</span><span>تم الحفظ. يمكنك تعديل البيانات أو إعادة الرفع في أي وقت.</span>';
+  } else if (s.hrAccepted) {
+    st.className = 'status ok';
+    st.innerHTML = '<span class="material-symbols-outlined">check_circle</span><span>اعتمد فريق التوظيف هذا المستند — لا حاجة لتأكيده.</span>';
   } else if (s.warnings.length) {
     st.className = 'status warn';
     st.innerHTML = `<span class="material-symbols-outlined">warning</span><span>${s.warnings[0]}</span>`;

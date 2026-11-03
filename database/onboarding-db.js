@@ -264,7 +264,7 @@ async function adoptOrphanDocs() {
       const want = new Set([...String(prev.required_docs || '').split(','), ...String(latest.required_docs || '').split(',')].filter(Boolean));
       const required = rules.DOC_KEYS.filter(k => want.has(k));
       const [done] = await conn.query(
-        "SELECT doc_type FROM onboarding_documents WHERE session_id = ? AND is_current = 1 AND status = 'confirmed'", [latest.id]
+        `SELECT doc_type FROM onboarding_documents WHERE session_id = ? AND is_current = 1 AND ((status = 'confirmed' AND review <> 'red') OR (review = 'green' AND hr_decided_at IS NOT NULL))`, [latest.id]
       );
       const doneSet = new Set(done.map(d => d.doc_type));
       const completed = required.filter(t => doneSet.has(t)).length;

@@ -122,6 +122,13 @@ async function loadDocs(sessionId) {
   return { byType, fieldsByType };
 }
 
+// مستند مكتمل: تأكيد المرشح (غير مرفوض) أو اعتماد صريح من فريق التوظيف.
+// نفس الشرط في recomputeProgress (SQL) — لا يختلف الشريط عن البطاقات.
+function isDone(doc) {
+  if (!doc) return false;
+  return (doc.status === 'confirmed' && doc.review !== 'red') || (doc.review === 'green' && Boolean(doc.hr_decided_at));
+}
+
 // حالة كل مستند كما تراها الواجهتان (المرشح وHR) — مصدر واحد للحقيقة.
 function buildSteps(session, byType, fieldsByType, opts = {}) {
   const required = requiredList(session);
@@ -166,6 +173,13 @@ function buildSteps(session, byType, fieldsByType, opts = {}) {
       required: required.includes(type),
       status: doc ? doc.status : 'pending',
       review: doc ? doc.review : null,
+      // مكتمل = أكّده المرشح (ولم يُرفض) أو اعتمده فريق التوظيف صراحةً. المرشح
+      // كثيراً ما يرفع ولا يضغط «تأكيد»، فيعتمد HR المستند ويبقى الشريط صفراً —
+      // قرار الإنسان أقوى من زر التأكيد، فيُحتسب.
+      // والسيرة الذاتية المرفقة بطلب التوظيف مكتملة أيضاً — الصفحة تقول للمرشح
+      // «لا حاجة لرفعها ثانيةً»، فلا يصح أن تبقى ناقصة في الشريط.
+      done: isDone(doc) || Boolean(existingUrl),
+      hrAccepted: Boolean(doc && doc.review === 'green' && doc.hr_decided_at),
       warnings: doc?.warnings ? JSON.parse(doc.warnings || '[]') : [],
       docId: doc?.id || null,
       hasFile: Boolean(doc),
@@ -221,10 +235,15 @@ async function loadEmployment(sessionId) {
 async function recomputeProgress(session) {
   const required = requiredList(session);
   const done = await db.all(
-    "SELECT doc_type FROM onboarding_documents WHERE session_id = ? AND is_current = 1 AND status = 'confirmed'",
+    `SELECT doc_type FROM onboarding_documents WHERE session_id = ? AND is_current = 1 AND ((status = 'confirmed' AND review <> 'red') OR (review = 'green' AND hr_decided_at IS NOT NULL))`,
     [session.id]
   );
   const doneTypes = new Set(done.map(d => d.doc_type));
+  // السيرة الذاتية المرفقة بطلب التوظيف تُحتسب (نفس قاعدة buildSteps)
+  if (required.includes('cv') && !doneTypes.has('cv')) {
+    const a = await db.get('SELECT cv_path FROM applicants WHERE id = ?', [session.applicant_id]);
+    if (a?.cv_path) doneTypes.add('cv');
+  }
   const completed = required.filter(t => doneTypes.has(t)).length;
   const progress = required.length ? Math.round((completed / required.length) * 100) : 0;
   const status = progress >= 100 ? 'submitted' : 'in_progress';
@@ -233,6 +252,17 @@ async function recomputeProgress(session) {
     [progress, status, progress >= 100 ? new Date() : null, session.id]
   );
   return { progress, completed, total: required.length, status };
+}
+
+// التقدّم المخزَّن قد يتقادم حين تتغيّر قاعدة الاكتمال (اعتماد HR صار يُحتسب) أو
+// تُضم مستندات من رحلة سابقة. الواجهات تحسبه من الخطوات حيّاً، وإن خالف العمود
+// أُعيد حسابه وحُفظ — بلا ترحيل ولا انتظار لأول رفع.
+async function syncProgress(session, steps) {
+  const req = steps.filter(x => x.required);
+  const completed = req.filter(x => x.done).length;
+  const live = req.length ? Math.round((completed / req.length) * 100) : 0;
+  if (live === Number(session.progress)) return { progress: live, completed, total: req.length, status: session.status };
+  return { ...(await recomputeProgress(session)), completed, total: req.length };
 }
 
 // كتابة حقل واحد — upsert لأن المرشح قد يصحّح نفس الحقل عشر مرات.
@@ -318,15 +348,15 @@ publicRouter.get('/:token', pageLimiter, async (req, res) => {
       cvUrl: applicant.cv_path ? `/onboarding/${s.token}/cv` : null,
     });
     const required = requiredList(s);
-    const completed = steps.filter(st => st.required && st.status === 'confirmed').length;
+    const prog = await syncProgress(s, steps);
 
     res.render('onboarding', {
       conflicts: buildProfile(fieldsByType).filter(g => g.conflict),
       token: s.token,
       firstName: String(applicant.full_name || '').split(' ')[0] || '',
       steps,
-      progress: s.progress,
-      completed,
+      progress: prog.progress,
+      completed: prog.completed,
       totalRequired: required.length,
       lastStep: s.last_step,
       autoRead: ocr.isConfigured(),
@@ -532,21 +562,23 @@ adminRouter.get('/summary/:applicantId', async (req, res) => {
     if (!s) return res.json({ enabled: true, exists: false, waReady, extraTpl, extraDocs: extraDocList() });
 
     const { byType, fieldsByType } = await loadDocs(s.id);
-    const steps = buildSteps(s, byType, fieldsByType);
+    const app = await db.get('SELECT cv_path FROM applicants WHERE id = ?', [s.applicant_id]);
+    const steps = buildSteps(s, byType, fieldsByType, { cvUrl: app?.cv_path ? `/admin/files/cv/${app.cv_path}` : null });
     const required = requiredList(s);
+    const prog = await syncProgress(s, steps);
     res.json({
       enabled: true, exists: true, waReady,
       sessionId: s.id,
-      status: s.status,
-      progress: s.progress,
+      status: prog.status,
+      progress: prog.progress,
       revoked: Boolean(s.revoked_at),
       expired: Boolean(s.expires_at && new Date(s.expires_at) < new Date()),
       link: publicLink(req, s.token),
       openedAt: s.opened_at,
-      completed: steps.filter(x => x.required && x.status === 'confirmed').length,
+      completed: prog.completed,
       totalRequired: required.length,
       needsReview: steps.filter(x => x.hasFile && x.review !== 'green').length,
-      steps: steps.map(x => ({ type: x.type, label: x.label, required: x.required, status: x.status, review: x.review })),
+      steps: steps.map(x => ({ type: x.type, label: x.label, required: x.required, status: x.status, review: x.review, done: x.done })),
       extraTpl,
       extraDocs: extraDocList(required).map(x => {
         const st = steps.find(y => y.type === x.type);
@@ -844,6 +876,8 @@ adminRouter.get('/view/:applicantId', async (req, res) => {
         withOcr: true,
         cvUrl: applicant.cv_path ? `/admin/files/cv/${applicant.cv_path}` : null,
       });
+      const prog = await syncProgress(s, steps);
+      s.progress = prog.progress;
       profile = buildProfile(fieldsByType);
       history = await db.all(
         'SELECT id, doc_type, status, review, original_name, created_at FROM onboarding_documents WHERE session_id = ? AND is_current = 0 ORDER BY id DESC',
@@ -1460,7 +1494,10 @@ adminRouter.post('/doc/:docId/review', async (req, res) => {
     );
     db.audit(req.session?.adminId, req.session?.adminUser || 'system', 'onboarding_review',
       'applicant', doc.applicant_id, null, `${rules.DOC_TYPES[doc.doc_type]?.label || doc.doc_type} → ${review}`, req.ip).catch(() => {});
-    res.json({ ok: true, review });
+    // الاعتماد يُكمل المستند ولو لم يضغط المرشح «تأكيد» — فالشريط يتبع القرار فوراً
+    const sess = await db.get('SELECT * FROM onboarding_sessions WHERE id = ?', [doc.session_id]);
+    const p = sess ? await recomputeProgress(sess) : null;
+    res.json({ ok: true, review, progress: p ? p.progress : null });
   } catch (err) {
     console.error('[Onboarding review]', err.message);
     res.status(500).json({ error: 'تعذّر الحفظ' });

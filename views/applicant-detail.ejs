@@ -541,7 +541,7 @@ const sm = STATUS_META[applicant.status] || { label: applicant.status, color: 'g
                 + extraBtn;
             } else {
               const chips = d.steps.filter(s => s.required).map(s => {
-                const done = s.status === 'confirmed' && s.review !== 'red';
+                const done = Boolean(s.done);
                 const bad  = s.review === 'red';
                 const cls  = done ? 'bg-green-100 text-green-700' : (bad ? 'bg-red-100 text-red-700' : 'bg-[#eceef0] text-[#43474f]');
                 return '<span class="text-[11px] font-medium px-2 py-1 rounded-lg ' + cls + '">'
