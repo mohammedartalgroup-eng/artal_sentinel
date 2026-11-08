@@ -302,6 +302,9 @@ const ROLES = {
     slug: 'guard',
     urlSegment: '',                       // الافتراضي — يبقى على /jobs/<city>
     title: 'حارس أمن',
+    // seoHook: يظهر في <title>/<description> فقط — صياغة مختصرة لحقائق موجودة أصلاً
+    // في requirements و faqExperience أدناه. لا يذكر أرقام رواتب.
+    seoHook: 'بدون خبرة سابقة وتدريب معتمد',
     plural: 'حراس أمن',
     seniority: 'entry',
     employmentType: 'FULL_TIME',
@@ -331,6 +334,7 @@ const ROLES = {
     slug: 'supervisor',
     urlSegment: 'supervisor',
     title: 'مشرف أمن',
+    seoHook: 'لأصحاب الخبرة الميدانية',
     plural: 'مشرفي أمن',
     seniority: 'mid',
     employmentType: 'FULL_TIME',
@@ -364,6 +368,7 @@ const ROLES = {
     slug: 'manager',
     urlSegment: 'manager',
     title: 'مدير أمن',
+    seoHook: 'مسار قيادي لأصحاب الخبرة',
     plural: 'مدراء أمن',
     seniority: 'senior',
     employmentType: 'FULL_TIME',

@@ -10,8 +10,14 @@
   const validThrough = new Date(_today.getTime() + 60 * 86400000).toISOString().split('T')[0];
   const roleSeg = role.urlSegment ? '/' + role.urlSegment : '';
   const pageUrl = 'https://jobs.artalsecurity.com/jobs/' + city.slug + roleSeg;
-  const title = 'وظائف ' + role.title + ' في ' + city.city + ' | أرتال للحراسات الأمنية';
-  const desc  = 'وظائف ' + role.title + ' في ' + city.city + ' لدى شركة أرتال للحراسات الأمنية: تأمين ' + city.sites.slice(0, 3).join('، ') + '. رواتب تنافسية، جداول عمل مرنة وتدريب معتمد. التقديم مجاني وإلكتروني.';
+  // ── العنوان والوصف مُحسَّنان لنسبة النقر (CTR) ──────────────────────────────
+  //  بيانات Search Console (90 يوماً) تُظهر أن طلبات البحث المتضمّنة "توظيف فوري"
+  //  تحقّق CTR بين 20% و33%، مقابل 6–12% للطلبات العامة "وظائف <مدينة>".
+  //  لذا يتصدّر الخطّاف العنوان، ويُقدَّم الوصف بما يُقنع قبل أن يقصّه جوجل (~155 حرفاً).
+  //  بلا أي رقم راتب — بقرار من الإدارة؛ faqSalary أيضاً بلا أرقام.
+  const seoHook = role.seoHook || 'تدريب معتمد';
+  const title = 'وظائف ' + role.title + ' في ' + city.city + ' — توظيف فوري | أرتال للحراسات الأمنية';
+  const desc  = 'توظيف فوري لوظائف ' + role.title + ' في ' + city.city + ' — ' + seoHook + '، التقديم مجاني وإلكتروني. مواقع العمل: ' + city.sites[0] + '.';
   const roleIntro = role.roleIntro(city);
   // قنوات التواصل — لإشارة الكيان (sameAs) والتذييل المرئي
   const socialLinks = [

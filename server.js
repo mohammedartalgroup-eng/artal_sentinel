@@ -193,11 +193,19 @@ Sitemap: https://jobs.artalsecurity.com/sitemap.xml`
 
 // ─── SEO: sitemap.xml ─────────────────────────────────────────────────────────
 app.get('/sitemap.xml', (req, res) => {
-  const today = new Date().toISOString().split('T')[0];
+  // ── lastmod صادق: تاريخ آخر تغيّر فعلي في الصفحة، لا تاريخ اليوم ────────────
+  //  جوجل توثّق أنها قد تتجاهل lastmod للموقع بأكمله إن وجدته غير دقيق، ووسم
+  //  98 رابطاً بتاريخ اليوم يومياً هو بالضبط النمط الذي يُفقد الحقل مصداقيته.
+  //    • صفحات الوظائف: تتغيّر فعلياً مرّتين شهرياً مع تدوير datePosted (1 و16)
+  //      — نفس منطق views/city-jobs.ejs، فيبقى الحقلان متّسقين.
+  //    • الخصوصية والشروط: تاريخ إصدار الوثيقة نفسه من utils/legal.js.
+  const _now = new Date();
+  const jobsLastmod = `${_now.getUTCFullYear()}-${String(_now.getUTCMonth() + 1).padStart(2, '0')}-${_now.getUTCDate() >= 16 ? '16' : '01'}`;
+  const legal = require('./utils/legal');
   const cityUrls = seoCities.map(c =>
 `  <url>
     <loc>https://jobs.artalsecurity.com/jobs/${c.slug}</loc>
-    <lastmod>${today}</lastmod>
+    <lastmod>${jobsLastmod}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>`).join('\n');
@@ -205,7 +213,7 @@ app.get('/sitemap.xml', (req, res) => {
   const roleUrls = (jobsRouter.ROLE_PAGES || []).map(p =>
 `  <url>
     <loc>https://jobs.artalsecurity.com${p.url}</loc>
-    <lastmod>${today}</lastmod>
+    <lastmod>${jobsLastmod}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>`).join('\n');
@@ -214,19 +222,19 @@ app.get('/sitemap.xml', (req, res) => {
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://jobs.artalsecurity.com/</loc>
-    <lastmod>${today}</lastmod>
+    <lastmod>${jobsLastmod}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
     <loc>https://jobs.artalsecurity.com/privacy</loc>
-    <lastmod>${today}</lastmod>
+    <lastmod>${legal.PRIVACY.VERSION}</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>
   <url>
     <loc>https://jobs.artalsecurity.com/terms</loc>
-    <lastmod>${today}</lastmod>
+    <lastmod>${legal.TERMS.VERSION}</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>
