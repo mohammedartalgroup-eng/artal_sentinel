@@ -165,6 +165,29 @@ function normalizeDate(raw) {
   return null;
 }
 
+// تاريخ هجري بأي ترتيب شائع → «YYYY/MM/DD» هجرياً كما هو (بلا تحويل).
+// السنة 1300–1600 فقط: ما عداها ميلادي أو خطأ قراءة، ولا نخمّن.
+function normalizeHijri(raw) {
+  const s = normalizeDigits(raw).trim();
+  const m = s.match(/(\d{1,4})\s*[\/\-.]\s*(\d{1,2})\s*[\/\-.]\s*(\d{1,4})/);
+  if (!m) return null;
+  let y, mo, d;
+  if (String(m[1]).length === 4) { y = +m[1]; mo = +m[2]; d = +m[3]; }
+  else if (String(m[3]).length === 4) { d = +m[1]; mo = +m[2]; y = +m[3]; }
+  else return null;
+  if (!(y >= 1300 && y <= 1600 && mo >= 1 && mo <= 12 && d >= 1 && d <= 30)) return null;
+  return `${y}/${String(mo).padStart(2, '0')}/${String(d).padStart(2, '0')}`;
+}
+
+// السنة الهجرية الحالية (أم القرى) — لتمييز تاريخ ميلاد من تاريخ انتهاء
+function currentHijriYear() {
+  try {
+    const p = new Intl.DateTimeFormat('en-u-ca-islamic-umalqura-nu-latn', { year: 'numeric', timeZone: 'Asia/Riyadh' })
+      .formatToParts(new Date()).find(x => x.type === 'year');
+    return Number(p.value) || 1448;
+  } catch (e) { return 1448; }
+}
+
 // ─── تعريف المستندات ─────────────────────────────────────────────────────────
 // الترتيب مقصود: الهوية أولاً لأن منها تبدأ الهوية القانونية للشخص، ثم العنوان
 // والحساب البنكي، والرخصة أخيراً لأنها مشروطة بالوظيفة لا بالشخص.
@@ -196,6 +219,10 @@ const DOC_TYPES = {
       { key: 'name_en',     label: 'الاسم بالإنجليزية',     type: 'name_en',  required: false, aiAssist: true, cross: 'name_en' },
       { key: 'nationality', label: 'الجنسية',               type: 'text',     required: false },
       { key: 'birth_date',  label: 'تاريخ الميلاد',         type: 'date',     required: false, cross: 'birth_date' },
+      // الهجري كما هو مطبوع على البطاقة — يُخزَّن نصاً ولا يُحوَّل: تحويل أم القرى قد
+      // يخالف الأحوال المدنية بيوم، والمطبوع هو المرجع. يذهب إلى حقل «تاريخ الميلاد
+      // (هجري)» في نظام الموظفين بنفس صيغته هناك (1414/12/11).
+      { key: 'birth_date_hijri', label: 'تاريخ الميلاد (هجري)', type: 'hijri_date', required: false, aiAssist: true },
       { key: 'expiry_date', label: 'تاريخ الانتهاء',        type: 'date',     required: true },
     ],
     // كلمات تُثبت أن المستند من النوع المتوقَّع (ولو واحدة كفت)
@@ -407,6 +434,11 @@ function validate(docType, key, raw) {
       if (!iso) return { ok: false, value: s, error: 'تاريخ غير مفهوم — استخدم يوم/شهر/سنة' };
       return { ok: true, value: iso, error: null };
     }
+    case 'hijri_date': {
+      const h = normalizeHijri(s);
+      if (!h) return { ok: false, value: s, error: 'تاريخ هجري غير مفهوم — مثال: 1414/12/11' };
+      return { ok: true, value: h, error: null };
+    }
     case 'name': {
       const v = s.replace(/\s+/g, ' ').trim();
       if (v.length < 4) return { ok: false, value: v, error: 'الاسم قصير جداً' };
@@ -506,6 +538,33 @@ function pickDate(lines, labels) {
   }
   const all = zones.flatMap(z => z.match(DATE_RE) || []);
   return all.find(isGregorianToken) || all[0] || null;
+}
+
+/**
+ * تاريخ الميلاد الهجري على الهوية. البطاقة تحمل تاريخين هجريين (الميلاد والانتهاء):
+ *   1) الهجري في منطقة تسمية «تاريخ الميلاد» إن وُجد.
+ *   2) وإلا أقدمهما — الميلاد يسبق الانتهاء دائماً.
+ *   3) وإن لم يُقرأ إلا واحد، يُقبل فقط إن كان عمراً معقولاً (15 سنة فأكثر): تاريخ
+ *      وحيد في المستقبل أو قريب هو تاريخ الانتهاء، وكتابته ميلاداً خطأ يصعب كشفه.
+ */
+function pickHijriBirth(lines, text) {
+  const hijriIn = (str) => (String(str || '').match(DATE_RE) || []).map(normalizeHijri).filter(Boolean);
+  const maxBirthYear = currentHijriYear() - 15;
+
+  for (const lab of ['تاريخ الميلاد', 'الميلاد', 'DATE OF BIRTH', 'DOB']) {
+    for (let i = 0; i < lines.length; i++) {
+      const idx = lines[i].toUpperCase().indexOf(lab.toUpperCase());
+      if (idx === -1) continue;
+      const zone = [lines[i].slice(idx + lab.length), lines[i + 1] || ''].join(' ');
+      const hit = hijriIn(zone).find(h => Number(h.slice(0, 4)) <= maxBirthYear);
+      if (hit) return hit;
+    }
+  }
+
+  const all = [...new Set(hijriIn(text))].sort();
+  if (all.length >= 2) return Number(all[0].slice(0, 4)) <= maxBirthYear ? all[0] : null;
+  if (all.length === 1 && Number(all[0].slice(0, 4)) <= maxBirthYear) return all[0];
+  return null;
 }
 
 // سطور «ليست اسماً» على وجه الهوية/الإقامة — تُستبعد قبل التقاط الاسم اللاتيني
@@ -657,6 +716,16 @@ function parse(docType, rawText) {
     // التسميات اللاتينية أولاً: DOB/DOE تحملان الميلادي على الهوية السعودية
     put('expiry_date', pickDate(lines, ['DOE', 'EXPIRY', 'EXPIRES', 'تاريخ الانتهاء', 'الانتهاء']), 0.9);
     put('birth_date',  pickDate(lines, ['DOB', 'DATE OF BIRTH', 'BIRTH', 'تاريخ الميلاد', 'الميلاد']), 0.9);
+    put('birth_date_hijri', pickHijriBirth(lines, text), 0.85);
+    // الهجري والميلادي على البطاقة يومٌ واحد — فرق أكبر من أيام التقويم يعني أن
+    // أحدهما قُرئ خطأً. لا نصحّح آلياً: نرفعه لمن يرى البطاقة.
+    if (out.birth_date?.valid && out.birth_date_hijri?.valid) {
+      const [hy, hm, hd] = out.birth_date_hijri.value.split('/').map(Number);
+      const g = hijriToGregorian(hy, hm, hd);
+      if (g && Math.abs(new Date(g) - new Date(out.birth_date.value)) > 3 * 86400000) {
+        warnings.push('تاريخ الميلاد الهجري لا يوافق الميلادي على البطاقة — راجِع الاثنين.');
+      }
+    }
     // الجنسية من الرقم — تُكتب فقط إن لم يجدها الاستخراج على المستند
     const natFromId = nationalityFromId(out.id_number?.value);
     if (natFromId && !out.nationality?.valid) put2('nationality', natFromId, 1, 'rule');
@@ -846,7 +915,7 @@ function derivedFrom(docType, key, value) {
 }
 
 module.exports = {
-  DOC_TYPES, DOC_KEYS, BASE_KEYS, EXTRA_KEYS, fieldDef, derivedFrom, derivedKeys, nationalityFromId,
+  DOC_TYPES, DOC_KEYS, BASE_KEYS, EXTRA_KEYS, fieldDef, normalizeHijri, derivedFrom, derivedKeys, nationalityFromId,
   normalizeDigits, normalizeText, debox, digitsOnlyFix, normalizeDate, hijriToGregorian,
   saudiIdValid, ibanValid,
   parse, validate, needsAi, missingRequired, reviewLevel,

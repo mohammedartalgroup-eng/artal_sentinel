@@ -414,7 +414,8 @@ function renderFields(s) {
   $('d-fields').innerHTML = s.fields.map(f => {
     const cls = f.value ? (f.valid ? 'good' : 'bad') : '';
     const msg = f.value && !f.valid ? (f.error || 'قيمة غير صحيحة')
-              : (f.type === 'date' ? 'يوم/شهر/سنة — نقبل الهجري والميلادي' : '');
+              : (f.type === 'date' ? 'يوم/شهر/سنة — نقبل الهجري والميلادي'
+                : (f.type === 'hijri_date' ? 'هجري كما في البطاقة — مثال: 1414/12/11' : ''));
     const mode = ['digits4','digits5','digits10','saudi_id'].includes(f.type) ? 'numeric' : 'text';
     return `
       <div class="f ${cls}" id="f-${f.key}">

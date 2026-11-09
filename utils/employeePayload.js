@@ -56,6 +56,8 @@ function build({ applicant, fieldsByType, employment, sessionId }) {
       name_ar: fieldValue(fieldsByType, NAMES, 'name_ar') || applicant?.full_name || null,
       name_en: fieldValue(fieldsByType, NAMES, 'name_en'),
       birth_date: fieldValue(fieldsByType, NAMES, 'birth_date'),
+      // الهجري كما على البطاقة (1414/12/11) — حقل «تاريخ الميلاد (هجري)» في نظام الموظفين
+      birth_date_hijri: fieldValue(fieldsByType, ['id_iqama'], 'birth_date_hijri'),
       national_id_expiry: fieldValue(fieldsByType, ['id_iqama'], 'expiry_date'),
       nationality: fieldValue(fieldsByType, ['id_iqama'], 'nationality'),
       blood_type: fieldValue(fieldsByType, ['driving_license'], 'blood_type'),
