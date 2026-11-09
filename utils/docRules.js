@@ -188,6 +188,16 @@ function currentHijriYear() {
   } catch (e) { return 1448; }
 }
 
+// نص نموذج «طلب تغيير رقم الحساب البنكي» كما يطبعه النظام الأساسي — يُعرض للمرشح
+// قبل التوقيع. ⚠️ يطابق EmployeeRequestSettings::bankChangeFormText() في artal_web
+// حرفاً بحرف: إن تغيّر هناك يُغيَّر هنا.
+const BANK_CHANGE_FORM_TEXT = [
+  'السادة / شركة أرتال الموحدة للحراسات الأمنية المحترمين',
+  'حيث أنني أعمل لديكم حارس أمن بمشروعي الحالي، ونظرًا لظروف خاصة بي أتقدم إليكم بطلب تحويل جميع رواتبي الشهرية وجميع مستحقاتي إلى حساب البنك ورقم الآيبان المذكورين في هذا الطلب.',
+  'وأتحمل كامل المسؤولية النظامية عن ذلك وأقر بأنه لا يحق لي مطالبة الشركة بأي مستحقات تتعلق بعملي لديها، وتكون ذمة الشركة خالية بالتحويل على هذا الحساب وأتعهد بعدم تغيير هذا الحساب البنكي وأكون مسؤولًا مسؤولية كاملة وتامة عن ذلك. وهذا إقرار مني بذلك.',
+  'هذا وتقبلوا خالص التحية والتقدير،،،',
+].join('\n');
+
 // ─── تعريف المستندات ─────────────────────────────────────────────────────────
 // الترتيب مقصود: الهوية أولاً لأن منها تبدأ الهوية القانونية للشخص، ثم العنوان
 // والحساب البنكي، والرخصة أخيراً لأنها مشروطة بالوظيفة لا بالشخص.
@@ -330,19 +340,26 @@ const DOC_TYPES = {
     // آيبان سليمة بأنها «ليست المستند المتوقَّع» — فيُعطى اسم الوثيقة الفعلية.
     aiLabel: 'شهادة الآيبان (للحساب البنكي الجديد)',
     icon: 'swap_horiz',
-    hint: 'حمّل نموذج الطلب وعبّئه ووقّعه، ثم ارفعه مع هوية صاحب الحساب وشهادة الآيبان للحساب الجديد.',
+    hint: 'ارفع شهادة الآيبان للحساب الجديد وصورة هوية صاحب الحساب، ثم راجع البيانات ووقّع الطلب.',
     extra: true,
-    // الطلب له نموذج ورقي معتمد في الشركة: يُحمَّل ويُعبَّأ ويُوقَّع ويُعاد رفعه مرفقاً
-    // مع هوية صاحب الحساب المحوَّل إليه (قد يكون قريباً لا الموظف نفسه). المستند
-    // الرئيسي يبقى شهادة الآيبان لأنها الوحيدة التي تُقرأ وتُتحقَّق حسابياً.
-    formUrl: '/forms/bank-change-request.pdf',
-    formLabel: 'نموذج طلب تغيير الحساب البنكي',
+    // كما في تطبيق الموظف: لا نموذج ورقي يُحمَّل ويُرفع. المرشح يكمل بيانات صاحب
+    // الحساب ويقرأ نص النموذج ثم يوقّع بإصبعه، فيعبّئ النظام الأساسي نموذج الشركة
+    // نفسه (bank_change_form) ويُحفظ هنا مع مستنداته. المستند الرئيسي يبقى شهادة
+    // الآيبان لأنها الوحيدة التي تُقرأ وتُتحقَّق حسابياً.
+    signForm: true,
+    formText: BANK_CHANGE_FORM_TEXT,
+    signatureDoc: 'bank_change_signature',
+    formDoc: 'bank_change_form',
     mainLabel: 'شهادة الآيبان للحساب الجديد',
-    attachments: ['bank_change_form', 'bank_change_holder_id'],
+    attachments: ['bank_change_holder_id', 'bank_change_form'],
     fields: [
-      { key: 'iban',           label: 'رقم الآيبان الجديد', type: 'iban', required: true },
-      { key: 'bank_name',      label: 'البنك',              type: 'text', required: false },
-      { key: 'account_holder', label: 'اسم صاحب الحساب',    type: 'name', required: false },
+      { key: 'iban',            label: 'رقم الآيبان الجديد', type: 'iban', required: true },
+      { key: 'bank_name',       label: 'البنك',              type: 'text', required: false },
+      // signRequired: لا يمنع قراءة الشهادة ولا يستدعي النموذج اللغوي (صلة القرابة
+      // ليست في الشهادة أصلاً)، لكنه شرط التوقيع لأنه يُطبع في النموذج.
+      { key: 'account_holder',  label: 'اسم صاحب الحساب',    type: 'name', required: false, signRequired: true },
+      { key: 'holder_relation', label: 'صلة القرابة',        type: 'text', required: false, signRequired: true,
+        hint: 'مثال: نفسي، أخ، زوجة' },
     ],
     markers: ['ايبان', 'آيبان', 'IBAN', 'تعريف بالحساب', 'شهادة الحساب', 'ACCOUNT CERTIFICATE'],
   },
@@ -351,12 +368,15 @@ const DOC_TYPES = {
   // لا تظهر في قائمة المرشح ولا تُطلب وحدها: تُرفع من داخل شاشة مستندها الأم،
   // وتُقبل فقط إن كان الأم مطلوباً. تُحفظ صفوفاً عادية في onboarding_documents
   // فيعمل عليها العرض والمراجعة والمزامنة بلا كود خاص.
+  // يصدر من النظام الأساسي بعد توقيع المرشح (generated) — لا يُرفع يدوياً.
+  // طلبات الصيغة السابقة رفعته ورقياً بالنوع نفسه، فيبقى عرضه ومزامنته كما كانا.
   bank_change_form: {
     label: 'نموذج طلب التغيير (معبّأ وموقّع)',
     icon: 'edit_document',
-    hint: 'النموذج بعد تعبئته وتوقيعه — صورة أو PDF.',
+    hint: 'يصدر تلقائياً بعد توقيعك على الطلب.',
     extra: true,
     subOf: 'bank_change',
+    generated: true,
     attachmentOnly: true,
     fields: [],
     markers: [],
@@ -368,6 +388,21 @@ const DOC_TYPES = {
     hint: 'الهوية الوطنية لصاحب الحساب المحوَّل إليه — ولو كان الموظف نفسه.',
     extra: true,
     subOf: 'bank_change',
+    attachmentOnly: true,
+    fields: [],
+    markers: [],
+  },
+
+  // توقيع المرشح كما رسمه (PNG): مصدر النموذج الموقّع ويُعاد منه توليده. لا يُعرض
+  // مرفقاً ولا يُرفع إلى أرشيف الموظف (noSync) — النموذج الموقّع هو الوثيقة.
+  bank_change_signature: {
+    label: 'توقيع طلب تغيير الحساب',
+    icon: 'edit_document',
+    hint: '',
+    extra: true,
+    subOf: 'bank_change',
+    generated: true,
+    noSync: true,
     attachmentOnly: true,
     fields: [],
     markers: [],
@@ -808,6 +843,14 @@ function missingRequired(docType, fields) {
     .map(f => f.key);
 }
 
+// حقول شرطها التوقيع (signRequired) لا القراءة: ناقصها يمنع التوقيع وحده.
+function missingForSigning(docType, fields) {
+  return (DOC_TYPES[docType]?.fields || [])
+    .filter(f => f.required || f.signRequired)
+    .filter(f => !fields[f.key] || !fields[f.key].valid)
+    .map(f => f.key);
+}
+
 function needsAi(docType, parsed) {
   return missingRequired(docType, parsed.fields).length > 0;
 }
@@ -918,6 +961,6 @@ module.exports = {
   DOC_TYPES, DOC_KEYS, BASE_KEYS, EXTRA_KEYS, fieldDef, normalizeHijri, derivedFrom, derivedKeys, nationalityFromId,
   normalizeDigits, normalizeText, debox, digitsOnlyFix, normalizeDate, hijriToGregorian,
   saudiIdValid, ibanValid,
-  parse, validate, needsAi, missingRequired, reviewLevel,
+  parse, validate, needsAi, missingRequired, missingForSigning, reviewLevel,
   consolidate, nameSimilar, CROSS_LABELS,
 };

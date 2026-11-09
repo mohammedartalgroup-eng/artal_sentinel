@@ -148,6 +148,8 @@ function buildSteps(session, byType, fieldsByType, opts = {}) {
       const d = byType[t] || null;
       return {
         type: t, label: sd.label, icon: sd.icon, hint: sd.hint,
+        // يصدر من النظام بعد التوقيع — لا صندوق رفع له عند المرشح
+        generated: Boolean(sd.generated),
         hasFile: Boolean(d), fileName: d?.original_name || null, docId: d?.id || null,
         status: d ? d.status : 'pending', review: d ? d.review : null,
         hrDecidedBy: d?.hr_decided_by || null, hrNote: d?.hr_note || null,
@@ -169,6 +171,10 @@ function buildSteps(session, byType, fieldsByType, opts = {}) {
       formLabel: def.formLabel || null,
       mainLabel: def.mainLabel || null,
       attachments,
+      // توقيع داخل الصفحة بدل نموذج ورقي (تغيير الحساب البنكي، كما في التطبيق)
+      signForm: Boolean(def.signForm),
+      formText: def.formText || null,
+      signature: def.signatureDoc ? signatureState(byType, def) : null,
       existingUrl,
       required: required.includes(type),
       status: doc ? doc.status : 'pending',
@@ -195,6 +201,7 @@ function buildSteps(session, byType, fieldsByType, opts = {}) {
       ocrText: opts.withOcr ? (doc?.ocr_text || null) : null,
       fields: def.fields.map(f => ({
         key: f.key, label: f.label, required: f.required, type: f.type,
+        signRequired: Boolean(f.signRequired), hint: f.hint || null,
         value: saved[f.key]?.value ?? '',
         raw: saved[f.key]?.raw_value ?? '',
         valid: saved[f.key] ? Boolean(saved[f.key].valid) : null,
@@ -204,6 +211,103 @@ function buildSteps(session, byType, fieldsByType, opts = {}) {
       })),
     };
   });
+}
+
+// ─── التوقيع داخل الصفحة (تغيير الحساب البنكي) ──────────────────────────────
+
+const RYD_STAMP = new Intl.DateTimeFormat('sv-SE', {
+  timeZone: 'Asia/Riyadh', year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+});
+
+/** وقت بتوقيت الرياض «YYYY-MM-DD HH:MM:SS» — الأعمدة تُقرأ UTC (timezone +00:00 في db.js) */
+function riyadhStamp(d) {
+  return RYD_STAMP.format(d ? new Date(d) : new Date()).replace('T', ' ');
+}
+
+/** هل وقّع، ومتى، وهل صدر النموذج من توقيعه هذا لا من قبله (نموذج ورقي قديم)؟ */
+function signatureState(byType, def) {
+  const sig = byType[def.signatureDoc] || null;
+  const form = byType[def.formDoc] || null;
+  return {
+    signed: Boolean(sig),
+    signedAt: sig ? riyadhStamp(sig.created_at) : null,
+    formReady: Boolean(sig && form && form.id > sig.id),
+    formDocId: form?.id || null,
+  };
+}
+
+// تعديل بيانات الطلب أو إعادة رفع شهادته بعد التوقيع يُسقط التوقيع ونموذجه: النموذج
+// يحمل ما وقّع عليه المرشح، ولا يُترك بآيبان أو اسم غير الذي يظهر الآن.
+async function dropSignature(session, docType) {
+  const def = rules.DOC_TYPES[docType];
+  if (!def?.signatureDoc) return false;
+  const sig = await db.get(
+    'SELECT id FROM onboarding_documents WHERE session_id = ? AND doc_type = ? AND is_current = 1',
+    [session.id, def.signatureDoc]
+  );
+  if (!sig) return false;
+  await db.run(
+    'UPDATE onboarding_documents SET is_current = 0 WHERE session_id = ? AND doc_type IN (?, ?) AND id >= ?',
+    [session.id, def.signatureDoc, def.formDoc, sig.id]
+  );
+  await db.run(
+    "UPDATE onboarding_documents SET status = 'extracted' WHERE session_id = ? AND doc_type = ? AND is_current = 1 AND status = 'confirmed'",
+    [session.id, docType]
+  );
+  await recomputeProgress(session);
+  return true;
+}
+
+/** يحفظ ملفاً صدر من النظام (توقيع، نموذج) كمستند حالي من نوعه — نفس مجلد المرفوعات وتسميتها. */
+async function storeGenerated(session, docType, buffer, ext, mime, originalName) {
+  const dir = path.join(OB_ROOT, String(session.applicant_id));
+  await fs.promises.mkdir(dir, { recursive: true });
+  const fileName = `${docType}_${session.applicant_id}_${Date.now()}.${ext}`;
+  await fs.promises.writeFile(path.join(dir, fileName), buffer);
+
+  await db.run('UPDATE onboarding_documents SET is_current = 0 WHERE session_id = ? AND doc_type = ?', [session.id, docType]);
+  const ins = await db.run(
+    `INSERT INTO onboarding_documents
+       (session_id, applicant_id, doc_type, status, file_name, original_name, mime, size_bytes)
+     VALUES (?, ?, ?, 'confirmed', ?, ?, ?, ?)`,
+    [session.id, session.applicant_id, docType, fileName, originalName, mime, buffer.length]
+  );
+  return ins.insertId;
+}
+
+/**
+ * يصدر نموذج تغيير الحساب الموقّع من النظام الأساسي ويحفظه مع المستندات. تعذّره لا
+ * يمسّ التوقيع المحفوظ: يُعاد من زر «إصدار النموذج» في صفحة الإدارة أو عند مزامنة
+ * الوثائق.
+ */
+async function issueBankForm(session) {
+  const def = rules.DOC_TYPES.bank_change;
+  const { byType, fieldsByType } = await loadDocs(session.id);
+  const sig = byType[def.signatureDoc];
+  if (!sig) throw new Error('لا يوجد توقيع محفوظ لهذا الطلب');
+  if (!/^[A-Za-z0-9._-]+$/.test(sig.file_name || '')) throw new Error('اسم ملف التوقيع غير صالح');
+
+  const applicant = await db.get('SELECT * FROM applicants WHERE id = ?', [session.applicant_id]);
+  const employment = await loadEmployment(session.id);
+  const { payload } = payloadBuilder.build({ applicant, fieldsByType, employment, sessionId: session.id });
+  const f = fieldsByType.bank_change || {};
+  const val = (k) => (f[k]?.valid && String(f[k].value || '').trim()) || '';
+  const png = await fs.promises.readFile(path.join(OB_ROOT, String(sig.applicant_id), sig.file_name));
+
+  const pdf = await artalsys.renderBankChangeForm({
+    national_id: payload.person.national_id,
+    name: payload.person.name_ar,
+    iban: val('iban'),
+    bank_name: val('bank_name') || null,
+    holder_name: val('account_holder'),
+    holder_relation: val('holder_relation'),
+    signature: 'data:image/png;base64,' + png.toString('base64'),
+    signed_at: riyadhStamp(sig.created_at),
+    zone_name: employment?.preferred_zone_name || null,
+  });
+
+  return storeGenerated(session, def.formDoc, pdf, 'pdf', 'application/pdf', 'نموذج طلب تغيير الحساب البنكي.pdf');
 }
 
 /**
@@ -380,6 +484,12 @@ publicRouter.post('/:token/upload', uploadLimiter, resolveToken, (req, res, next
     const docType = String(req.body.doc_type || '');
     if (!docAllowed(s, docType)) return res.status(400).json({ error: 'نوع مستند غير معروف' });
     if (!req.file) return res.status(400).json({ error: 'لم يصل أي ملف' });
+    if (rules.DOC_TYPES[docType].generated) {
+      fs.promises.unlink(req.file.path).catch(() => {});
+      return res.status(400).json({ error: 'هذا الملف يصدر تلقائياً بعد التوقيع' });
+    }
+    // شهادة جديدة = بيانات جديدة: التوقيع السابق لم يكن عليها
+    await dropSignature(s, docType);
 
     // النسخة السابقة تبقى في السجل للتدقيق ولا تُعتبر المستند الحالي.
     await db.run('UPDATE onboarding_documents SET is_current = 0 WHERE session_id = ? AND doc_type = ?', [s.id, docType]);
@@ -437,7 +547,12 @@ publicRouter.patch('/:token/field', pageLimiter, resolveToken, async (req, res) 
     if (!docAllowed(req.obSession, String(docType))) return res.status(400).json({ error: 'نوع مستند غير معروف' });
     if (!rules.fieldDef(docType, String(field))) return res.status(400).json({ error: 'حقل غير معروف' });
 
+    const before = await db.get(
+      'SELECT value FROM onboarding_fields WHERE session_id = ? AND doc_type = ? AND field_key = ?',
+      [req.obSession.id, docType, String(field)]
+    );
     const v = await saveField(req.obSession.id, docType, String(field), String(value ?? ''), 'user', 1);
+    const unsigned = String(before?.value ?? '') !== String(v.value ?? '') && await dropSignature(req.obSession, docType);
     await db.run('UPDATE onboarding_sessions SET last_step = ? WHERE id = ?', [docType, req.obSession.id]);
 
     // حقول تُشتق من هذا الحقل (الجنسية من رقم الهوية).
@@ -464,7 +579,7 @@ publicRouter.patch('/:token/field', pageLimiter, resolveToken, async (req, res) 
       }
     }
 
-    res.json({ ok: true, value: v.value, valid: v.ok, error: v.error, also });
+    res.json({ ok: true, value: v.value, valid: v.ok, error: v.error, also, unsigned });
   } catch (err) {
     console.error('[Onboarding field]', err.message);
     res.status(500).json({ error: 'تعذّر الحفظ' });
@@ -477,6 +592,7 @@ publicRouter.post('/:token/confirm', pageLimiter, resolveToken, async (req, res)
     const s = req.obSession;
     const docType = String(req.body?.doc_type || '');
     if (!docAllowed(s, docType)) return res.status(400).json({ error: 'نوع مستند غير معروف' });
+    if (rules.DOC_TYPES[docType].signForm) return res.status(409).json({ error: 'وقّع الطلب لإكماله', sign: true });
 
     const doc = await db.get(
       'SELECT * FROM onboarding_documents WHERE session_id = ? AND doc_type = ? AND is_current = 1',
@@ -507,6 +623,76 @@ publicRouter.post('/:token/confirm', pageLimiter, resolveToken, async (req, res)
   } catch (err) {
     console.error('[Onboarding confirm]', err.message);
     res.status(500).json({ error: 'تعذّر التأكيد' });
+  }
+});
+
+// التوقيع على الطلب (تغيير الحساب البنكي) — يحلّ محل «تأكيد» لهذا المستند كما في
+// تطبيق الموظف: البيانات مكتملة + هوية صاحب الحساب مرفوعة + توقيع، ثم يصدر النموذج.
+const SIG_MAX_BYTES = 300 * 1024;
+const PNG_HEADER = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+publicRouter.post('/:token/sign', uploadLimiter, resolveToken, async (req, res) => {
+  try {
+    const s = req.obSession;
+    const docType = String(req.body?.doc_type || '');
+    const def = rules.DOC_TYPES[docType];
+    if (!docAllowed(s, docType) || !def?.signForm) return res.status(400).json({ error: 'نوع مستند غير معروف' });
+
+    const doc = await db.get(
+      'SELECT * FROM onboarding_documents WHERE session_id = ? AND doc_type = ? AND is_current = 1',
+      [s.id, docType]
+    );
+    if (!doc) return res.status(400).json({ error: 'ارفع ' + (def.mainLabel || def.label) + ' أولاً' });
+
+    const rows = await db.all('SELECT * FROM onboarding_fields WHERE session_id = ? AND doc_type = ?', [s.id, docType]);
+    const map = Object.fromEntries(rows.map(r => [r.field_key, { valid: Boolean(r.valid) && String(r.value || '').trim() !== '' }]));
+    const missing = rules.missingForSigning(docType, map);
+    if (missing.length) {
+      return res.status(422).json({ error: 'أكمل البيانات المطلوبة قبل التوقيع', missing });
+    }
+    const relation = rows.find(r => r.field_key === 'holder_relation');
+    if (String(relation?.value || '').length > 40) {
+      return res.status(422).json({ error: 'صلة القرابة طويلة — اكتبها بكلمة أو كلمتين', missing: ['holder_relation'] });
+    }
+
+    const holderId = await db.get(
+      "SELECT id FROM onboarding_documents WHERE session_id = ? AND doc_type = 'bank_change_holder_id' AND is_current = 1",
+      [s.id]
+    );
+    if (!holderId) return res.status(422).json({ error: 'أرفق صورة هوية صاحب الحساب أولاً' });
+
+    const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body?.signature || ''));
+    const png = m ? Buffer.from(m[1], 'base64') : null;
+    if (!png || png.length < 100 || !png.subarray(0, 8).equals(PNG_HEADER)) {
+      return res.status(422).json({ error: 'ارسم توقيعك أولاً' });
+    }
+    if (png.length > SIG_MAX_BYTES) return res.status(422).json({ error: 'التوقيع أكبر من المسموح — امسحه وأعد رسمه' });
+
+    await dropSignature(s, docType);
+    await storeGenerated(s, def.signatureDoc, png, 'png', 'image/png', 'توقيع طلب تغيير الحساب.png');
+    await db.run('UPDATE onboarding_fields SET user_confirmed = 1 WHERE session_id = ? AND doc_type = ?', [s.id, docType]);
+    await db.run(
+      "UPDATE onboarding_documents SET status = 'confirmed', review = ? WHERE id = ?",
+      [doc.review === 'red' ? 'red' : (doc.review || 'green'), doc.id]
+    );
+    await db.run('UPDATE onboarding_sessions SET last_step = ? WHERE id = ?', [docType, s.id]);
+
+    // النموذج يصدر من النظام الأساسي؛ تعذّره الآن لا يُسقط التوقيع
+    let formError = null;
+    try {
+      await issueBankForm(s);
+    } catch (e) {
+      formError = e.message;
+      console.error('[Onboarding sign → form]', e.message);
+    }
+
+    const p = await recomputeProgress(s);
+    const { byType, fieldsByType } = await loadDocs(s.id);
+    const step = buildSteps(s, byType, fieldsByType).find(x => x.type === docType);
+    res.json({ ok: true, step, ...p, formReady: !formError, conflicts: buildProfile(fieldsByType).filter(g => g.conflict) });
+  } catch (err) {
+    console.error('[Onboarding sign]', err.message);
+    res.status(500).json({ error: 'تعذّر حفظ التوقيع — حاول مرة أخرى' });
   }
 });
 
@@ -1373,6 +1559,13 @@ adminRouter.post('/sync-attachments/:applicantId', sendLimiter, async (req, res)
     }
     if (!employeeId) return res.status(422).json({ error: 'الموظف غير موجود في النظام الأساسي — زامن البيانات أولاً' });
 
+    // وقّع المرشح ولم يصدر نموذجه (تعذّر وقت التوقيع)؟ يُصدر الآن ليُرفع مع البقية
+    const before = await loadDocs(s.id);
+    const bankSig = rules.DOC_TYPES.bank_change;
+    if (before.byType[bankSig.signatureDoc] && !signatureState(before.byType, bankSig).formReady) {
+      await issueBankForm(s).catch(e => console.error('[Onboarding sync → form]', e.message));
+    }
+
     const docs = await db.all(
       'SELECT * FROM onboarding_documents WHERE session_id = ? AND is_current = 1 ORDER BY id ASC',
       [s.id]
@@ -1383,6 +1576,9 @@ adminRouter.post('/sync-attachments/:applicantId', sendLimiter, async (req, res)
 
     for (const doc of docs) {
       const label = rules.DOC_TYPES[doc.doc_type]?.label || doc.doc_type;
+
+      // التوقيع الخام مصدر النموذج لا وثيقة في ملف الموظف
+      if (rules.DOC_TYPES[doc.doc_type]?.noSync) continue;
 
       // المرفوض في المراجعة لا يغادر المنصة: رفعه إلى أرشيف الموظف يعني اعتماد
       // ما رفضه إنسان. يُذكر في النتيجة بسببه حتى لا يُظنّ أنه نُسي.
@@ -1458,6 +1654,23 @@ adminRouter.post('/sync-attachments/:applicantId', sendLimiter, async (req, res)
     res.json({ ok: okCount === attempted.length, employee_id: employeeId, results });
   } catch (err) {
     console.error('[Onboarding sync-attachments]', err.message);
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// إصدار نموذج تغيير الحساب من توقيع المرشح المحفوظ (أو إعادة إصداره بعد تصحيح بيانات)
+adminRouter.post('/bank-form/:applicantId', sendLimiter, async (req, res) => {
+  if (!featureOn()) return res.status(503).json({ error: 'الميزة غير مفعّلة' });
+  if (!artalsys.isConfigured()) return res.status(409).json({ error: 'تكامل النظام الأساسي غير مهيأ' });
+  try {
+    const s = await db.get('SELECT * FROM onboarding_sessions WHERE applicant_id = ? ORDER BY id DESC LIMIT 1', [req.params.applicantId]);
+    if (!s) return res.status(400).json({ error: 'لا توجد جلسة استكمال' });
+    const docId = await issueBankForm(s);
+    db.audit(req.session?.adminId, req.session?.adminUser || 'system', 'onboarding_bank_form',
+      'applicant', s.applicant_id, null, 'إصدار نموذج تغيير الحساب الموقّع', req.ip).catch(() => {});
+    res.json({ ok: true, docId });
+  } catch (err) {
+    console.error('[Onboarding bank-form]', err.message);
     res.status(502).json({ error: err.message });
   }
 });

@@ -170,6 +170,7 @@ function categoryFor(docType, nationalId) {
     medical_exam: 'medical_exam',
     criminal_record: 'criminal_record',
     bank_change: 'bank_iban',          // شهادة آيبان للحساب الجديد — نفس تصنيف الشهادة الأصلية
+    bank_change_form: 'bank_iban',     // نموذج الطلب الموقّع — بجوار الشهادة كما يؤرشفه تطبيق الموظف
   }[docType] || 'other';
 }
 

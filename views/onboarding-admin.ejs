@@ -404,6 +404,23 @@
                   <span class="ob-src">— يحمّله المرشح ويعبّئه ويوقّعه ثم يعيد رفعه</span>
                 </div>
               <% } %>
+              <% if (s.signForm && s.signature) { %>
+                <!-- التوقيع داخل الصفحة: النموذج يصدر من النظام الأساسي بتوقيع المرشح -->
+                <div class="flex items-center gap-2 flex-wrap mb-2">
+                  <span class="font-semibold text-[#001736]">توقيع المرشح:</span>
+                  <% if (s.signature.signed) { %>
+                    <span class="ob-chip g">وقّع إلكترونياً في <%= s.signature.signedAt %></span>
+                    <% if (!s.signature.formReady) { %><span class="ob-chip y">النموذج لم يصدر بعد</span><% } %>
+                    <button class="ob-btn s" style="padding:4px 10px" onclick="issueBankForm(this)">
+                      <span class="material-symbols-outlined" style="font-size:16px">autorenew</span>
+                      <%= s.signature.formReady ? 'إعادة إصدار النموذج' : 'إصدار النموذج' %>
+                    </button>
+                  <% } else { %>
+                    <span class="ob-chip n">لم يوقّع بعد</span>
+                    <span class="ob-src">— يكمل المرشح بيانات صاحب الحساب ويوقّع في الصفحة، فيصدر النموذج تلقائياً</span>
+                  <% } %>
+                </div>
+              <% } %>
               <% (s.attachments || []).forEach(function (a) { %>
                 <div class="flex items-center gap-2 flex-wrap py-1.5 border-t border-[#eceef0]">
                   <span class="material-symbols-outlined text-[#264778]" style="font-size:18px"><%= a.icon %></span>
@@ -418,7 +435,7 @@
                     <button class="ob-btn d" style="padding:4px 10px" onclick="review(<%= a.docId %>,'red')">غير مقبول</button>
                     <% if (a.hrNote) { %><span class="ob-src">— <%= a.hrNote %></span><% } %>
                   <% } else { %>
-                    <span class="ob-chip n">لم يُرفع</span>
+                    <span class="ob-chip n"><%= a.generated ? 'يصدر بعد توقيع المرشح' : 'لم يُرفع' %></span>
                   <% } %>
                 </div>
               <% }) %>
@@ -818,6 +835,20 @@ async function revokeLink(id) {
   const r = await fetch('/admin/onboarding/revoke/' + id, { method: 'POST' });
   if (!r.ok) return alert('تعذّر الإيقاف');
   location.reload();
+}
+
+async function issueBankForm(btn) {
+  const old = btn.innerHTML;
+  btn.disabled = true; btn.textContent = 'جارٍ الإصدار…';
+  try {
+    const r = await fetch('/admin/onboarding/bank-form/' + APPLICANT_ID, { method: 'POST' });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || 'تعذّر إصدار النموذج');
+    location.reload();
+  } catch (e) {
+    alert(e.message);
+    btn.disabled = false; btn.innerHTML = old;
+  }
 }
 
 async function review(docId, value) {

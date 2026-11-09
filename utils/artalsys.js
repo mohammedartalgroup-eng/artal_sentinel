@@ -155,4 +155,35 @@ async function uploadAttachment(employeeId, { buffer, fileName, mime, category, 
   return { status: res.status, ok: res.ok, json };
 }
 
-module.exports = { isConfigured, baseUrl, options, pushEmployee, uploadAttachment, lookupByNationalId, parseLenient };
+/**
+ * نموذج «طلب تغيير رقم الحساب البنكي» موقّعاً — يعبّئه النظام الأساسي من القالب نفسه
+ * الذي يعبّئه تطبيق الموظف، ويُرجعه PDF دون أن يحفظ شيئاً عنده.
+ *
+ * @returns {Promise<Buffer>} الملف، أو يرمي بسبب مفهوم بالعربية
+ */
+async function renderBankChangeForm(body) {
+  if (!isConfigured()) throw new Error('تكامل النظام الأساسي غير مهيأ');
+
+  const res = await netFetch(`${baseUrl()}/api/hooks/onboarding/bank-change-form`, {
+    method: 'POST',
+    headers: {
+      'X-Secret': process.env.ARTALSYS_PUSH_SECRET,
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(45000),
+  }, 'POST /api/hooks/onboarding/bank-change-form');
+
+  const type = String(res.headers.get('content-type') || '');
+  const buffer = Buffer.from(await res.arrayBuffer());
+  if (res.ok && type.includes('application/pdf') && buffer.subarray(0, 4).toString() === '%PDF') {
+    return buffer;
+  }
+
+  const json = parseLenient(buffer.toString('utf8'));
+  const first = json?.errors ? Object.values(json.errors).flat()[0] : null;
+  throw new Error(first || json?.error || json?.message || `تعذّر إصدار النموذج (HTTP ${res.status})`);
+}
+
+module.exports = { isConfigured, baseUrl, options, pushEmployee, uploadAttachment, lookupByNationalId, parseLenient, renderBankChangeForm };

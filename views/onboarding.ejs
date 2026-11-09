@@ -136,6 +136,24 @@
     .f.good .msg{color:var(--green)}
     .src{font-size:11px;color:#747780;font-weight:400}
 
+    /* نص النموذج + التوقيع داخل الصفحة (تغيير الحساب البنكي، كما في التطبيق) */
+    .formtext{margin-top:18px;border:1px solid var(--line);border-radius:16px;padding:14px;background:#fafbfc}
+    .formtext .fh{display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px}
+    .formtext .sub{font-size:12.5px;color:var(--muted);margin:4px 0 10px}
+    .formtext .body{white-space:pre-line;font-size:13px;line-height:1.9;background:#fff;border:1px solid #eceef0;
+         border-radius:12px;padding:12px}
+    .signed a{color:inherit;font-weight:700}
+    .sig-back{position:fixed;inset:0;background:rgba(0,23,54,.55);z-index:60;display:flex;align-items:flex-end;justify-content:center}
+    .sig-sheet{background:#fff;width:100%;max-width:560px;border-radius:20px 20px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
+    .sig-sheet h3{margin:0;font-size:16px}
+    .sig-sheet p{margin:4px 0 12px;font-size:13px;color:var(--muted)}
+    .sig-pad{position:relative;border:1.5px dashed #c4c6d0;border-radius:14px;background:#fff;height:200px;touch-action:none}
+    .sig-pad canvas{position:absolute;inset:0;width:100%;height:100%;border-radius:14px}
+    .sig-pad .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#a5a8b0;
+         font-size:13px;pointer-events:none}
+    .sig-row{display:flex;gap:10px;margin-top:12px}
+    .sig-row .btn{flex:1}
+
     #toast{position:fixed;bottom:18px;right:50%;transform:translate(50%,120%);background:var(--navy);color:#fff;
            padding:11px 18px;border-radius:12px;font-size:13.5px;transition:transform .3s;z-index:50}
     #toast.show{transform:translate(50%,0)}
@@ -231,6 +249,13 @@
       <div id="d-thumb" class="thumb hidden"></div>
       <div id="d-fields" class="fields"></div>
 
+      <!-- نص النموذج الثابت — يُقرأ قبل التوقيع ويُطبع بالبيانات أعلاه وتوقيع المرشح -->
+      <div class="formtext hidden" id="d-formtext">
+        <div class="fh"><span class="material-symbols-outlined">description</span> نموذج الطلب</div>
+        <div class="sub">هذا نص النموذج الذي سيُرسل باسمك ورقم هويتك وتوقيعك. اقرأه قبل التوقيع.</div>
+        <div class="body" id="d-formtext-body"></div>
+      </div>
+
       <div id="d-actions" class="hidden" style="margin-top:20px;display:flex;flex-direction:column;gap:10px">
         <button class="btn primary wide" id="d-confirm" onclick="confirmDoc()">تأكيد وحفظ</button>
         <button class="btn ghost wide" onclick="pick(false)">إعادة رفع المستند</button>
@@ -238,6 +263,23 @@
     </div>
   </div>
 </section>
+
+<!-- التوقيع بالإصبع — نفس فكرة لوحة التوقيع في تطبيق الموظف -->
+<div class="sig-back hidden" id="sig">
+  <div class="sig-sheet">
+    <h3>توقيع طلب تغيير الحساب</h3>
+    <p>ارسم توقيعك لاعتماد الطلب، وسيُوضع على نموذج الطلب.</p>
+    <div class="sig-pad" id="sig-pad">
+      <canvas id="sig-canvas"></canvas>
+      <div class="ph" id="sig-ph">وقّع هنا</div>
+    </div>
+    <div class="sig-row">
+      <button class="btn ghost" onclick="clearSignature()">مسح</button>
+      <button class="btn ghost" onclick="closeSignature()">رجوع</button>
+    </div>
+    <button class="btn primary wide" id="sig-ok" style="margin-top:10px" onclick="submitSignature()">اعتماد التوقيع</button>
+  </div>
+</div>
 
 <input type="file" id="filein" accept="image/*,application/pdf" class="hidden">
 <div id="toast"></div>
@@ -268,6 +310,7 @@ function chipFor(s) {
   if (s.done) return ['ok', 'اعتمده فريق التوظيف'];
   if (s.existingUrl) return ['ok', 'موجودة من طلبك'];
   if (s.status === 'extracted' && s.review === 'red') return ['bad', 'مستند غير مطابق'];
+  if (s.signForm && s.hasFile && !s.signature?.signed) return ['warn', 'ينقصه توقيعك'];
   if (s.status === 'extracted') return ['warn', 'راجِع البيانات'];
   return [s.required ? 'wait' : 'wait', s.required ? 'مطلوب' : 'اختياري'];
 }
@@ -353,6 +396,15 @@ function renderDoc() {
   } else if (s.review === 'red') {
     st.className = 'status bad';
     st.innerHTML = `<span class="material-symbols-outlined">error</span><span>${s.warnings[0] || 'المستند لا يبدو مطابقاً للمطلوب — أعد الرفع.'}</span>`;
+  } else if (s.signForm && s.signature?.signed) {
+    st.className = 'status ok signed';
+    st.innerHTML = s.signature.formReady
+      ? `<span class="material-symbols-outlined">check_circle</span><span>تم توقيع الطلب وصدر نموذجه. <a href="/onboarding/${TOKEN}/file/${s.signature.formDocId}" target="_blank" rel="noopener">عرض نموذج الطلب</a></span>`
+      : '<span class="material-symbols-outlined">check_circle</span><span>تم حفظ توقيعك، وسيصدر نموذج الطلب قريباً.</span>';
+  } else if (s.signForm && s.status !== 'confirmed') {
+    st.className = 'status warn';
+    st.innerHTML = '<span class="material-symbols-outlined">edit_document</span><span>'
+      + (s.warnings[0] || 'راجع البيانات وأكمل بيانات صاحب الحساب، ثم وقّع الطلب.') + '</span>';
   } else if (s.status === 'confirmed') {
     st.className = 'status ok';
     st.innerHTML = '<span class="material-symbols-outlined">check_circle</span><span>تم الحفظ. يمكنك تعديل البيانات أو إعادة الرفع في أي وقت.</span>';
@@ -371,13 +423,19 @@ function renderDoc() {
   }
 
   renderFields(s);
-  $('d-confirm').textContent = s.status === 'confirmed' ? 'حفظ التعديلات' : 'تأكيد وحفظ';
+
+  // التوقيع يحلّ محل «تأكيد» لهذا المستند، ويختفي زرّه بعد التوقيع (تعديل أي بيان يعيده)
+  $('d-formtext').classList.toggle('hidden', !(s.signForm && hasFile));
+  if (s.signForm) $('d-formtext-body').textContent = s.formText || '';
+  $('d-confirm').classList.toggle('hidden', Boolean(s.signForm && s.signature?.signed));
+  $('d-confirm').textContent = s.signForm ? 'توقيع وإرسال'
+    : (s.status === 'confirmed' ? 'حفظ التعديلات' : 'تأكيد وحفظ');
 }
 
 // المرفقات التابعة: كل واحد صندوق رفع مستقل بحالته — لا يمرّ بالقراءة الآلية
 function renderAttachments(s) {
   const box = $('d-attach');
-  const list = s.attachments || [];
+  const list = (s.attachments || []).filter(a => !a.generated);
   box.classList.toggle('hidden', !list.length);
   if (!list.length) { box.innerHTML = ''; return; }
   box.innerHTML = list.map(a => {
@@ -415,11 +473,11 @@ function renderFields(s) {
     const cls = f.value ? (f.valid ? 'good' : 'bad') : '';
     const msg = f.value && !f.valid ? (f.error || 'قيمة غير صحيحة')
               : (f.type === 'date' ? 'يوم/شهر/سنة — نقبل الهجري والميلادي'
-                : (f.type === 'hijri_date' ? 'هجري كما في البطاقة — مثال: 1414/12/11' : ''));
+                : (f.type === 'hijri_date' ? 'هجري كما في البطاقة — مثال: 1414/12/11' : (f.hint || '')));
     const mode = ['digits4','digits5','digits10','saudi_id'].includes(f.type) ? 'numeric' : 'text';
     return `
       <div class="f ${cls}" id="f-${f.key}">
-        <label for="i-${f.key}">${f.label}${f.required ? ' <span class="req">*</span>' : ''}
+        <label for="i-${f.key}">${f.label}${(f.required || f.signRequired) ? ' <span class="req">*</span>' : ''}
           ${f.source === 'ai' ? '<span class="src">— مُستنتج، تأكّد منه</span>' : ''}</label>
         <input id="i-${f.key}" inputmode="${mode}" value="${(f.value || '').replace(/"/g, '&quot;')}"
                onchange="saveField('${f.key}')" onblur="saveField('${f.key}')">
@@ -510,6 +568,13 @@ async function saveField(key) {
     if (!r.ok) throw new Error(j.error || 'تعذّر الحفظ');
 
     f.value = j.value; f.valid = j.valid; f.error = j.error; f.source = 'user';
+    if (j.unsigned && s.signature) {
+      s.signature = { signed: false, signedAt: null, formReady: false, formDocId: null };
+      s.status = 'extracted';
+      renderDoc();
+      toast('عدّلت بيانات الطلب — وقّعه من جديد');
+      return;
+    }
     const box = $('f-' + key);
     box.className = 'f ' + (val ? (j.valid ? 'good' : 'bad') : '');
     box.querySelector('.msg').textContent = val && !j.valid ? (j.error || 'قيمة غير صحيحة')
@@ -533,6 +598,7 @@ async function saveField(key) {
 
 // ─── التأكيد ─────────────────────────────────────────────────────────────────
 async function confirmDoc() {
+  if (step(current)?.signForm) return openSignature();
   const btn = $('d-confirm');
   btn.disabled = true;
   try {
@@ -570,6 +636,126 @@ function renderConflicts(list) {
     g.values.map(v => `${v.docLabel} «${v.value}»`).join(' — ') + '</div>'
   ).join('');
   box.classList.remove('hidden');
+}
+
+// ─── التوقيع بالإصبع ─────────────────────────────────────────────────────────
+// خطوط على canvas بأحداث المؤشر (لمس وفأرة)، ثم تُقصّ الصورة على حدود الحبر قبل
+// الإرسال: توقيع صغير في مساحة كبيرة كان سيظهر نقطةً في صندوق التوقيع بالنموذج.
+const pad = { ctx: null, drawing: false, inked: false, box: null, ratio: 1 };
+
+function setupPad() {
+  const canvas = $('sig-canvas');
+  const rect = canvas.getBoundingClientRect();
+  pad.ratio = Math.max(window.devicePixelRatio || 1, 1);
+  canvas.width = Math.round(rect.width * pad.ratio);
+  canvas.height = Math.round(rect.height * pad.ratio);
+  pad.ctx = canvas.getContext('2d');
+  pad.ctx.scale(pad.ratio, pad.ratio);
+  pad.ctx.lineWidth = 2.6;
+  pad.ctx.lineCap = 'round';
+  pad.ctx.lineJoin = 'round';
+  pad.ctx.strokeStyle = '#0a1a3c';
+  pad.inked = false;
+  pad.box = null;
+  $('sig-ph').classList.remove('hidden');
+}
+
+function padPoint(e) {
+  const r = $('sig-canvas').getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+
+function grow(p) {
+  const b = pad.box || { x0: p.x, y0: p.y, x1: p.x, y1: p.y };
+  pad.box = { x0: Math.min(b.x0, p.x), y0: Math.min(b.y0, p.y), x1: Math.max(b.x1, p.x), y1: Math.max(b.y1, p.y) };
+}
+
+(function bindPad() {
+  const canvas = $('sig-canvas');
+  canvas.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    canvas.setPointerCapture(e.pointerId);
+    const p = padPoint(e);
+    pad.drawing = true;
+    pad.ctx.beginPath();
+    pad.ctx.moveTo(p.x, p.y);
+    pad.ctx.lineTo(p.x + 0.1, p.y + 0.1);
+    pad.ctx.stroke();
+    grow(p);
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!pad.drawing) return;
+    e.preventDefault();
+    const p = padPoint(e);
+    pad.ctx.lineTo(p.x, p.y);
+    pad.ctx.stroke();
+    grow(p);
+    if (!pad.inked) { pad.inked = true; $('sig-ph').classList.add('hidden'); }
+  });
+  const end = () => { pad.drawing = false; };
+  canvas.addEventListener('pointerup', end);
+  canvas.addEventListener('pointercancel', end);
+  canvas.addEventListener('pointerleave', end);
+})();
+
+function openSignature() {
+  $('sig').classList.remove('hidden');
+  setupPad();
+}
+
+function closeSignature() {
+  $('sig').classList.add('hidden');
+}
+
+function clearSignature() {
+  setupPad();
+}
+
+/** الحبر وحده مقصوصاً بهامش صغير، PNG بخلفية شفافة */
+function signaturePng() {
+  const m = 8;
+  const b = pad.box;
+  const x0 = Math.max(0, b.x0 - m), y0 = Math.max(0, b.y0 - m);
+  const w = Math.min($('sig-canvas').width / pad.ratio, b.x1 + m) - x0;
+  const h = Math.min($('sig-canvas').height / pad.ratio, b.y1 + m) - y0;
+  const out = document.createElement('canvas');
+  out.width = Math.max(1, Math.round(w * pad.ratio));
+  out.height = Math.max(1, Math.round(h * pad.ratio));
+  out.getContext('2d').drawImage($('sig-canvas'), x0 * pad.ratio, y0 * pad.ratio, w * pad.ratio, h * pad.ratio, 0, 0, out.width, out.height);
+  return out.toDataURL('image/png');
+}
+
+async function submitSignature() {
+  if (!pad.inked || !pad.box) return toast('ارسم توقيعك أولاً');
+  const btn = $('sig-ok');
+  btn.disabled = true;
+  btn.textContent = 'جاري الإرسال…';
+  try {
+    const r = await fetch(`/onboarding/${TOKEN}/sign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ doc_type: current, signature: signaturePng() }),
+    });
+    const j = await r.json();
+    if (!r.ok) {
+      if (j.missing?.length) {
+        closeSignature();
+        j.missing.forEach(k => $('f-' + k)?.classList.add('bad'));
+        $('f-' + j.missing[0])?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      throw new Error(j.error || 'تعذّر حفظ التوقيع');
+    }
+    STEPS = STEPS.map(s => s.type === j.step.type ? j.step : s);
+    closeSignature();
+    renderConflicts(j.conflicts || []);
+    toast(j.progress >= 100 ? 'اكتمل ملفك — شكراً لك 🎉' : 'تم توقيع الطلب ✓');
+    showList();
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'اعتماد التوقيع';
+  }
 }
 
 // ─── الإقلاع: نفتح مباشرةً على أول مستند ناقص لمن سبق أن بدأ ────────────────
