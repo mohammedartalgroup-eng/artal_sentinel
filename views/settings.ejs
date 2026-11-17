@@ -496,8 +496,8 @@
             <% }); %>
           </div>
           <p class="text-[10px] text-[#7594ca] mt-1.5 leading-relaxed">
-            يحكم كل رسائل واتساب للمتقدمين — إشعارات المقابلات والقوالب اليدوية والدعوات. مع OpenWA يُقرأ نص القالب المعتمد من
-            «قناة الإرسال» أدناه ويُعبّأ بالمتغيّرات نفسها ثم يُرسل من الرقم كرسالة عادية، وأزرار الرد السريع تصير خيارات مرقّمة.
+            يحكم كل رسائل واتساب للمتقدمين — إشعارات المقابلات والقوالب اليدوية والدعوات. مع OpenWA يُؤخذ نص القالب المعتمد من
+            «نسخة النصوص المحفوظة» أدناه (لا يلزم Chatwoot قائماً)، ويُعبّأ بالمتغيّرات نفسها ثم يُرسل من الرقم كرسالة عادية بلا أزرار.
             ردود المتقدمين تصل إلى الرقم نفسه وتظهر في لوحة OpenWA. للرجوع اختر Chatwoot واحفظ.
           </p>
         </div>
@@ -533,6 +533,37 @@
             واتساب لا يسمح ببدء محادثة خارج نافذة الـ 24 ساعة إلا بقالب معتمد. اكتب اسم القالب كما هو حرفياً في قناة الإرسال المختارة،
             ورتّب المتغيّرات بحسب <span dir="ltr" class="font-mono">{{1}}</span>، <span dir="ltr" class="font-mono">{{2}}</span> … في نص القالب.
           </p>
+
+          <%
+            const ST = typeof savedTpls !== 'undefined' ? savedTpls : [];
+            const savedNames = new Set(ST.map(function (t) { return t.name; }));
+            const usedNames = [...new Set(KINDS.map(function (k) { return String(settings['wa_tpl_' + k.key + '_name'] || '').trim(); }).filter(Boolean))];
+            const notSaved = usedNames.filter(function (n) { return !savedNames.has(n); });
+            const lastSync = ST.reduce(function (a, t) { return !a || new Date(t.synced_at) > new Date(a) ? t.synced_at : a; }, null);
+            const when = typeof fmtDateTime === 'function' ? fmtDateTime : function (d) { return String(d); };
+          %>
+          <div class="rounded-xl p-4 mb-4" style="border:1px solid <%= notSaved.length ? '#fcd34d' : '#e0e3e5' %>;background:<%= notSaved.length ? '#fffbeb' : '#fff' %>;">
+            <div class="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <div class="text-xs font-bold text-[#001736]">نسخة النصوص المحفوظة</div>
+                <div class="text-[11px] text-[#43474f] mt-0.5">
+                  <% if (ST.length) { %>
+                  <%= ST.length %> قالباً محفوظاً — آخر مزامنة: <%= when(lastSync) %>.
+                  <% } else { %>
+                  لا نسخة محفوظة بعد.
+                  <% } %>
+                  منها يرسل OpenWA ولو توقف Chatwoot، وتتحدّث وحدها كلما فُتحت هذه الصفحة وChatwoot يعمل.
+                </div>
+                <% if (notSaved.length) { %>
+                <div class="text-[11px] text-amber-700 mt-1">
+                  غير محفوظ: <span dir="ltr" class="font-mono"><%= notSaved.join(', ') %></span> — سيخرج بالنص الاحتياطي حتى تتم المزامنة وChatwoot يعمل.
+                </div>
+                <% } %>
+              </div>
+              <button type="button" onclick="syncWaTemplates(this)"
+                      style="background:#fff;color:#001736;border:1px solid #001736;border-radius:.6rem;padding:.45rem .9rem;font-size:.75rem;font-weight:600;cursor:pointer;white-space:nowrap;">مزامنة من Chatwoot الآن</button>
+            </div>
+          </div>
 
           <div class="bg-[#f8f9fb] rounded-xl p-4 mb-4">
             <div class="text-[11px] font-semibold text-[#43474f] mb-2">المتغيّرات المتاحة (افصل بينها بفاصلة):</div>
@@ -826,6 +857,21 @@
       if (!field.value) { e.preventDefault(); alert('اختر يوم عمل واحداً على الأقل'); }
     });
   })();
+
+  // مزامنة نصوص القوالب من Chatwoot — النتيجة في تنبيه ثم تحديث الصفحة لعرض الحالة
+  function syncWaTemplates(btn) {
+    const old = btn.textContent;
+    btn.disabled = true; btn.textContent = 'جارٍ المزامنة…'; btn.style.opacity = '.6';
+    fetch('/admin/settings/wa-templates/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+      .then(r => r.json().then(d => ({ ok: r.ok, d })))
+      .then(({ ok, d }) => {
+        if (!ok) { alert('فشلت المزامنة: ' + (d.error || 'خطأ غير معروف')); return; }
+        alert('حُفظ ' + d.saved + ' قالباً' + (d.missing && d.missing.length ? '\nغير موجود في Chatwoot: ' + d.missing.join('، ') : ' ✓'));
+        location.reload();
+      })
+      .catch(() => alert('تعذّر الاتصال بالخادم'))
+      .finally(() => { btn.disabled = false; btn.textContent = old; btn.style.opacity = '1'; });
+  }
 
   // اختبار قناة الإشعار — يُرسل على بيانات مقابلة وهمية
   function notifyTest(channel, btn) {

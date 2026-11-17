@@ -15,6 +15,7 @@ const mailer   = require('./mailer');
 const chatwoot = require('./chatwoot');
 const openwa   = require('./openwa');
 const waLog    = require('./waLog');
+const tplStore = require('./waTplStore');
 const waGroup  = require('./waGroup');
 const M        = require('./interviewMsg');
 
@@ -66,53 +67,80 @@ function msgOpts(interview, settings) {
 }
 
 /**
- * يبني نص الرسالة من القالب المعتمد في Chatwoot نفسه، ويتحقق من عدد
- * المتغيّرات قبل الإرسال.
+ * القالب المعتمد بالاسم — من Chatwoot أو من النسخة المحفوظة عندنا (utils/waTplStore.js).
  *
- * لماذا من Chatwoot لا من نص مكتوب عندنا؟ لأن أي نسخة يدوية تتقادم لحظة
+ * OpenWA يقرأ المحفوظ أولاً: لا يحتاج Chatwoot قائماً ولا ينتظره، والنص هو نفسه.
+ * Chatwoot يقرأ الحي أولاً (هو مرسِل القالب، والحي أحدث)، وكل قراءة حيّة ناجحة
+ * تُحدّث المحفوظ — فيبقى المحفوظ مطابقاً ما دام Chatwoot يعمل أحياناً.
+ *
+ * @returns {Promise<{found:object|null|undefined, names?:string[]}>}
+ *          found = القالب | null (Chatwoot يعمل والاسم غير موجود) | undefined (لا مصدر متاح)
+ */
+async function lookupTemplate(tpl, provider) {
+  if (provider === 'openwa') {
+    const stored = await tplStore.find(tpl.name, tpl.language);
+    if (stored) return { found: stored };
+  }
+  try {
+    const found = await chatwoot.findTemplate(tpl.name, tpl.language, { inbox: tpl.inbox });
+    if (found) {
+      await tplStore.save([found], tpl.inbox);
+      return { found };
+    }
+    // ذكر الأسماء الموجودة يحوّل الخطأ من لغز إلى خطوة واحدة: انسخ الاسم الصحيح
+    return { found: null, names: await chatwoot.templateNames({ inbox: tpl.inbox }) };
+  } catch (e) {
+    console.error('[Notify] template lookup:', e.message);
+    if (provider === 'openwa') return { found: undefined };   // المحفوظ جُرّب أعلاه
+    const stored = await tplStore.find(tpl.name, tpl.language);
+    return { found: stored || undefined };
+  }
+}
+
+/**
+ * يبني نص الرسالة من القالب المعتمد نفسه، ويتحقق من عدد المتغيّرات قبل الإرسال.
+ *
+ * لماذا من القالب لا من نص مكتوب عندنا؟ لأن أي نسخة يدوية تتقادم لحظة
  * تعديل القالب في ميتا، فيقرأ الموظف نصاً ويصل المتقدم نصٌ آخر. وكذلك
  * يمنع الخطأ #132000 قبل وقوعه بدل تفسير رسالة غامضة بعده.
  *
- * لا يرمي: تعذّر القراءة يُرجع { ok:true } بالنص الاحتياطي، فانقطاع مؤقت
- * في Chatwoot لا يمنع محاولة الإرسال.
+ * لا يرمي: تعذّر كل المصادر يُرجع { ok:true } بالنص الاحتياطي، فانقطاع مؤقت
+ * لا يمنع محاولة الإرسال.
  *
- * full = القالب كاملاً بعنوانه وتذييله وأزراره — لمزوّد النص الحر (OpenWA)
- *        حيث هذا النص هو ما يصل المتقدم فعلاً لا ما يراه الوكيل فقط.
+ * full = القالب كاملاً بعنوانه وتذييله — لمزوّد النص الحر (OpenWA) حيث هذا
+ *        النص هو ما يصل المتقدم فعلاً لا ما يراه الوكيل فقط.
  *
  * @returns {{ok:boolean, reason?:string, content?:string}}
  */
-async function resolveTemplateBody(tpl, params, fallbackText, { full = false } = {}) {
-  try {
-    const found = await chatwoot.findTemplate(tpl.name, tpl.language, { inbox: tpl.inbox });
-    if (!found) {
-      // ذكر الأسماء الموجودة يحوّل الخطأ من لغز إلى خطوة واحدة: انسخ الاسم الصحيح
-      const names = await chatwoot.templateNames({ inbox: tpl.inbox });
-      const hint = names.length ? ` — الموجود لديك: ${names.slice(0, 6).join('، ')}` : '';
-      return {
-        ok: false,
-        reason: `القالب «${tpl.name}» غير موجود في قوالب قناة الإرسال المختارة${hint}`,
-      };
-    }
-    const need = chatwoot.templateVarCount(found);
-    const have = Object.keys(params || {}).length;
-    if (need !== have) {
-      return {
-        ok: false,
-        reason: `عدد المتغيّرات لا يطابق القالب: يحتاج ${need} ونرسل ${have} — صحّح «ترتيب المتغيّرات» في الإعدادات`,
-      };
-    }
-    return { ok: true, content: (full ? chatwoot.renderFullText : chatwoot.renderTemplate)(found, params) };
-  } catch (e) {
-    console.error('[Notify] template lookup:', e.message);
-    return { ok: true, content: fallbackText };   // انقطاع مؤقت — لا نمنع الإرسال
+async function resolveTemplateBody(tpl, params, fallbackText, { full = false, provider = 'chatwoot' } = {}) {
+  const { found, names = [] } = await lookupTemplate(tpl, provider);
+  if (found === undefined) {
+    console.error(`[Notify] template «${tpl.name}» unavailable (no Chatwoot, no stored copy) — fallback text`);
+    return { ok: true, content: fallbackText };
   }
+  if (!found) {
+    const hint = names.length ? ` — الموجود لديك: ${names.slice(0, 6).join('، ')}` : '';
+    return {
+      ok: false,
+      reason: `القالب «${tpl.name}» غير موجود في قوالب قناة الإرسال المختارة${hint}`,
+    };
+  }
+  const need = chatwoot.templateVarCount(found);
+  const have = Object.keys(params || {}).length;
+  if (need !== have) {
+    return {
+      ok: false,
+      reason: `عدد المتغيّرات لا يطابق القالب: يحتاج ${need} ونرسل ${have} — صحّح «ترتيب المتغيّرات» في الإعدادات`,
+    };
+  }
+  return { ok: true, content: (full ? chatwoot.renderFullText : chatwoot.renderTemplate)(found, params) };
 }
 
 /**
  * يحسم نص القالب ثم يرسله عبر مزوّد الإرسال المختار.
  *
- * OpenWA بلا قوالب: يصل المتقدم نص القالب المعتمد نفسه مقروءاً من Chatwoot
- * ومعبّأً، فلا تتغيّر الرسالة بتغيّر المزوّد. والتعبئة فيه بالترقيم دائماً —
+ * OpenWA بلا قوالب: يصل المتقدم نص القالب المعتمد نفسه — من النسخة المحفوظة
+ * عندنا أو من Chatwoot — معبّأً، فلا تتغيّر الرسالة بتغيّر المزوّد. والتعبئة فيه بالترقيم دائماً —
  * «بنية المكوّنات» شكلٌ يخص Chatwoot وحده.
  *
  * يرمي عند فشل الإرسال نفسه (كما يرمي chatwoot.sendTemplate)، ويُرجع
@@ -129,7 +157,7 @@ async function sendTemplateVia({ recipient, tpl, vars, fallback, settings, kind 
   const viaOpenwa = provider === 'openwa';
   const params = M.buildProcessedParams(vars, tpl.vars, viaOpenwa ? 'numbered' : tpl.shape);
 
-  const body = await resolveTemplateBody(tpl, params, fallback, { full: viaOpenwa });
+  const body = await resolveTemplateBody(tpl, params, fallback, { full: viaOpenwa, provider });
   if (!body.ok) return { skipped: body.reason };
 
   const t0 = Date.now();
@@ -523,6 +551,6 @@ async function deliveryFor(interviewId) {
 
 module.exports = {
   notifyInterview, sendApplicantTemplate, deliverTemplate, watchDelivery, deliveryFor, templateFor, confirmDelivery,
-  sendTemplateVia, waProvider, waReady, waNotReadyReason,
+  sendTemplateVia, lookupTemplate, waProvider, waReady, waNotReadyReason,
   KINDS, NO_LINK_REASON,
 };

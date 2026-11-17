@@ -1763,7 +1763,7 @@ function openWaTemplate(key) {
   wtRenderPreview();
   m.showModal();
 
-  // النص الحقيقي من Chatwoot — أدق من النسخة المحفوظة عندنا، فإن وصل حلّ محلّها
+  // النص الحقيقي كما سيُرسل (من Chatwoot أو النسخة المحفوظة) — أدق من المكتوب في السجل، فإن وصل حلّ محلّه
   fetch(`/admin/wa-template/${t.key}/body`)
     .then(async r => ({ ok: r.ok, d: await r.json().catch(() => ({})) }))
     .then(({ ok, d }) => {
@@ -1802,13 +1802,14 @@ function wtRenderPreview() {
 
   const box = document.getElementById('wt-preview-buttons');   // أزرار الرد لا ترد في نص Chatwoot
   box.innerHTML = '';
-  (wtCurrent.previewButtons || []).forEach(label => {
+  const buttons = (wtLive && wtLive.noButtons) ? [] : (wtCurrent.previewButtons || []);   // OpenWA يرسل بلا أزرار
+  buttons.forEach(label => {
     const b = document.createElement('div');
     b.textContent = label;
     b.style.cssText = 'text-align:center;color:#0a7cff;font-size:.72rem;font-weight:600;padding:.3rem;background:#fff;border-radius:.5rem;';
     box.appendChild(b);
   });
-  box.style.display = (wtCurrent.previewButtons || []).length ? 'flex' : 'none';
+  box.style.display = buttons.length ? 'flex' : 'none';
   wrap.style.display = 'block';
 }
 

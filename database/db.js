@@ -272,6 +272,20 @@ async function initialize() {
     //  outcome:  sent | failed
     //  delivery: delivered | read | failed — من فحص التسليم المؤجَّل (NULL = لم يُحسم)
 
+    // ─── نسخة محفوظة من نصوص قوالب واتساب المعتمدة (من Chatwoot) ─────────────
+    //  OpenWA يرسل منها فلا يحتاج Chatwoot قائماً. data = القالب كما يقرؤه
+    //  utils/chatwoot.js (name, language, body, components). التفاصيل في utils/waTplStore.js.
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS wa_templates (
+        name       VARCHAR(191) NOT NULL,
+        language   VARCHAR(10)  NOT NULL DEFAULT '',
+        inbox_id   INT          DEFAULT NULL,
+        data       TEXT         NOT NULL,
+        synced_at  DATETIME     DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (name, language)
+      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+    `);
+
     // ─── قوائم المشاركة الداخلية ─────────────────────────────────────────────
     //  بديل «تصدير Excel وإرساله»: القائمة تبقى داخل النظام خلف تسجيل الدخول،
     //  فلا تخرج نسخة من أرقام الهويات والجوالات عن نطاق التدقيق. العناصر

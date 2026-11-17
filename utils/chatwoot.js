@@ -233,11 +233,12 @@ function renderTemplate(tpl, params) {
 
 /**
  * القالب كاملاً نصاً حراً — لمزوّد بلا قوالب (utils/openwa.js) يرسل ما يُعرض هنا
- * حرفياً. فوق المتن: العنوان النصي والتذييل وأزرار الرد السريع، وكلها جزء مما
- * يراه المتقدم في القالب المعتمد. الأزرار تصير خيارات مرقّمة يرد بها كتابةً.
+ * حرفياً: العنوان النصي والمتن والتذييل. أزرار الرد السريع تُسقط عمداً — الرسالة
+ * نفسها على المزوّدين بلا أزرار، ويرد المتقدم كتابةً.
  *
  * عنوان بمتغيّر يُسقط: متغيّراته ليست ضمن processed_params فلا قيمة له عندنا.
  * قوالب Twilio بلا components، فتعود متناً وحده كما في renderTemplate.
+ * params ناقصة تُبقي {{n}} مكانها — كذا تُبنى معاينة الإرسال في صفحة المتقدم.
  */
 function renderFullText(tpl, params) {
   const comps = Array.isArray(tpl?.components) ? tpl.components : [];
@@ -245,15 +246,11 @@ function renderFullText(tpl, params) {
 
   const header = part('HEADER');
   const head = String(header?.format || 'TEXT').toUpperCase() === 'TEXT' ? String(header?.text || '').trim() : '';
-  const replies = (part('BUTTONS')?.buttons || [])
-    .filter(b => String(b?.type).toUpperCase() === 'QUICK_REPLY' && String(b?.text || '').trim())
-    .map((b, i) => `${i + 1}️⃣ ${String(b.text).trim()}`);
   const footer = String(part('FOOTER')?.text || '').trim();
 
   return [
     head && !/\{\{/.test(head) ? `*${head}*` : '',
     renderTemplate(tpl, params).trim(),
-    replies.length ? `للرد أرسل رقم اختيارك:\n${replies.join('\n')}` : '',
     footer ? `_${footer}_` : '',
   ].filter(Boolean).join('\n\n');
 }

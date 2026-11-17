@@ -1081,36 +1081,46 @@ const waTplLimiter = rateLimit({
   standardHeaders: true, legacyHeaders: false,
 });
 
-// نص القالب المعتمد كما هو في Chatwoot — تقرأه النافذة عند فتحها لتعرض
-// معاينة مطابقة للواقع بدل نسخة مكتوبة عندنا تتقادم بعد أي تعديل في ميتا.
+// نص القالب المعتمد كما سيُرسل — تقرأه النافذة عند فتحها لتعرض معاينة مطابقة
+// للواقع بدل نسخة مكتوبة عندنا تتقادم بعد أي تعديل في ميتا. المصدر هو مصدر
+// الإرسال نفسه (notify.lookupTemplate): مع OpenWA النسخة المحفوظة فلا يلزم
+// Chatwoot قائماً، والنص كاملاً بتذييله وبلا أزرار — كما يصل المتقدم حرفياً.
 router.get('/wa-template/:key/body', async (req, res) => {
   try {
     const WT = require('../utils/waTemplates');
+    const notify = require('../utils/notify');
     const tpl = WT.get(String(req.params.key || ''));
     if (!tpl) return res.status(404).json({ error: 'قالب غير معروف' });
-    if (!chatwoot.isConfigured()) return res.status(409).json({ error: 'تكامل Chatwoot غير مهيأ' });
 
     const settings = await db.getSettings();
-    const cfgTpl = require('../utils/notify').templateFor(settings, tpl.key);
+    const cfgTpl = notify.templateFor(settings, tpl.key);
     if (!cfgTpl.name) return res.status(409).json({ error: 'لم يُحدَّد اسم القالب في الإعدادات' });
 
-    const found = await chatwoot.findTemplate(cfgTpl.name, cfgTpl.language, { inbox: cfgTpl.inbox });
+    const provider = notify.waProvider(settings);
+    const { found } = await notify.lookupTemplate(cfgTpl, provider);
+    if (found === undefined) {
+      return res.status(409).json({
+        error: 'نص القالب غير متاح الآن — لا Chatwoot ولا نسخة محفوظة منه. المعاينة أدناه تقريبية، وللنص الدقيق: «مزامنة القوالب» في الإعدادات حين يعمل Chatwoot',
+      });
+    }
     if (!found) {
       return res.status(409).json({
-        error: `القالب «${cfgTpl.name}» غير موجود في قوالب Chatwoot — اضغط «Sync Templates» على صندوق واتساب`,
+        error: `القالب «${cfgTpl.name}» غير موجود في قوالب قناة الإرسال — اضغط «Sync Templates» على صندوق واتساب في Chatwoot`,
       });
     }
 
+    const viaOpenwa = provider === 'openwa';
     res.json({
       ok: true,
       name: cfgTpl.name,
-      body: String(found.body || ''),
+      body: viaOpenwa ? chatwoot.renderFullText(found, {}) : String(found.body || ''),
+      noButtons: viaOpenwa,
       varOrder: cfgTpl.vars.split(',').map(x => x.trim()).filter(Boolean),
       varCount: chatwoot.templateVarCount(found),
     });
   } catch (err) {
     console.error('[WaTemplate body]', err.message);
-    res.status(502).json({ error: 'تعذّر قراءة القالب من Chatwoot' });
+    res.status(502).json({ error: 'تعذّر قراءة نص القالب' });
   }
 });
 
@@ -1544,6 +1554,14 @@ router.get('/settings', requireManager, async (req, res) => {
       : null;
     const waStats = await require('../utils/waLog').stats();
 
+    // نسخة القوالب المحفوظة: فتح الصفحة و Chatwoot يعمل يحدّثها وحده — بلا
+    // زر. وصول قائمة الصناديق أعلاه هو الدليل أنه يعمل، فلا انتظار مهلة ثانية.
+    const tplStore = require('../utils/waTplStore');
+    if (waInboxes.length) {
+      await tplStore.sync(chatwoot.inboxFor(settings)).catch(e => console.error('[Settings GET] template sync:', e.message));
+    }
+    const savedTpls = await tplStore.list();
+
     res.render('settings', {
       settings, success: req.query.saved, adminUser: req.session.adminUser,
       googleMsg: req.query.google || '',
@@ -1561,6 +1579,7 @@ router.get('/settings', requireManager, async (req, res) => {
       waInboxes,
       openwaStatus: { ...openwa.status(), session: openwaSession },
       waStats,
+      savedTpls,
       waProvider: require('../utils/notify').waProvider(settings),
       msgVars: require('../utils/interviewMsg').VAR_LABELS,
       waTemplateList: Object.values(require('../utils/waTemplates').TEMPLATES),
@@ -1718,6 +1737,32 @@ router.post('/settings', requireManager, async (req, res) => {
     console.error('[Settings POST]', err.message);
     // الصفحة للمدير وحده — إظهار سبب الفشل يوفّر جولة كاملة في سجل الخادم
     res.redirect('/admin/settings?err=' + encodeURIComponent(`تعذّر الحفظ — ${err.message}`.slice(0, 200)));
+  }
+});
+
+// ─── مزامنة نصوص القوالب من Chatwoot ─────────────────────────────────────────
+//  يحفظ نصوص كل قوالب «قناة الإرسال» عندنا (utils/waTplStore.js) فيرسل منها
+//  OpenWA ولو توقف Chatwoot. فتح الإعدادات يفعلها وحده؛ الزر للتأكيد الصريح
+//  بعد تعديل قالب في ميتا.
+router.post('/settings/wa-templates/sync', requireManager, async (req, res) => {
+  try {
+    if (!chatwoot.isConfigured()) return res.status(409).json({ error: 'تكامل Chatwoot غير مهيأ — راجع ملف .env' });
+    const settings = await db.getSettings();
+    const inbox = chatwoot.inboxFor(settings);
+    const tplStore = require('../utils/waTplStore');
+    const r = await tplStore.sync(inbox);
+
+    // القوالب المضبوطة في الإعدادات وليست بين المحفوظ — هي ما سيخرج بالنص الاحتياطي
+    const saved = new Set((await tplStore.list()).map(t => t.name));
+    const missing = [...new Set(TPL_KEYS().map(k => String(settings[`wa_tpl_${k}_name`] || '').trim()).filter(Boolean))]
+      .filter(n => !saved.has(n));
+
+    await db.audit(req.session.adminId, req.session.adminUser, 'wa_templates_sync', 'settings', null, null,
+      `inbox ${inbox} — ${r.saved} قالباً${missing.length ? ` — ناقص: ${missing.join('، ')}` : ''}`.slice(0, 500), req.ip);
+    res.json({ ok: true, saved: r.saved, missing });
+  } catch (err) {
+    console.error('[WaTemplates sync]', err.message);
+    res.status(502).json({ error: `تعذّر الوصول إلى Chatwoot — ${err.message}` });
   }
 });
 
