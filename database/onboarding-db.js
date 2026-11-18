@@ -191,6 +191,23 @@ async function init() {
       console.log('[DB] Migration: added attachments_synced_at to onboarding_employment');
     }
 
+    // تحديثات الأقسام إلى نظام الموظفين بعد الإنشاء: ما تغيّر، في أي قسم، ومن طبّقه.
+    // صفّ لكل تطبيق — المعاينة (dry run) لا تُسجَّل لأنها لا تكتب شيئاً هناك.
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS onboarding_sync_log (
+        id            INT AUTO_INCREMENT PRIMARY KEY,
+        session_id    INT          NOT NULL,
+        applicant_id  INT          NOT NULL,
+        employee_id   INT          NOT NULL,
+        section       VARCHAR(20)  NOT NULL,
+        changes       TEXT         DEFAULT NULL,
+        actor         VARCHAR(100) DEFAULT NULL,
+        created_at    DATETIME     DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (session_id) REFERENCES onboarding_sessions(id) ON DELETE CASCADE,
+        INDEX idx_session_section (session_id, section)
+      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+    `);
+
     // إعدادات قالب واتساب الخاص بالميزة — تُكتب هنا لا في db.js حتى تبقى
     // الميزة قابلة للحذف كاملةً بحذف ملفاتها. INSERT IGNORE = لا تدهس تعديلاً
     // أجراه المدير من صفحة الإعدادات.

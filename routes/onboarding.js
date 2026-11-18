@@ -1070,9 +1070,16 @@ adminRouter.get('/view/:applicantId', async (req, res) => {
         [s.id]
       );
     }
+    // آخر تحديث طُبّق لكل قسم في نظام الموظفين — يظهر تحت أزرار التحديث
+    const lastSync = {};
+    if (s) {
+      const rows = await db.all('SELECT section, actor, created_at FROM onboarding_sync_log WHERE session_id = ? ORDER BY id DESC', [s.id]).catch(() => []);
+      for (const r of rows) if (!lastSync[r.section]) lastSync[r.section] = r;
+    }
     res.render('onboarding-admin', {
       applicant, session: s, steps, history, profile,
       employment,
+      SECTION_LABELS, lastSync,
       artalsysReady: artalsys.isConfigured(),
       applicantEditable: Object.entries(APPLICANT_EDITABLE).map(([key, d]) => ({ key, label: d.label, hint: d.hint || null, oneOf: d.oneOf || null })),
       artalsysUrl: artalsys.baseUrl(),
@@ -1537,6 +1544,120 @@ adminRouter.patch('/applicant/:applicantId', async (req, res) => {
  *
  * ملف لكل نداء: فشل واحد لا يُسقط البقية، والنتيجة تُعرض ملفاً ملفاً.
  */
+// ═══ تحديث الأقسام بعد الإنشاء ═══════════════════════════════════════════
+//
+//  الإضافة تُنشئ الموظف مرة واحدة، وبعدها يصبح نظام الموظفين مصدر الحقيقة. ما يستجدّ
+//  هنا (آيبان جديد بعد تغيير الحساب، ميلاد هجري، تصحيح عنوان، تعديل موقع أو راتب)
+//  يُدفع قسماً قسماً: معاينة بالفرق (ما هناك مقابل ما هنا) ثم تطبيق صريح. الفارغ
+//  عندنا لا يمسح قيمة هناك — يفرضه الطرف الآخر. والتوظيف يمسّ الرواتب فهو للمدير.
+
+const SECTION_LABELS = { person: 'البيانات الشخصية', address: 'العنوان', bank: 'الحساب البنكي', employment: 'بيانات التوظيف' };
+const COLUMN_LABELS = {
+  first_name: 'الاسم الأول', father_name: 'اسم الأب', grandfather_name: 'اسم الجد', family_name: 'اسم العائلة',
+  english_name: 'الاسم بالإنجليزية', national_id_expiry: 'انتهاء الهوية', birth_date: 'تاريخ الميلاد',
+  birth_date_hijri: 'تاريخ الميلاد (هجري)', nationality: 'الجنسية', gender: 'الجنس', blood_type: 'فصيلة الدم',
+  marital_status: 'الحالة الاجتماعية', qualification: 'المؤهل', specialization: 'التخصص', mobile_number: 'رقم الجوال',
+  phone_number: 'جوال الطوارئ', email: 'البريد الإلكتروني',
+  region: 'المنطقة', city: 'المدينة', street: 'الشارع والحي', building_number: 'رقم المبنى', postal_code: 'الرمز البريدي',
+  bank_account: 'الآيبان', bank_name: 'البنك',
+  job_title: 'المسمّى الوظيفي', preferred_zone_name: 'الموقع', basic_salary: 'الراتب الأساسي',
+  living_allowance: 'بدل السكن', other_allowances: 'بدلات أخرى', actual_start: 'تاريخ المباشرة',
+  contract_start: 'بداية العقد', insurance_type: 'نوع التأمين', health_insurance_company: 'شركة التأمين',
+};
+
+// الموظف في النظام الأساسي: الرقم المحفوظ، وإلا الاستدلال بالهوية (أُضيف من الاستيراد مثلاً)
+async function resolveEmployeeId(applicant, employment) {
+  let id = Number(employment?.ext_employee_id || 0);
+  if (!id) {
+    const known = await artalsys.lookupByNationalId(applicant.id_number).catch(() => ({ found: false }));
+    if (known.found) id = Number(known.id);
+  }
+  return id || null;
+}
+
+// حمولة قسم واحد — ومعها هوية الموظف دائماً: الطرف الآخر يرفض تحديث ملفٍ بهوية غيره
+function sectionPayload(payload, section) {
+  const out = { person: { national_id: payload.person.national_id } };
+  if (section === 'person') out.person = { ...payload.person };
+  else out[section] = payload[section] || {};
+  return out;
+}
+
+const describeChanges = (changes) => Object.entries(changes || {}).map(([column, c]) => ({
+  column, label: COLUMN_LABELS[column] || column, from: c.from ?? null, to: c.to ?? null,
+}));
+
+async function updateContext(req, res) {
+  if (!featureOn()) { res.status(503).json({ error: 'الميزة غير مفعّلة' }); return null; }
+  if (!artalsys.isConfigured()) { res.status(409).json({ error: 'تكامل النظام الأساسي غير مهيأ' }); return null; }
+  const section = String((req.body && req.body.section) || req.query.section || '');
+  if (!SECTION_LABELS[section]) { res.status(400).json({ error: 'قسم غير معروف' }); return null; }
+  const ctx = await syncContext(req.params.applicantId, req);
+  if (ctx.error) { res.status(ctx.code).json({ error: ctx.error }); return null; }
+  const employeeId = await resolveEmployeeId(ctx.applicant, ctx.employment);
+  if (!employeeId) { res.status(422).json({ error: 'الموظف غير موجود في النظام الأساسي — أضفه أولاً ثم حدّث' }); return null; }
+  return { ...ctx, section, employeeId, body: sectionPayload(ctx.payload, section) };
+}
+
+function remoteFailure(res, r) {
+  const conflicts = r.json?.conflicts ? Object.values(r.json.conflicts).map(x => x.message).join(' · ') : '';
+  const errors = r.json?.errors ? Object.values(r.json.errors).flat().join(' · ') : '';
+  const detail = [r.json?.error || `HTTP ${r.status}`, conflicts, errors].filter(Boolean).join(' — ');
+  return res.status(r.status === 409 || r.status === 422 || r.status === 404 ? r.status : 502).json({ error: detail });
+}
+
+// المعاينة: الفرق كما يراه النظام الأساسي، بلا كتابة
+adminRouter.get('/update-preview/:applicantId', async (req, res) => {
+  try {
+    const ctx = await updateContext(req, res);
+    if (!ctx) return;
+    const r = await artalsys.updateEmployee(ctx.employeeId, ctx.section, ctx.body, { dryRun: true });
+    if (!r.ok) return remoteFailure(res, r);
+    res.json({ ok: true, employeeId: ctx.employeeId, section: ctx.section, label: SECTION_LABELS[ctx.section], changes: describeChanges(r.json.changes) });
+  } catch (err) {
+    console.error('[Onboarding update-preview]', err.message);
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// التطبيق: قسم واحد، ويُسجَّل ما تغيّر فعلاً كما أكّده الطرف الآخر
+adminRouter.post('/update/:applicantId', sendLimiter, async (req, res) => {
+  try {
+    if (String(req.body?.section || '') === 'employment' && req.session?.adminRole !== 'manager') {
+      return res.status(403).json({ error: 'تحديث بيانات التوظيف (الراتب والموقع) للمديرين فقط' });
+    }
+    const ctx = await updateContext(req, res);
+    if (!ctx) return;
+    const r = await artalsys.updateEmployee(ctx.employeeId, ctx.section, ctx.body);
+    if (!r.ok) return remoteFailure(res, r);
+
+    const changes = describeChanges(r.json.changes);
+    const actor = req.session?.adminName || req.session?.adminUser || null;
+    const label = SECTION_LABELS[ctx.section];
+    const summary = changes.map(c => `${c.label}: ${c.from ?? '—'} ← ${c.to}`).join('، ');
+    const line = `تحديث ${label} في نظام الموظفين #${ctx.employeeId} — ${changes.length ? `${changes.length} حقل: ${summary}` : 'لا تغييرات'}`;
+
+    await db.run(
+      'INSERT INTO onboarding_sync_log (session_id, applicant_id, employee_id, section, changes, actor) VALUES (?, ?, ?, ?, ?, ?)',
+      [ctx.session.id, ctx.applicant.id, ctx.employeeId, ctx.section, JSON.stringify(r.json.changes || {}).slice(0, 60000), actor]
+    );
+    // رقم الموظف يُحفظ إن عُرف هنا لأول مرة (أُضيف من غير المنصة)
+    db.run('UPDATE onboarding_employment SET ext_employee_id = COALESCE(ext_employee_id, ?) WHERE session_id = ?', [ctx.employeeId, ctx.session.id]).catch(() => {});
+    if (changes.length) {
+      db.run('INSERT INTO applicant_notes (applicant_id, content, type, user_name) VALUES (?, ?, ?, ?)',
+        [ctx.applicant.id, line.slice(0, 2000), 'follow_up', actor]).catch(() => {});
+      db.logActivity(ctx.applicant.id, `تحديث ${label} في نظام الموظفين`, null, summary.slice(0, 255), actor).catch(() => {});
+    }
+    db.audit(req.session?.adminId, req.session?.adminUser || 'system', 'onboarding_update',
+      'applicant', ctx.applicant.id, ctx.applicant.full_name, line.slice(0, 500), req.ip).catch(() => {});
+
+    res.json({ ok: true, employeeId: ctx.employeeId, section: ctx.section, label, changed: changes.length, changes });
+  } catch (err) {
+    console.error('[Onboarding update]', err.message);
+    res.status(502).json({ error: err.message });
+  }
+});
+
 adminRouter.post('/sync-attachments/:applicantId', sendLimiter, async (req, res) => {
   if (!featureOn()) return res.status(503).json({ error: 'الميزة غير مفعّلة' });
   if (!artalsys.isConfigured()) return res.status(409).json({ error: 'تكامل النظام الأساسي غير مهيأ' });

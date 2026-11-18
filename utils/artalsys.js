@@ -124,6 +124,22 @@ async function pushEmployee(payload, { dryRun = false } = {}) {
 }
 
 /**
+ * تحديث قسم واحد من ملف موظف قائم (person | address | bank | employment).
+ * dryRun = يُرجع الفرق (الحالي مقابل الجديد) بلا كتابة — تعرضه الواجهة قبل التطبيق.
+ * الحمولة تحمل دائماً person.national_id: الطرف الآخر يرفض تحديث ملفٍ بهوية غيره.
+ *
+ * @returns {{status:number, ok:boolean, json:object}} 200 مع changes، 409 تعارض
+ *          (هوية لا تطابق أو جوال لموظف آخر)، 404 لا موظف، 422 بيانات غير صالحة.
+ */
+async function updateEmployee(employeeId, section, payload, { dryRun = false } = {}) {
+  return call(`/api/hooks/onboarding/employee/${employeeId}${dryRun ? '?dry_run=1' : ''}`, {
+    method: 'PATCH',
+    body: { section, ...payload },
+    timeout: dryRun ? TIMEOUT_MS : 45000,
+  });
+}
+
+/**
  * رفع مرفق واحد إلى ملف الموظف.
  *
  * ملف لكل نداء: حدود الرفع في الطرف الآخر معلومة (10MB للملف)، وفشل ملف لا
@@ -186,4 +202,4 @@ async function renderBankChangeForm(body) {
   throw new Error(first || json?.error || json?.message || `تعذّر إصدار النموذج (HTTP ${res.status})`);
 }
 
-module.exports = { isConfigured, baseUrl, options, pushEmployee, uploadAttachment, lookupByNationalId, parseLenient, renderBankChangeForm };
+module.exports = { isConfigured, baseUrl, options, pushEmployee, uploadAttachment, lookupByNationalId, parseLenient, renderBankChangeForm, updateEmployee };

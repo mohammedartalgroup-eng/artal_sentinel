@@ -310,6 +310,33 @@
           <div id="sync-result" class="mt-3 text-xs hidden"></div>
           <div id="att-result" class="mt-3 text-xs hidden"></div>
         <% } %>
+
+        <% const canUpdate = artalsysReady && employment && (employment.ext_employee_id || synced || dup); %>
+        <% if (canUpdate) { %>
+        <!-- بعد الإنشاء يصبح نظام الموظفين مصدر الحقيقة؛ ما يستجدّ هنا يُدفع قسماً قسماً
+             بمعاينة الفرق أولاً — لا تحديث صامت يدهس ما عدّله الموارد البشرية هناك -->
+        <div class="mt-4 pt-4 border-t border-[#eceef0]">
+          <div class="text-xs font-bold text-[#001736] mb-1">تحديث أقسام الملف في نظام الموظفين</div>
+          <p class="text-[11px] text-[#43474f] mb-3">
+            كل قسم يُحدَّث وحده: تظهر لك القيم الحالية هناك مقابل ما لدينا قبل التطبيق، والفارغ عندنا لا يمسح قيمة هناك.
+            بيانات التوظيف (الراتب والموقع) للمديرين فقط.
+          </p>
+          <div class="flex items-center gap-2 flex-wrap">
+            <% Object.keys(SECTION_LABELS).forEach(function (key) { const locked = key === 'employment' && adminRole !== 'manager'; %>
+              <button class="ob-btn s" onclick="updatePreview('<%= key %>', this)" <%- locked ? 'disabled title="للمديرين فقط"' : '' %>>
+                <span class="material-symbols-outlined" style="font-size:18px">sync_alt</span> <%= SECTION_LABELS[key] %>
+              </button>
+            <% }) %>
+          </div>
+          <% const done = Object.keys(SECTION_LABELS).filter(function (k) { return lastSync[k]; }); %>
+          <% if (done.length) { %>
+            <div class="ob-src mt-2">آخر تحديث:
+              <% done.forEach(function (k, i) { %><%= i ? ' · ' : '' %><%= SECTION_LABELS[k] %> <%= fmtDateTime(lastSync[k].created_at) %> (<%= lastSync[k].actor || '—' %>)<% }) %>
+            </div>
+          <% } %>
+          <div id="upd-result" class="mt-3 text-xs hidden"></div>
+        </div>
+        <% } %>
       </div>
 
       <!-- ── الملف الموحّد: ما تتفق عليه المستندات وما تختلف فيه ──── -->
@@ -861,7 +888,97 @@ async function review(docId, value) {
   if (!r.ok) return alert('تعذّر الحفظ');
   location.reload();
 }
+
+// ─── تحديث قسم في نظام الموظفين: معاينة الفرق ثم تطبيق صريح ─────────────────
+function updBox(html, tone) {
+  const box = document.getElementById('upd-result');
+  if (!box) return;
+  const colors = { ok: ['#dcfce7', '#15803d'], warn: ['#fef3c7', '#a16207'], bad: ['#ffdad6', '#ba1a1a'], info: ['#eef2f7', '#43474f'] };
+  const [bg, fg] = colors[tone] || colors.info;
+  box.style.background = bg; box.style.color = fg;
+  box.style.borderRadius = '12px'; box.style.padding = '10px 12px';
+  box.innerHTML = html;
+  box.classList.remove('hidden');
+}
+const escHtml = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+
+let updCurrent = null;
+async function updatePreview(section, btn) {
+  btn.disabled = true;
+  updBox('جارٍ جلب الفرق من النظام الأساسي…', 'info');
+  try {
+    const r = await fetch('/admin/onboarding/update-preview/' + APPLICANT_ID + '?section=' + encodeURIComponent(section));
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || 'تعذّرت المعاينة');
+    if (!j.changes.length) { updBox('<b>' + escHtml(j.label) + ':</b> لا فرق — ملف الموظف #' + j.employeeId + ' مطابق لما لدينا.', 'ok'); return; }
+    updCurrent = j;
+    document.getElementById('upd-title').textContent = 'تحديث ' + j.label + ' — الموظف #' + j.employeeId;
+    document.getElementById('upd-rows').innerHTML = j.changes.map(c =>
+      '<tr><td class="text-[#43474f] whitespace-nowrap">' + escHtml(c.label) + '</td>'
+      + '<td class="ob-src" dir="auto">' + (c.from == null || c.from === '' ? '—' : escHtml(c.from)) + '</td>'
+      + '<td class="ob-val" dir="auto">' + escHtml(c.to) + '</td></tr>').join('');
+    document.getElementById('upd-count').textContent = j.changes.length + ' حقل سيتغيّر';
+    document.getElementById('upd-err').style.display = 'none';
+    document.getElementById('upd-apply').disabled = false;
+    document.getElementById('upd-modal').showModal();
+    updBox('<b>' + escHtml(j.label) + ':</b> ' + j.changes.length + ' حقل مختلف — راجع الفرق في النافذة.', 'warn');
+  } catch (e) {
+    updBox(escHtml(e.message), 'bad');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function updateApply() {
+  if (!updCurrent) return;
+  const apply = document.getElementById('upd-apply');
+  const err = document.getElementById('upd-err');
+  apply.disabled = true; err.style.display = 'none';
+  try {
+    const r = await fetch('/admin/onboarding/update/' + APPLICANT_ID, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ section: updCurrent.section }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || 'تعذّر التحديث');
+    document.getElementById('upd-modal').close();
+    updBox('<b>تم تحديث ' + escHtml(j.label) + ' ✓</b> — ' + j.changed + ' حقل في الموظف #' + j.employeeId + '.', 'ok');
+    setTimeout(() => location.reload(), 900);
+  } catch (e) {
+    err.textContent = e.message; err.style.display = 'block';
+    apply.disabled = false;
+  }
+}
 </script>
+
+<style>
+  #upd-modal { border: none; border-radius: 1rem; padding: 0; max-width: 36rem; width: calc(100% - 2rem); }
+  #upd-modal::backdrop { background: rgba(0,23,54,0.55); }
+</style>
+<dialog id="upd-modal">
+  <div style="padding:1.25rem 1.5rem 0.75rem">
+    <div style="display:flex;align-items:center;gap:0.6rem">
+      <span class="material-symbols-outlined" style="color:#264778">sync_alt</span>
+      <h3 id="upd-title" style="font-family:Manrope,sans-serif;font-weight:700;color:#001736;font-size:1rem;margin:0"></h3>
+    </div>
+    <p style="font-size:0.78rem;color:#43474f;margin:0.5rem 0 0;line-height:1.6">
+      ما يلي سيُكتب في ملف الموظف هناك. القيم غير المذكورة لا تُمسّ — <span id="upd-count"></span>.
+    </p>
+  </div>
+  <div style="padding:0 1.5rem 1rem;max-height:60vh;overflow:auto">
+    <table class="ob-tbl">
+      <thead><tr><th>الحقل</th><th>الحالي في نظام الموظفين</th><th>الجديد من المنصة</th></tr></thead>
+      <tbody id="upd-rows"></tbody>
+    </table>
+    <div id="upd-err" style="display:none;margin-top:0.6rem;font-size:0.78rem;color:#ba1a1a"></div>
+  </div>
+  <div style="padding:0.875rem 1.5rem;background:#f7f8fa;display:flex;gap:0.5rem;justify-content:flex-end">
+    <button type="button" class="ob-btn s" onclick="document.getElementById('upd-modal').close()">إلغاء</button>
+    <button type="button" class="ob-btn p" id="upd-apply" onclick="updateApply()">
+      <span class="material-symbols-outlined" style="font-size:18px">check</span> تطبيق التحديث
+    </button>
+  </div>
+</dialog>
 <%- include('partials/ob-extra-modal') %>
 </body>
 </html>
