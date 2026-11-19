@@ -154,6 +154,51 @@ router.post('/', writeLimiter, async (req, res) => {
   }
 });
 
+/**
+ * إرسال الدعوة وتسجيل نتيجتها على التوصية — يشترك فيه زر «إرسال الدعوة» والاستقبال
+ * الآلي للموظف المؤقت من لوحة العمليات. لا يرمي لأسباب الإرسال: يعود بالحالة.
+ *
+ * @returns {Promise<{status:'sent'|'skipped'|'failed', reason:string, target?:string}>}
+ */
+async function deliverInvite(lead, link) {
+  const notify   = require('../utils/notify');
+  const WT       = require('../utils/waTemplates');
+  const settings = await db.getSettings();
+
+  let r;
+  if (!notify.waReady(settings)) r = { status: 'skipped', reason: notify.waNotReadyReason(settings) };
+  else if (!WT.ready(settings, 'invite', true)) r = { status: 'skipped', reason: 'لم يُحدَّد اسم قالب «دعوة للتقديم» في الإعدادات' };
+  else {
+    r = await notify.deliverTemplate({
+      // اسم جهة الاتصال في Chatwoot حين لا نعرف الاسم: «موصى به + الجوال» لا فراغ
+      recipient: { full_name: lead.full_name || `موصى به ${lead.phone}`, phone: lead.phone },
+      tplKey: 'invite', kind: 'invite',
+      vars: { name: lead.full_name || 'عزيزنا المرشح', link },
+      settings,
+    });
+  }
+
+  if (r.status !== 'sent') {
+    await db.run('UPDATE leads SET last_send_status = ?, last_send_error = ? WHERE id = ?',
+      [r.status, String(r.reason || '').slice(0, 255), lead.id]);
+    return r;
+  }
+
+  await db.run(
+    `UPDATE leads SET status = IF(status = 'new', 'invited', status), invite_count = invite_count + 1,
+            invited_at = NOW(), last_send_status = 'sent', last_send_error = NULL WHERE id = ?`,
+    [lead.id]
+  );
+  // الرفض المتأخر (قالب مرفوض، حد يومي) يأتي بعد ثوانٍ — يُكتب على التوصية نفسها
+  if (r.track) {
+    notify.watchDelivery(r.track, async (reason) => {
+      await db.run("UPDATE leads SET last_send_status = 'failed', last_send_error = ? WHERE id = ? AND last_send_status = 'sent'",
+        [String(reason || '').slice(0, 255), lead.id]);
+    });
+  }
+  return r;
+}
+
 async function loadLead(req, res) {
   const lead = await db.get('SELECT * FROM leads WHERE id = ?', [req.params.id]);
   if (!lead) { res.status(404).json({ error: 'التوصية غير موجودة' }); return null; }
@@ -171,43 +216,13 @@ router.post('/:id/send', writeLimiter, async (req, res) => {
       return res.status(409).json({ error: lead.status === 'applied' ? 'صاحب التوصية تقدّم بالفعل' : 'التوصية مغلقة — أعد فتحها أولاً' });
     }
 
-    const notify   = require('../utils/notify');
-    const WT       = require('../utils/waTemplates');
-    const settings = await db.getSettings();
-    if (!notify.waReady(settings)) return res.status(409).json({ error: notify.waNotReadyReason(settings) });
-    if (!WT.ready(settings, 'invite', true)) {
-      return res.status(409).json({ error: 'لم يُحدَّد اسم قالب «دعوة للتقديم» في الإعدادات' });
-    }
-
     const link = applyLink(req, lead.token);
-    const r = await notify.deliverTemplate({
-      // اسم جهة الاتصال في Chatwoot حين لا نعرف الاسم: «موصى به + الجوال» لا فراغ
-      recipient: { full_name: lead.full_name || `موصى به ${lead.phone}`, phone: lead.phone },
-      tplKey: 'invite', kind: 'invite',
-      vars: { name: lead.full_name || 'عزيزنا المرشح', link },
-      settings,
-    });
-
+    const r = await deliverInvite(lead, link);
     if (r.status !== 'sent') {
-      await db.run('UPDATE leads SET last_send_status = ?, last_send_error = ? WHERE id = ?',
-        [r.status, String(r.reason || '').slice(0, 255), lead.id]);
       return res.status(r.status === 'skipped' ? 409 : 502).json({ error: r.reason || 'تعذّر الإرسال' });
     }
-
-    await db.run(
-      `UPDATE leads SET status = IF(status = 'new', 'invited', status), invite_count = invite_count + 1,
-              invited_at = NOW(), last_send_status = 'sent', last_send_error = NULL WHERE id = ?`,
-      [lead.id]
-    );
-    // الرفض المتأخر (قالب مرفوض، حد يومي) يأتي بعد ثوانٍ — يُكتب على التوصية نفسها
-    if (r.track) {
-      notify.watchDelivery(r.track, async (reason) => {
-        await db.run("UPDATE leads SET last_send_status = 'failed', last_send_error = ? WHERE id = ? AND last_send_status = 'sent'",
-          [String(reason || '').slice(0, 255), lead.id]);
-      });
-    }
     db.audit(req.session?.adminId, req.session?.adminUser || 'system', 'lead_invite',
-      'lead', lead.id, lead.full_name || lead.phone, `${WT.get('invite').noteLabel} عبر واتساب — ${link}`, req.ip).catch(() => {});
+      'lead', lead.id, lead.full_name || lead.phone, `${require('../utils/waTemplates').get('invite').noteLabel} عبر واتساب — ${link}`, req.ip).catch(() => {});
 
     res.json({ ok: true, sentTo: r.target, link });
   } catch (err) {
@@ -286,12 +301,18 @@ async function markOpened(lead) {
  * الرابط العام — فلا تضيع نسبة التوصية لمن فضّل البحث عن الموقع بنفسه.
  * @returns {Promise<object|null>} التوصية المربوطة، أو null إن لم توجد
  */
-async function linkApplicant({ token, phone, applicantId }) {
+async function linkApplicant({ token, phone, idNumber, applicantId }) {
   if (!featureOn() || !applicantId) return null;
   let lead = token ? await byToken(token) : null;
   if (!lead && phone) {
     lead = await db.get(
       "SELECT * FROM leads WHERE phone = ? AND status <> 'applied' ORDER BY id DESC LIMIT 1", [normPhone(phone)]
+    );
+  }
+  // موظف مؤقت من لوحة العمليات سجّل من الرابط العام بجوال آخر: هويته تكفي لربطه
+  if (!lead && /^\d{10}$/.test(String(idNumber || ''))) {
+    lead = await db.get(
+      "SELECT * FROM leads WHERE ext_national_id = ? AND status <> 'applied' ORDER BY id DESC LIMIT 1", [String(idNumber)]
     );
   }
   if (!lead) return null;
@@ -302,7 +323,111 @@ async function linkApplicant({ token, phone, applicantId }) {
   return lead;
 }
 
+// ═══ الموظف المؤقت من لوحة العمليات (يستعمله routes/onboarding.js) ═══════════
+//
+//  أضافته العمليات في نظام الموظفين وليس له طلب عندنا. لا نُنشئ له طلباً بالنيابة:
+//  يدخل هنا توصيةً من «لوحة العمليات» وتصله دعوة التسجيل برابطه الشخصي. حين يسجّل
+//  يُربط طلبه بها (linkApplicant) ويكمل routes/apply.js الطريق: رحلة الاستكمال ورابطها.
+
+const QUICK_ACTOR = 'النظام (لوحة العمليات)';
+const REMIND_AFTER_DAYS = 3;
+const sysLinkReq = (req) => ({ protocol: req?.protocol || 'https', get: (h) => (req?.get ? req.get(h) : 'jobs.artalsecurity.com') });
+
+/**
+ * آمن للتكرار: إعادة الطلب نفسه تجد توصيته برقم الموظف فلا تُنشأ ثانية ولا تُرسل
+ * الدعوة مرتين. وتوصية مفتوحة بنفس الجوال (وصلتنا من قبل) تُستعمل هي لا غيرها.
+ *
+ * @param {{employeeId:number, nationalId:string, fullName:?string, phone:?string,
+ *          jobTitle:?string, zone:?string, addedBy:?string}} entry
+ */
+async function quickHireLead(entry, req) {
+  if (!validPhone(entry.phone || '')) return { ok: false, code: 422, error: 'رقم جوال غير صالح — لا يمكن دعوته للتسجيل' };
+
+  const note = [
+    `موظف مؤقت #${entry.employeeId} في نظام الموظفين`,
+    entry.addedBy ? `أضافه ${entry.addedBy}` : null,
+    entry.zone ? `الموقع: ${entry.zone}` : null,
+    entry.jobTitle ? `المسمّى: ${entry.jobTitle}` : null,
+  ].filter(Boolean).join(' · ').slice(0, 500);
+
+  let lead = await db.get('SELECT * FROM leads WHERE ext_employee_id = ? ORDER BY id DESC LIMIT 1', [entry.employeeId]);
+  let created = false;
+
+  if (!lead) {
+    lead = await db.get(
+      'SELECT * FROM leads WHERE phone = ? AND status IN (?, ?, ?) ORDER BY id DESC LIMIT 1', [entry.phone, ...OPEN]
+    );
+    if (lead) {
+      await db.run(
+        'UPDATE leads SET ext_employee_id = ?, ext_national_id = ?, full_name = COALESCE(full_name, ?), note = ? WHERE id = ?',
+        [entry.employeeId, entry.nationalId, entry.fullName, [lead.note, note].filter(Boolean).join(' — ').slice(0, 500), lead.id]
+      );
+    } else {
+      const ins = await db.run(
+        `INSERT INTO leads (phone, full_name, referred_by, note, token, created_by, ext_employee_id, ext_national_id)
+         VALUES (?, ?, 'لوحة العمليات', ?, ?, ?, ?, ?)`,
+        [entry.phone, entry.fullName, note, newToken(), QUICK_ACTOR, entry.employeeId, entry.nationalId]
+      );
+      created = true;
+      db.audit(null, QUICK_ACTOR, 'lead_create', 'lead', ins.insertId, entry.fullName || entry.phone, note, req?.ip || null).catch(() => {});
+      lead = { id: ins.insertId };
+    }
+    lead = await db.get('SELECT * FROM leads WHERE id = ?', [lead.id]);
+  }
+
+  // سجّل بالفعل (ربما بهوية كتبها بشكل مختلف): نعيد طلبه ليُكمل المستدعي رحلته
+  if (lead.status === 'applied' && lead.applicant_id) {
+    return { ok: true, via: 'lead', lead_id: lead.id, lead_created: false, link_sent: 'not_needed', applicantId: lead.applicant_id };
+  }
+  // أُغلقت يدوياً بقرار — لا نعيد فتحها ولا نراسله من تلقاء أنفسنا
+  if (lead.status === 'closed') {
+    return { ok: true, via: 'lead', lead_id: lead.id, lead_created: false, link_sent: 'skipped', reason: 'التوصية مغلقة' };
+  }
+
+  let linkSent = lead.last_send_status === 'sent' && lead.invite_count > 0 ? 'sent' : null;
+  let reason = '';
+  if (linkSent !== 'sent') {
+    const r = await deliverInvite(lead, applyLink(sysLinkReq(req), lead.token));
+    linkSent = r.status;
+    reason = r.reason || '';
+    if (r.status === 'sent') {
+      db.audit(null, QUICK_ACTOR, 'lead_invite', 'lead', lead.id, lead.full_name || lead.phone,
+        'دعوة للتسجيل عبر واتساب — موظف مؤقت من لوحة العمليات', req?.ip || null).catch(() => {});
+    }
+  }
+
+  return { ok: true, via: 'lead', lead_id: lead.id, lead_created: created, link_sent: linkSent, reason: reason || undefined };
+}
+
+/**
+ * تذكير واحد للموظف المؤقت الذي وصلته الدعوة ولم يسجّل بعد ثلاثة أيام.
+ * «الحجز» قبل الإرسال (reminded_at) يمنع التكرار لو تعدّدت نسخ الخادم.
+ */
+async function remindQuickHires() {
+  if (!featureOn() || process.env.QUICK_ADD_REMINDER === 'false') return 0;
+
+  const rows = await db.all(
+    `SELECT * FROM leads
+      WHERE ext_employee_id IS NOT NULL AND status IN ('invited', 'opened')
+        AND last_send_status = 'sent' AND reminded_at IS NULL
+        AND invited_at < NOW() - INTERVAL ${REMIND_AFTER_DAYS} DAY
+      ORDER BY id LIMIT 20`
+  );
+
+  let sent = 0;
+  for (const lead of rows) {
+    const claim = await db.run('UPDATE leads SET reminded_at = NOW() WHERE id = ? AND reminded_at IS NULL', [lead.id]);
+    if (!claim.affectedRows) continue;
+    const r = await deliverInvite(lead, applyLink(sysLinkReq(null), lead.token));
+    if (r.status === 'sent') sent++;
+    else console.warn(`[Leads remind] lead #${lead.id}: ${r.reason}`);
+  }
+  return sent;
+}
+
 module.exports = router;
+module.exports.quickHireLead = quickHireLead;
+module.exports.remindQuickHires = remindQuickHires;
 module.exports.byToken = byToken;
 module.exports.markOpened = markOpened;
 module.exports.linkApplicant = linkApplicant;

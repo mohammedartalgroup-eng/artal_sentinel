@@ -137,6 +137,10 @@
             <tr class="border-b border-[#eceef0] last:border-0 align-top">
               <td class="px-5 py-3">
                 <div class="font-semibold text-[#001736]"><%= l.full_name || 'بلا اسم' %></div>
+                <% if (l.ext_employee_id) { %>
+                  <span class="inline-block mt-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[#fef3c7] text-[#a16207]"
+                        title="أضافته لوحة العمليات في نظام الموظفين — يُدعى ليسجّل بياناته ثم يُستكمل ملفه">موظف مؤقت #<%= l.ext_employee_id %></span>
+                <% } %>
                 <div class="text-xs text-[#43474f] ltr"><%= l.phone %></div>
                 <% if (l.note) { %><div class="text-[11px] text-[#747780] mt-1 max-w-xs"><%= l.note %></div><% } %>
               </td>

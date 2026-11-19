@@ -14,8 +14,13 @@ try { leads = require('./leads'); } catch (e) { console.error('[Apply] ميزة 
 
 router.get('/', async (req, res) => {
   try {
+    // رابط دعوة شخصي؟ يُقرأ أولاً: الموظف المؤقت من لوحة العمليات يسجّل بياناته ولو كان
+    // استقبال الطلبات متوقفاً — هو موظف يكمل ملفه لا باحث عن وظيفة.
+    let invited = null;
+    if (leads && req.query.ref) invited = await leads.byToken(String(req.query.ref)).catch(() => null);
+
     const setting = await db.get("SELECT value FROM settings WHERE `key` = 'accepting_applications'");
-    if (setting && setting.value === 'false') {
+    if (setting && setting.value === 'false' && !invited?.ext_employee_id) {
       return res.status(503).send(`
         <!DOCTYPE html>
         <html dir="rtl" lang="ar">
@@ -38,12 +43,9 @@ router.get('/', async (req, res) => {
 
     // رابط دعوة شخصي؟ نعبّئ الاسم والجوال ونسجّل أن الرابط فُتح فعلاً
     let prefill = {};
-    if (leads && req.query.ref) {
-      const lead = await leads.byToken(String(req.query.ref)).catch(() => null);
-      if (lead) {
-        prefill = { full_name: lead.full_name || '', phone: lead.phone, ref: lead.token };
-        leads.markOpened(lead).catch(() => {});
-      }
+    if (invited) {
+      prefill = { full_name: invited.full_name || '', phone: invited.phone, ref: invited.token };
+      leads.markOpened(invited).catch(() => {});
     }
     res.render('apply', { cities: jobsCities, prefill });
   } catch (err) {
@@ -87,9 +89,13 @@ router.post('/', (req, res) => {
       else if (emailVal.length > 120 || !/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(emailVal))
         errors.push('البريد الإلكتروني غير صحيح');
       const ageInt = parseInt(age);
+      // حدّ الـ23 شرط توظيف، والموظف المؤقت من لوحة العمليات موظف فعلاً يسجّل بياناته —
+      // رفضه هنا يتركه بلا طريق لاستكمال ملفه. يكفيه السنّ النظامي للعمل.
+      const invitedLead = leads ? await leads.byToken(String(req.body.lead_ref || '')).catch(() => null) : null;
+      const minAge = invitedLead?.ext_employee_id ? 18 : 23;
       if (!age || isNaN(ageInt))         errors.push('يرجى إدخال العمر');
       else if (ageInt >= 100)            errors.push('العمر غير صحيح — يرجى إدخال عمرك وليس سنة ميلادك');
-      else if (ageInt <= 22)             errors.push('العمر يجب أن يكون 23 سنة فأكبر');
+      else if (ageInt < minAge)          errors.push(`العمر يجب أن يكون ${minAge} سنة فأكبر`);
       if (!region || !region.trim())                            errors.push('المنطقة الإدارية مطلوبة');
       if (!city || !city.trim())                                errors.push('المدينة أو المحافظة مطلوبة');
       if (!neighborhood || !neighborhood.trim())                errors.push('اسم الحي مطلوب');
@@ -167,9 +173,29 @@ router.post('/', (req, res) => {
       if (leads) {
         try {
           const lead = await leads.linkApplicant({
-            token: String(req.body.lead_ref || ''), phone: phone.trim(), applicantId: result.insertId,
+            token: String(req.body.lead_ref || ''), phone: phone.trim(), idNumber: id_number.trim(), applicantId: result.insertId,
           });
-          if (lead) {
+          if (lead && lead.ext_employee_id) {
+            // موظف مؤقت من لوحة العمليات سجّل بياناته: هو موظف لا متقدم جديد — لا يدخل
+            // طابور الفرز، ورحلة استكمال مستنداته تُفتح ويصله رابطها الآن (في الخلفية:
+            // تسجيله تمّ، وأي تعثّر هنا يُرى في ملفه ويُعاد من زر الإرسال).
+            await db.run("UPDATE applicants SET source = 'لوحة العمليات', referrer = ?, status = 'hired' WHERE id = ?",
+              [`موظف مؤقت #${lead.ext_employee_id}`, result.insertId]);
+            await db.logActivity(result.insertId, 'سجّل بياناته — موظف مؤقت من لوحة العمليات', 'pending', 'hired', 'النظام');
+            if (lead.ext_national_id && lead.ext_national_id !== id_number.trim()) {
+              await db.run('INSERT INTO applicant_notes (applicant_id, content, type, user_name) VALUES (?, ?, ?, ?)',
+                [result.insertId, `⚠️ رقم الهوية الذي كتبه (${id_number.trim()}) يختلف عمّا أدخلته لوحة العمليات (${lead.ext_national_id}) — يُراجع قبل تحديث ملفه`, 'follow_up', 'النظام']);
+            }
+            const addedBy = (String(lead.note || '').match(/أضافه ([^·]+)/) || [])[1];
+            const onboarding = require('./onboarding');
+            if (onboarding.featureOn()) onboarding.quickHire({
+              employeeId: lead.ext_employee_id,
+              nationalId: id_number.trim(),
+              fullName: full_name.trim(),
+              phone: phone.trim(),
+              addedBy: addedBy ? addedBy.trim() : null,
+            }, req).catch(e => console.error('[Apply] quick-hire continue:', e.message));
+          } else if (lead) {
             const by = lead.referred_by ? `توصية — ${lead.referred_by}` : 'توصية';
             await db.run('UPDATE applicants SET source = ?, referrer = ? WHERE id = ?',
               ['توصية', by.slice(0, 255), result.insertId]);

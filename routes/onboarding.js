@@ -1928,6 +1928,21 @@ async function quickHire(entry, req) {
   let applicant = rows[0] || null;
   let created = false;
 
+  // ليس له طلب عندنا: لا نُنشئ له طلباً بالنيابة — يدخل «التوصيات» وتصله دعوة التسجيل
+  // برابطه الشخصي (قرار المالك). حين يسجّل بنفسه يعود routes/apply.js إلى هنا فتُفتح
+  // رحلته. وإن كان قد سجّل (بهوية كتبها بشكل مختلف) نكمل على طلبه مباشرة.
+  if (!applicant) {
+    let leads = null;
+    try { leads = require('./leads'); } catch (e) { leads = null; }
+    if (leads && leads.featureOn()) {
+      const viaLead = await leads.quickHireLead(entry, req);
+      if (!viaLead.ok || !viaLead.applicantId) return viaLead;
+      applicant = await db.get('SELECT * FROM applicants WHERE id = ?', [viaLead.applicantId]);
+      if (!applicant) return { ...viaLead, applicantId: undefined };
+    }
+  }
+
+  // ميزة التوصيات معطّلة: المسار الاحتياطي — ننشئ المتقدم مباشرة حتى لا ينقطع الطريق
   if (!applicant) {
     if (!entry.phone) return { ok: false, code: 422, error: 'رقم جوال غير صالح — لا يمكن إنشاء المتقدم' };
     if (!entry.fullName) return { ok: false, code: 422, error: 'الاسم ناقص — لا يمكن إنشاء المتقدم' };
@@ -1944,7 +1959,7 @@ async function quickHire(entry, req) {
     await db.run(
       `UPDATE applicants SET ext_check_done = 1, ext_found = 1, ext_employee_id = ?, ext_checked_at = NOW()
         WHERE id_number = ? AND (ext_found IS NULL OR ext_found = 0)`,
-      [entry.employeeId, entry.nationalId]
+      [entry.employeeId, applicant.id_number]
     );
   }
 
@@ -2012,16 +2027,19 @@ async function quickHire(entry, req) {
   };
 }
 
+// ساعات مقبولة بتوقيت الرياض — لا رسالة منتصف الليل
+function daytimeInRiyadh() {
+  const hour = Number(new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hour12: false, timeZone: 'Asia/Riyadh' }).format(new Date()));
+  return hour >= 9 && hour < 20;
+}
+
 /**
  * تذكير واحد لكل موظف مؤقت وصله الرابط ولم يكمل مستنداته بعد ثلاثة أيام.
  * «الحجز» قبل الإرسال (reminded_at) يمنع تكرار التذكير لو تعدّدت نسخ الخادم.
  */
 async function remindQuickAdds() {
   if (!featureOn() || process.env.QUICK_ADD_REMINDER === 'false') return 0;
-
-  // ساعات مقبولة بتوقيت الرياض — لا رسالة منتصف الليل
-  const hour = Number(new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hour12: false, timeZone: 'Asia/Riyadh' }).format(new Date()));
-  if (hour < 9 || hour >= 20) return 0;
+  if (!daytimeInRiyadh()) return 0;
 
   const rows = await db.all(
     `SELECT e.id, e.applicant_id, s.token
@@ -2053,6 +2071,10 @@ function startQuickAddReminders() {
   if (reminderTimer) return;
   reminderTimer = setInterval(() => {
     remindQuickAdds().catch(e => console.error('[Onboarding remind]', e.message));
+    // ومن دُعي للتسجيل (لم يكن له طلب) ولم يسجّل بعد — نفس القاعدة: مرة واحدة ونهاراً
+    if (daytimeInRiyadh()) {
+      try { require('./leads').remindQuickHires().catch(e => console.error('[Leads remind]', e.message)); } catch (e) { /* ميزة التوصيات غير محمّلة */ }
+    }
   }, 60 * 60 * 1000);
   reminderTimer.unref();
 }
