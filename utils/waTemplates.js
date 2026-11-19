@@ -142,6 +142,11 @@ const TEMPLATES = {
     // standalone: يُرسَل من مسار الموظف المؤقت (routes/leads.js) وحده — المستلم ليس متقدماً بعد.
     standalone: true,
 
+    // الاسم المقدَّم لميتا عبر زيرنيو. مع رقم الـ QR (OpenWA) لا اعتماد مطلوب: يُرسل
+    // النص المحفوظ بهذا الاسم ولو تُرك حقل الاسم فارغاً في الإعدادات. ومع Chatwoot لا
+    // يُستخدم إلا بعد كتابته في الإعدادات (أي بعد اعتماده).
+    defaultName: 'artal_employee_invite_ar',
+
     // ⚠️ هذا هو النص الذي يُقدَّم لميتا للاعتماد حرفياً: {name} = {{1}} و{link} = {{2}}.
     //    صيغة «دعوة للتقديم» (وصلتنا توصية بك… إن كنت مهتماً) لا تناسب موظفاً باشر عمله.
     preview: [
@@ -176,7 +181,18 @@ function available(settings, chatwootReady) {
 
 /** هل القالب جاهز للإرسال؟ (اسمه محفوظ في الإعدادات ومزوّد الإرسال مهيأ) */
 function ready(settings, key, chatwootReady) {
-  return Boolean(chatwootReady && String(settings[`wa_tpl_${key}_name`] || '').trim());
+  return Boolean(chatwootReady && nameFor(settings, key));
 }
 
-module.exports = { TEMPLATES, FIELDS, keys, get, available, ready };
+/**
+ * اسم القالب الفعلي: ما في الإعدادات، وإلا — مع OpenWA وحده — الاسم الافتراضي للقالب.
+ * OpenWA يرسل نصاً حراً فلا ينتظر اعتماد ميتا؛ Chatwoot يرسل القالب المعتمد فلا اسم
+ * إلا ما كُتب في الإعدادات بعد الاعتماد.
+ */
+function nameFor(settings, key) {
+  const set = String(settings?.[`wa_tpl_${key}_name`] || '').trim();
+  if (set) return set;
+  return settings?.wa_provider === 'openwa' ? (TEMPLATES[key]?.defaultName || '') : '';
+}
+
+module.exports = { TEMPLATES, FIELDS, keys, get, available, ready, nameFor };

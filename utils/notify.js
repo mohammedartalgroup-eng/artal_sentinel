@@ -44,7 +44,8 @@ function waNotReadyReason(settings) {
 // ─── قراءة إعداد القالب لنوع إشعار معيّن ─────────────────────────────────────
 function templateFor(settings, kind) {
   return {
-    name:     String(settings[`wa_tpl_${kind}_name`] || '').trim(),
+    // الاسم من الإعدادات، أو الافتراضي مع OpenWA (utils/waTemplates.js → nameFor)
+    name:     require('./waTemplates').nameFor(settings, kind),
     language: String(settings[`wa_tpl_${kind}_lang`] || 'ar').trim(),
     category: String(settings[`wa_tpl_${kind}_cat`]  || 'UTILITY').trim(),
     vars:     String(settings[`wa_tpl_${kind}_vars`] || '').trim(),

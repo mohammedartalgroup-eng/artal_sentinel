@@ -99,6 +99,28 @@ async function init() {
       ['wa_tpl_invite_employee_cat',  'UTILITY'],
       ['wa_tpl_invite_employee_vars', 'name,link'],
     ];
+    // نص «دعوة موظف مؤقت» في النسخة المحفوظة — INSERT IGNORE: لا يكتب فوق ما زامنه Chatwoot
+    const WT = require('../utils/waTemplates');
+    const inv = WT.get('invite_employee');
+    // جدول النسخة المحفوظة يُنشئه db.js بعد applicants — ننتظره حتى لا تفوت البذرة
+    let hasStore = false;
+    for (let i = 0; i < 40 && !hasStore; i++) {
+      const [t] = await conn.query("SHOW TABLES LIKE 'wa_templates'");
+      hasStore = t.length > 0;
+      if (!hasStore) await new Promise(r => setTimeout(r, 500));
+    }
+    if (inv?.defaultName && hasStore) {
+      const body = inv.preview.join ? inv.preview : String(inv.preview);
+      const text = String(body).replace('{name}', '{{1}}').replace('{link}', '{{2}}');
+      await conn.query(
+        'INSERT IGNORE INTO wa_templates (name, language, inbox_id, data) VALUES (?, ?, NULL, ?)',
+        [inv.defaultName, 'ar', JSON.stringify({
+          name: inv.defaultName, language: 'ar', status: 'local', body: text,
+          components: [{ type: 'BODY', text }, { type: 'FOOTER', text: inv.previewFooter }],
+        })]
+      ).catch(e => console.error('[DB] seed invite_employee text:', e.message));
+    }
+
     for (const [k, v] of tplDefaults) {
       await conn.query('INSERT IGNORE INTO settings (`key`, value) VALUES (?, ?)', [k, v]);
     }
