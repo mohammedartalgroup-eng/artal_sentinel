@@ -73,6 +73,9 @@ async function init() {
       ['ext_employee_id', 'INT DEFAULT NULL'],
       ['ext_national_id', 'VARCHAR(10) DEFAULT NULL'],
       ['reminded_at',     'DATETIME DEFAULT NULL'],
+      // طلب إضافة ينتظر مرفقاته الأساسية: رقم الطلب في نظام الموظفين، وسطر المرحلة المعروض
+      ['hire_request_id', 'INT DEFAULT NULL'],
+      ['stage',           'VARCHAR(120) DEFAULT NULL'],
     ];
     for (const [name, def] of quickHireCols) {
       const [cols] = await conn.query('SHOW COLUMNS FROM leads LIKE ?', [name]);
@@ -142,13 +145,13 @@ async function cleanup() {
     const a = await db.run(
       `UPDATE leads SET status = 'closed', close_reason = 'لم يستجب خلال 30 يوماً', closed_at = NOW()
         WHERE status IN ('invited', 'opened') AND invited_at < NOW() - INTERVAL 30 DAY
-          AND ext_employee_id IS NULL`
+          AND ext_employee_id IS NULL AND hire_request_id IS NULL`
     );
     // الموظف المؤقت من لوحة العمليات مستثنى من الإغلاق والحذف: هو موظف فعلاً وملفه
     // ينتظر الاستكمال — لا يُسقَط بصمت، يبقى ظاهراً حتى يسجّل أو يُغلق بقرار.
     const b = await db.run(
       `DELETE FROM leads WHERE status <> 'applied' AND created_at < NOW() - INTERVAL 90 DAY
-          AND ext_employee_id IS NULL`
+          AND ext_employee_id IS NULL AND hire_request_id IS NULL`
     );
     if (a.affectedRows || b.affectedRows) {
       console.log(`[Leads] تنظيف: أُغلق ${a.affectedRows} — حُذف ${b.affectedRows}`);

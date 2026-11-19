@@ -134,7 +134,25 @@ router.post('/', (req, res) => {
       const cvFile = req.files?.cv?.[0];
       const idFile = req.files?.id_image?.[0];
 
-      const result = await db.run(
+      // طلب إضافة من لوحة العمليات فُتح له سجل أساسي (اسم وهوية وجوال) ورفع عليه مرفقاته:
+      // تسجيله الآن يُكمل ذلك السجل نفسه — صفّ ثانٍ كان سيفصل بياناته عن مستنداته.
+      let stubId = null;
+      if (leads) {
+        try {
+          const own = await leads.findForApplication({ token: String(req.body.lead_ref || ''), phone: phone.trim(), idNumber: id_number.trim() });
+          if (own && own.hire_request_id) {
+            const stub = await db.get(
+              `SELECT a.* FROM applicants a JOIN onboarding_sessions s ON s.applicant_id = a.id
+                WHERE s.hire_request_id = ? ORDER BY s.id DESC LIMIT 1`, [own.hire_request_id]
+            );
+            if (stub && require('./onboarding').isStubApplicant(stub)) stubId = stub.id;
+          }
+        } catch (e) {
+          console.error('[Apply] stub lookup:', e.message);
+        }
+      }
+
+      const result = stubId ? { insertId: stubId } : await db.run(
         `INSERT INTO applicants
           (full_name, id_number, phone, email, age, gender, region, city, neighborhood,
            has_car, has_license, english, qualification, specialization, cv_path, id_image_path,
@@ -166,7 +184,29 @@ router.post('/', (req, res) => {
         ]
       );
 
-      await db.logActivity(result.insertId, 'تقديم جديد', null, 'pending');
+      if (stubId) {
+        // رقم الهوية لا يُمسّ: عليه رُفعت المرفقات وبه أُنشئ الموظف — ما كتبه الآن يُقارَن أدناه
+        await db.run(
+          `UPDATE applicants
+              SET full_name = ?, phone = ?, email = ?, age = ?, gender = ?, region = ?, city = ?, neighborhood = ?,
+                  has_car = ?, has_license = ?, english = ?, qualification = ?, specialization = ?,
+                  cv_path = COALESCE(?, cv_path), id_image_path = COALESCE(?, id_image_path),
+                  consent_at = NOW(), consent_ip = ?, privacy_version = ?, terms_version = ?
+            WHERE id = ?`,
+          [
+            full_name.trim(), phone.trim(), emailVal || null, ageInt, gender, region.trim(), city.trim(),
+            neighborhood ? neighborhood.trim() : null,
+            has_car === 'yes' ? 1 : 0, has_license === 'yes' ? 1 : 0, english === 'yes' ? 1 : 0,
+            qualification, specialization ? specialization.trim() : null,
+            cvFile ? cvFile.filename : null, idFile ? idFile.filename : null,
+            req.ip ? String(req.ip).slice(0, 45) : null, legal.PRIVACY.VERSION, legal.TERMS.VERSION,
+            stubId,
+          ]
+        );
+        await db.logActivity(stubId, 'سجّل بياناته في نموذج التسجيل', null, null);
+      } else {
+        await db.logActivity(result.insertId, 'تقديم جديد', null, 'pending');
+      }
 
       // طلب جاء عبر توصية؟ بالرمز من رابط الدعوة، أو بالجوال إن تقدّم من الرابط
       // العام. المصدر الحقيقي حينها «توصية» لا ما التقطه كوكي الزيارة الأولى.
@@ -190,7 +230,8 @@ router.post('/', (req, res) => {
             const onboarding = require('./onboarding');
             if (onboarding.featureOn()) onboarding.quickHire({
               employeeId: lead.ext_employee_id,
-              nationalId: id_number.trim(),
+              // السجل الأساسي يحتفظ بهويته (عليها مرفقاته) — وإلا فما كتبه في النموذج
+              nationalId: stubId ? (lead.ext_national_id || id_number.trim()) : id_number.trim(),
               fullName: full_name.trim(),
               phone: phone.trim(),
               addedBy: addedBy ? addedBy.trim() : null,

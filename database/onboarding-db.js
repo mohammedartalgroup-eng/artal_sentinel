@@ -214,6 +214,31 @@ async function init() {
       }
     }
 
+    // طلب إضافة موظف من لوحة العمليات (قرار الموارد: لا موظف في النظام بلا الهوية والآيبان
+    // والعنوان الوطني): الرحلة تعمل «بوابةً» — تعرض المرفقات الثلاثة وزر «تم»، وحين تكتمل
+    // وتطابق الهوية يُنشأ الموظف هناك. الأعمدة تحفظ الطلب وهويته وحالة البوابة ورابطها.
+    //   gate_status: pending | needs_review | fulfilled | cancelled
+    const gateCols = [
+      ['hire_request_id',   'INT DEFAULT NULL'],
+      ['gate_national_id',  'VARCHAR(10) DEFAULT NULL'],
+      ['gate_status',       'VARCHAR(20) DEFAULT NULL'],
+      ['gate_note',         'VARCHAR(255) DEFAULT NULL'],
+      ['gate_link_status',  'VARCHAR(20) DEFAULT NULL'],
+      ['gate_employee_id',  'INT DEFAULT NULL'],
+      ['gate_fulfilled_at', 'DATETIME DEFAULT NULL'],
+    ];
+    for (const [name, def] of gateCols) {
+      const [cols] = await conn.query('SHOW COLUMNS FROM onboarding_sessions LIKE ?', [name]);
+      if (cols.length === 0) {
+        await conn.query(`ALTER TABLE onboarding_sessions ADD COLUMN ${name} ${def}`);
+        console.log(`[DB] Migration: added ${name} to onboarding_sessions`);
+      }
+    }
+    const [gateIdx] = await conn.query("SHOW INDEX FROM onboarding_sessions WHERE Key_name = 'idx_hire_request'");
+    if (gateIdx.length === 0) {
+      await conn.query('ALTER TABLE onboarding_sessions ADD INDEX idx_hire_request (hire_request_id)');
+    }
+
     // تحديثات الأقسام إلى نظام الموظفين بعد الإنشاء: ما تغيّر، في أي قسم، ومن طبّقه.
     // صفّ لكل تطبيق — المعاينة (dry run) لا تُسجَّل لأنها لا تكتب شيئاً هناك.
     await conn.query(`

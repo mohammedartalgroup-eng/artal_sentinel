@@ -270,6 +270,63 @@ router.post('/quick-hire', hooksLimiter, requireSecret, async (req, res) => {
   }
 });
 
+// ─── POST /api/hooks/hire-request ────────────────────────────────────────────
+// طلب إضافة موظف من لوحة العمليات: نجيب هل له مرفقاته الأساسية (الهوية، الآيبان، العنوان
+// الوطني) فيُنشأ هناك فوراً، أو نفتح له رابط رفعها ونرسله من رقمنا. المنطق في
+// routes/onboarding.js (hireRequest)؛ هنا المصادقة والتحقق فقط.
+function loadOnboarding(res) {
+  let onboarding;
+  try { onboarding = require('./onboarding'); } catch (e) { onboarding = null; }
+  if (!onboarding || !onboarding.featureOn()) {
+    res.status(503).json({ ok: false, error: 'onboarding_disabled' });
+    return null;
+  }
+  return onboarding;
+}
+
+router.post('/hire-request', hooksLimiter, requireSecret, async (req, res) => {
+  try {
+    const nationalId = String(req.body?.national_id ?? '').trim();
+    const requestId = Number.parseInt(req.body?.request_id, 10);
+    if (!/^\d{10}$/.test(nationalId) || !Number.isInteger(requestId) || requestId <= 0) {
+      return res.status(400).json({ ok: false, error: 'invalid_payload' });
+    }
+    const onboarding = loadOnboarding(res);
+    if (!onboarding) return;
+
+    const text = (v, max) => (v ? String(v).trim().slice(0, max) : null) || null;
+    const result = await onboarding.hireRequest({
+      requestId,
+      nationalId,
+      fullName: text(req.body.full_name, 200),
+      phone: onboarding.localPhone(req.body.mobile),
+      jobTitle: text(req.body.job_title, 100),
+      zone: text(req.body.zone, 120),
+      addedBy: text(req.body.added_by, 100),
+    }, req);
+
+    if (!result.ok) return res.status(result.code || 422).json({ ok: false, error: result.error });
+    res.json(result);
+  } catch (err) {
+    console.error('[Hooks] hire-request:', err.message);
+    res.status(500).json({ ok: false, error: 'internal_error' });
+  }
+});
+
+// إلغاء طلب الإضافة من لوحة العمليات — تُغلق بوابة المرفقات
+router.post('/hire-request/cancel', hooksLimiter, requireSecret, async (req, res) => {
+  try {
+    const requestId = Number.parseInt(req.body?.request_id, 10);
+    if (!Number.isInteger(requestId) || requestId <= 0) return res.status(400).json({ ok: false, error: 'invalid_payload' });
+    const onboarding = loadOnboarding(res);
+    if (!onboarding) return;
+    res.json(await onboarding.cancelHireRequest(requestId));
+  } catch (err) {
+    console.error('[Hooks] hire-request cancel:', err.message);
+    res.status(500).json({ ok: false, error: 'internal_error' });
+  }
+});
+
 // ─── GET /api/hooks/health ───────────────────────────────────────────────────
 // فحص اتصال بسيط — يستخدمه نظام أرتال للتأكد قبل الترحيل التاريخي.
 router.get('/health', hooksLimiter, requireSecret, async (req, res) => {

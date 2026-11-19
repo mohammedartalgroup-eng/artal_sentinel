@@ -171,7 +171,11 @@
   <div class="hero">
     <div class="wrap" style="padding-bottom:0">
       <h1>أهلاً <%= firstName %> 👋</h1>
+      <% if (locals.gate) { %>
+      <p>لتفعيل حسابك في تطبيق أرتال ارفع المستندات الثلاثة التالية وأكّد بياناتها، ثم اضغط «تم». باقي بياناتك تستكملها لاحقاً.</p>
+      <% } else { %>
       <p>نحتاج بعض المستندات لاستكمال ملفك الوظيفي. لست مضطراً لإنهائها الآن — كل ما ترفعه يُحفَظ فوراً.</p>
+      <% } %>
       <div class="bar"><i id="bar-fill" style="width:<%= progress %>%"></i></div>
       <div class="bar-meta">
         <span id="bar-text">تم إكمال <%= completed %> من <%= totalRequired %></span>
@@ -194,6 +198,24 @@
     </div>
 
     <div class="cards" id="cards"></div>
+
+    <% if (locals.gate) { %>
+    <!-- بوابة المرفقات الأساسية: «تم» يفحص الثلاثة ومطابقة الهوية ثم يُفعَّل الحساب -->
+    <div id="gate-box" style="margin-top:22px">
+      <div id="gate-msg" class="conflict <%= gate.status === 'needs_review' ? '' : 'hidden' %>" style="margin-top:0;margin-bottom:12px">
+        <div class="cl" id="gate-msg-text"><%= gate.status === 'needs_review' ? 'فريق التوظيف يراجع مستنداتك. إن طُلب منك تصحيح شيء فصحّحه ثم اضغط «تم» من جديد.' : '' %></div>
+      </div>
+      <button class="btn primary wide" id="gate-btn" onclick="gateDone()">
+        <span class="material-symbols-outlined">task_alt</span> تم
+      </button>
+    </div>
+    <div id="gate-ok" class="hidden" style="margin-top:22px;background:#dcfce7;border:1px solid #86efac;border-radius:16px;padding:18px 16px;text-align:center;color:#15803d">
+      <span class="material-symbols-outlined" style="font-size:40px">verified</span>
+      <div style="font-weight:700;font-size:16px;margin-top:6px">تم تفعيل حسابك ✓</div>
+      <div style="font-size:13.5px;margin-top:6px;line-height:1.9">ستصلك الآن رسالة فيها بيانات الدخول وروابط تطبيق أرتال.<br>وستصلك رسالة أخرى لاستكمال باقي بياناتك متى شئت.</div>
+    </div>
+    <% } %>
+
     <p class="note">
       بياناتك تُستخدم لإنشاء ملفك الوظيفي في شركة أرتال للحراسات الأمنية فقط.<br>
       لأي استفسار تواصل مع فريق التوظيف.
@@ -301,6 +323,30 @@ function toast(msg) {
   t.classList.add('show');
   clearTimeout(t._h);
   t._h = setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+// ─── بوابة المرفقات الأساسية (طلب إضافة من لوحة العمليات) ───────────────────
+const GATE = <%- locals.gate ? 'true' : 'false' %>;
+async function gateDone() {
+  const btn = $('gate-btn');
+  const box = $('gate-msg');
+  const say = (text) => { $('gate-msg-text').textContent = text; box.classList.remove('hidden'); };
+  btn.disabled = true;
+  try {
+    const r = await fetch('/onboarding/' + TOKEN + '/activate', { method: 'POST' });
+    const j = await r.json().catch(() => ({}));
+    if (r.ok && j.ok) {
+      $('gate-box').classList.add('hidden');
+      $('gate-ok').classList.remove('hidden');
+      $('gate-ok').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    say(j.message || j.error || 'تعذّر إتمام الطلب — أعد المحاولة بعد قليل.');
+  } catch (e) {
+    say('تعذّر الاتصال — تأكد من الإنترنت وأعد المحاولة.');
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // ─── القائمة ─────────────────────────────────────────────────────────────────
@@ -618,7 +664,7 @@ async function confirmDoc() {
     const s = step(current);
     s.status = 'confirmed';
     renderConflicts(j.conflicts || []);
-    toast(j.progress >= 100 ? 'اكتمل ملفك — شكراً لك 🎉' : 'تم الحفظ ✓');
+    toast(GATE ? 'تم الحفظ ✓' : (j.progress >= 100 ? 'اكتمل ملفك — شكراً لك 🎉' : 'تم الحفظ ✓'));
     showList();
   } catch (err) {
     toast(err.message);

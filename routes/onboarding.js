@@ -445,16 +445,26 @@ publicRouter.get('/:token', pageLimiter, async (req, res) => {
     if (!applicant) {
       return res.status(404).render('onboarding-error', { title: 'رابط غير صالح', message: 'لم نجد الملف المرتبط بهذا الرابط.' });
     }
-    if (!s.opened_at) await db.run('UPDATE onboarding_sessions SET opened_at = NOW() WHERE id = ?', [s.id]);
+    if (!s.opened_at) {
+      await db.run('UPDATE onboarding_sessions SET opened_at = NOW() WHERE id = ?', [s.id]);
+      // طلب إضافة من لوحة العمليات: «فتح الرابط» مرحلة يراها الجميع هناك
+      if (gateOpen(s)) artalsys.hireRequestEvent(s.hire_request_id, 'opened');
+    }
 
     const { byType, fieldsByType } = await loadDocs(s.id);
-    const steps = buildSteps(s, byType, fieldsByType, {
+    const allSteps = buildSteps(s, byType, fieldsByType, {
       cvUrl: applicant.cv_path ? `/onboarding/${s.token}/cv` : null,
     });
-    const required = requiredList(s);
-    const prog = await syncProgress(s, steps);
+    // البوابة مفتوحة: الصفحة تعرض المرفقات الثلاثة وحدها وزر «تم» — الباقي يُستكمل لاحقاً
+    const gate = gateOpen(s) ? { status: s.gate_status, note: s.gate_note || null } : null;
+    const steps = gate ? allSteps.filter(x => GATE_DOCS.includes(x.type)).map(x => ({ ...x, required: true })) : allSteps;
+    const required = gate ? GATE_DOCS : requiredList(s);
+    const prog = gate
+      ? { completed: steps.filter(x => x.done).length, progress: Math.round(steps.filter(x => x.done).length / GATE_DOCS.length * 100) }
+      : await syncProgress(s, steps);
 
     res.render('onboarding', {
+      gate,
       conflicts: buildProfile(fieldsByType).filter(g => g.conflict),
       token: s.token,
       firstName: String(applicant.full_name || '').split(' ')[0] || '',
@@ -618,7 +628,10 @@ publicRouter.post('/:token/confirm', pageLimiter, resolveToken, async (req, res)
     );
 
     const p = await recomputeProgress(s);
-    const { fieldsByType } = await loadDocs(s.id);
+    const { byType, fieldsByType } = await loadDocs(s.id);
+    if (gateOpen(s) && GATE_DOCS.includes(docType)) {
+      artalsys.hireRequestEvent(s.hire_request_id, 'docs', { docs: gateState(s, byType, fieldsByType).docs });
+    }
     res.json({ ok: true, ...p, conflicts: buildProfile(fieldsByType).filter(g => g.conflict) });
   } catch (err) {
     console.error('[Onboarding confirm]', err.message);
@@ -2001,7 +2014,15 @@ async function quickHire(entry, req) {
   let linkSent = before?.link_status || null;
   let reason = '';
 
-  if (session && (session.status === 'submitted' || Number(session.progress) >= 100)) {
+  if (isStubApplicant(applicant)) {
+    // أُضيف للنظام بمرفقاته الأساسية ولم يسجّل بياناته بعد: يُدعى للتسجيل برابطه الشخصي،
+    // وبعد تسجيله يصله رابط باقي المستندات (routes/apply.js) — لا رابطان معاً.
+    const r = await inviteStubToRegister(applicant, entry, req);
+    // «invited» لا «sent»: ما خرج دعوة التسجيل لا رابط المستندات — وإلا ظنّ المسار بعد
+    // تسجيله أن الرابط أُرسل فلم يرسله
+    linkSent = r.status === 'sent' ? 'invited' : r.status;
+    reason = r.reason;
+  } else if (session && (session.status === 'submitted' || Number(session.progress) >= 100)) {
     linkSent = 'not_needed';
   } else if (linkSent !== 'sent') {
     const r = await deliverOnboardingLink(applicant, publicLink(sysReq, token), 'موظف مؤقت من لوحة العمليات');
@@ -2013,7 +2034,7 @@ async function quickHire(entry, req) {
     `UPDATE onboarding_employment
         SET link_status = ?, link_error = ?, link_sent_at = IF(? = 'sent' AND link_sent_at IS NULL, NOW(), link_sent_at)
       WHERE session_id = ?`,
-    [linkSent, linkSent === 'sent' || linkSent === 'not_needed' ? null : String(reason || '').slice(0, 250), linkSent, sessionId]
+    [linkSent, ['sent', 'not_needed', 'invited'].includes(linkSent) ? null : String(reason || '').slice(0, 250), linkSent, sessionId]
   );
 
   return {
@@ -2022,7 +2043,9 @@ async function quickHire(entry, req) {
     applicant_created: created,
     session_id: sessionId,
     session: sessionState,
-    link_sent: linkSent,
+    // للطرف الآخر: «أُرسل له شيء» — دعوة التسجيل أو رابط المستندات
+    link_sent: linkSent === 'invited' ? 'sent' : linkSent,
+    invited_to_register: linkSent === 'invited' || undefined,
     reason: reason || undefined,
   };
 }
@@ -2131,4 +2154,296 @@ adminRouter.post('/complete/:applicantId', sendLimiter, async (req, res) => {
   }
 });
 
-module.exports = { publicRouter, adminRouter, featureOn, quickHire, localPhone, remindQuickAdds, startQuickAddReminders };
+// ═══ بوابة المرفقات الأساسية — طلب إضافة موظف من لوحة العمليات ═══════════════
+//
+//  قرار الموارد البشرية: لا يُضاف موظف لنظام الموظفين ولا تصله بيانات الدخول إلا وله
+//  ثلاثة مرفقات على الأقل: الهوية، الآيبان، العنوان الوطني. فزر «إضافة موظف» هناك صار
+//  طلباً يسألنا (POST /api/hooks/hire-request):
+//    • له الثلاثة وهويته تطابق ← نجيب «جاهز» فيُنشأ فوراً.
+//    • ليست له ← نفتح له رحلةً تعمل «بوابةً»: تعرض الثلاثة وحدها وزر «تم». حين يضغطه
+//      والقراءة الآلية سليمة والهوية تطابق ما أدخلته العمليات يُنشأ الموظف هناك.
+//  بعدها يعود المسار المعتاد: يصلنا quick-hire فيُدعى ليسجّل بياناته ويكمل الباقي لاحقاً،
+//  والفريق يراجع ويزامن بأزراره — لا مزامنة تلقائية لبيانات المستندات.
+
+const GATE_DOCS = ['id_iqama', 'iban', 'national_address'];
+const GATE_KEYS = { id_iqama: 'id', iban: 'iban', national_address: 'address' };
+const GATE_REQUIRED = GATE_DOCS.join(',');
+
+const gateOpen = (session) => Boolean(session?.hire_request_id)
+  && (session.gate_status === 'pending' || session.gate_status === 'needs_review');
+
+// سجل أساسي أنشأناه من بيانات لوحة العمليات (اسم وهوية وجوال) ولم يسجّل صاحبه بياناته بعد
+const isStubApplicant = (a) => Boolean(a) && a.source === 'لوحة العمليات' && !a.consent_at && !a.email;
+
+/**
+ * حالة المرفقات الثلاثة لرحلة: أيها اكتمل، ورقم الهوية المقروء من المستند ومصدره.
+ * «اكتمل» بقاعدة الرحلة نفسها (isDone): أكّده المرشح ولم يُرفض، أو اعتمده فريق التوظيف.
+ */
+function gateState(session, byType, fieldsByType) {
+  const docs = {};
+  for (const type of GATE_DOCS) docs[GATE_KEYS[type]] = isDone(byType[type] || null);
+
+  const idField = fieldsByType?.id_iqama?.id_number || null;
+  const idNumber = idField && idField.valid ? String(idField.value || '').trim() : '';
+  const idDoc = byType.id_iqama || null;
+
+  return {
+    docs,
+    complete: GATE_DOCS.every(t => docs[GATE_KEYS[t]]),
+    missing: GATE_DOCS.filter(t => !docs[GATE_KEYS[t]]).map(t => rules.DOC_TYPES[t].label),
+    idNumber,
+    idMatches: Boolean(idNumber) && idNumber === String(session.gate_national_id || '').trim(),
+    // قرأته الآلة (ocr/ai) أم كتبه المرشح بيده؟ والمعتمد من فريق التوظيف يُغني عن السؤال
+    idMachineRead: Boolean(idField) && idField.source !== 'user',
+    idApprovedByStaff: Boolean(idDoc && idDoc.review === 'green' && idDoc.hr_decided_at),
+  };
+}
+
+// سطر المرحلة في صفحة التوصيات — نفس ما يراه الطرف الآخر
+async function setLeadStage(requestId, stage, extra = {}) {
+  if (!requestId) return;
+  const sets = ['stage = ?'];
+  const params = [String(stage).slice(0, 120)];
+  for (const [k, v] of Object.entries(extra)) { sets.push(`${k} = ?`); params.push(v); }
+  await db.run(`UPDATE leads SET ${sets.join(', ')} WHERE hire_request_id = ?`, [...params, requestId]).catch(() => {});
+}
+
+/**
+ * استقبال طلب الإضافة. آمن للتكرار: إعادة الطلب نفسه لا تنشئ سجلاً ثانياً ولا ترسل
+ * الرابط مرتين.
+ *
+ * @param {{requestId:number, nationalId:string, fullName:?string, phone:?string,
+ *          jobTitle:?string, zone:?string, addedBy:?string}} entry
+ */
+async function hireRequest(entry, req) {
+  const sysReq = systemReq(req);
+
+  const rows = await db.all(
+    `SELECT a.*, (SELECT MAX(s.id) FROM onboarding_sessions s WHERE s.applicant_id = a.id) AS last_session
+       FROM applicants a WHERE a.id_number = ?`,
+    [entry.nationalId]
+  );
+  rows.sort((x, y) => (Number(y.last_session || 0) - Number(x.last_session || 0)) || (y.id - x.id));
+  let applicant = rows[0] || null;
+
+  // ① له المرفقات الثلاثة وهويته في المستند تطابق؟ ← جاهز: يُنشأ هناك فوراً
+  if (applicant && applicant.last_session) {
+    const session = await db.get('SELECT * FROM onboarding_sessions WHERE id = ?', [applicant.last_session]);
+    const { byType, fieldsByType } = await loadDocs(session.id);
+    const state = gateState({ ...session, gate_national_id: entry.nationalId }, byType, fieldsByType);
+    if (state.complete && state.idMatches) {
+      await db.run(
+        `UPDATE onboarding_sessions SET hire_request_id = ?, gate_national_id = ?, gate_status = 'fulfilled', gate_fulfilled_at = NOW(), gate_note = NULL WHERE id = ?`,
+        [entry.requestId, entry.nationalId, session.id]
+      );
+      db.run('INSERT INTO applicant_notes (applicant_id, content, type, user_name) VALUES (?, ?, ?, ?)',
+        [applicant.id, `طلبت لوحة العمليات إضافته لنظام الموظفين${entry.addedBy ? ` (${entry.addedBy})` : ''} — مرفقاته الأساسية مكتملة فأُضيف مباشرة.`, 'follow_up', QUICK_ACTOR]).catch(() => {});
+      return { ok: true, ready: true, applicant_id: applicant.id, docs: state.docs };
+    }
+  }
+
+  // ② ليس جاهزاً: نحتاج سجلاً نعلّق عليه رحلة المرفقات — من بيانات العمليات إن لم يكن له طلب
+  let created = false;
+  if (!applicant) {
+    if (!entry.phone) return { ok: false, code: 422, error: 'رقم جوال غير صالح — لا يمكن مراسلته برابط المرفقات' };
+    if (!entry.fullName) return { ok: false, code: 422, error: 'الاسم ناقص' };
+    // سجل أساسي (اسم وهوية وجوال) — يكمل بياناته بنفسه لاحقاً من نموذج التسجيل فيُحدَّث هذا
+    // السجل نفسه. «تم التعيين» حتى لا يدخل طابور فرز المتقدمين الجدد.
+    const ins = await db.run(
+      `INSERT INTO applicants (full_name, id_number, phone, source, status) VALUES (?, ?, ?, 'لوحة العمليات', 'hired')`,
+      [entry.fullName.slice(0, 200), entry.nationalId, entry.phone]
+    );
+    applicant = await db.get('SELECT * FROM applicants WHERE id = ?', [ins.insertId]);
+    created = true;
+  }
+
+  // ③ الرحلة: الجديدة تطلب الثلاثة وحدها؛ القائمة تبقى بمطلوباتها والبوابة تعرض الثلاثة
+  const { token, sessionId } = await ensureSession(sysReq, applicant, { required: GATE_REQUIRED });
+  const before = await db.get('SELECT * FROM onboarding_sessions WHERE id = ?', [sessionId]);
+  const first = Number(before.hire_request_id) !== Number(entry.requestId);
+  await db.run(
+    `UPDATE onboarding_sessions
+        SET hire_request_id = ?, gate_national_id = ?, gate_employee_id = NULL, gate_fulfilled_at = NULL,
+            gate_status = IF(hire_request_id = ? AND gate_status = 'needs_review', 'needs_review', 'pending'),
+            gate_link_status = IF(hire_request_id = ?, gate_link_status, NULL)
+      WHERE id = ?`,
+    [entry.requestId, entry.nationalId, entry.requestId, entry.requestId, sessionId]
+  );
+
+  // ④ صفحة التوصيات: سطر للطلب يتابعه فريق التوظيف — له رابط التسجيل الذي يُرسل بعد الإضافة
+  let leadId = null;
+  try {
+    const leads = require('./leads');
+    if (leads.featureOn()) {
+      leadId = await leads.hireRequestLead({ ...entry, stage: 'بانتظار المرفقات الأساسية (الهوية، الآيبان، العنوان الوطني)' }, req);
+    }
+  } catch (e) { console.error('[Onboarding hire-request] lead:', e.message); }
+
+  if (first) {
+    const details = [
+      entry.addedBy ? `بواسطة ${entry.addedBy}` : null,
+      entry.zone ? `الموقع: ${entry.zone}` : null,
+      entry.jobTitle ? `المسمّى: ${entry.jobTitle}` : null,
+    ].filter(Boolean).join(' · ');
+    const line = `طلبت لوحة العمليات إضافته لنظام الموظفين${details ? ` (${details})` : ''}. لا يُضاف حتى يرفع الهوية والآيبان والعنوان الوطني.`;
+    db.run('INSERT INTO applicant_notes (applicant_id, content, type, user_name) VALUES (?, ?, ?, ?)',
+      [applicant.id, line.slice(0, 2000), 'follow_up', QUICK_ACTOR]).catch(() => {});
+    db.logActivity(applicant.id, 'طلب إضافة من لوحة العمليات', null, `طلب #${entry.requestId}`, QUICK_ACTOR).catch(() => {});
+    db.audit(null, QUICK_ACTOR, 'hire_request', 'applicant', applicant.id, applicant.full_name, line.slice(0, 500), req?.ip || null).catch(() => {});
+  }
+
+  // ⑤ رابط المرفقات — مرة واحدة لكل طلب
+  let linkSent = first ? null : (before.gate_link_status || null);
+  let reason = '';
+  if (linkSent !== 'sent') {
+    const r = await deliverOnboardingLink(applicant, publicLink(sysReq, token), 'المرفقات الأساسية — طلب إضافة من لوحة العمليات');
+    linkSent = r.status;
+    reason = r.reason;
+    await db.run('UPDATE onboarding_sessions SET gate_link_status = ?, gate_note = ? WHERE id = ?',
+      [linkSent, linkSent === 'sent' ? null : String(reason || '').slice(0, 250), sessionId]);
+  }
+
+  const { byType, fieldsByType } = await loadDocs(sessionId);
+  const state = gateState({ gate_national_id: entry.nationalId }, byType, fieldsByType);
+
+  return {
+    ok: true, ready: false,
+    applicant_id: applicant.id, applicant_created: created, lead_id: leadId, session_id: sessionId,
+    link_sent: linkSent, reason: reason || undefined, docs: state.docs,
+  };
+}
+
+/** إلغاء الطلب من لوحة العمليات: تُغلق البوابة (الرحلة نفسها تبقى إن كانت لمتقدم قائم). */
+async function cancelHireRequest(requestId) {
+  const r = await db.run(
+    `UPDATE onboarding_sessions SET gate_status = 'cancelled', gate_note = 'أُلغي الطلب من لوحة العمليات'
+      WHERE hire_request_id = ? AND gate_status IN ('pending', 'needs_review')`,
+    [requestId]
+  );
+  await db.run(
+    `UPDATE leads SET stage = 'أُلغي طلب الإضافة من لوحة العمليات', status = IF(status = 'applied', status, 'closed'),
+            close_reason = IF(status = 'applied', close_reason, 'أُلغي طلب الإضافة من لوحة العمليات'), closed_at = IF(status = 'applied', closed_at, NOW())
+      WHERE hire_request_id = ?`,
+    [requestId]
+  ).catch(() => {});
+  return { ok: true, cancelled: r.affectedRows };
+}
+
+/**
+ * زر «تم»: يفحص المرفقات الثلاثة ومطابقة الهوية ثم يطلب إنشاء الموظف في نظام الموظفين.
+ * byStaff = فريق التوظيف راجع وضغط «تفعيل» — يُغني عن شرط القراءة الآلية لرقم الهوية.
+ *
+ * @returns {Promise<{code:number, body:object}>}
+ */
+async function activateGate(session, { byStaff = false, actor = null } = {}) {
+  if (!gateOpen(session)) {
+    if (session.gate_status === 'fulfilled') return { code: 200, body: { ok: true, already: true } };
+    return { code: 409, body: { error: 'لا يوجد طلب إضافة قائم على هذا الرابط' } };
+  }
+
+  const applicant = await db.get('SELECT * FROM applicants WHERE id = ?', [session.applicant_id]);
+  const { byType, fieldsByType } = await loadDocs(session.id);
+  const state = gateState(session, byType, fieldsByType);
+  const review = async (reason) => {
+    await db.run("UPDATE onboarding_sessions SET gate_status = 'needs_review', gate_note = ? WHERE id = ?", [String(reason).slice(0, 250), session.id]);
+    await setLeadStage(session.hire_request_id, `يحتاج مراجعة: ${reason}`);
+    artalsys.hireRequestEvent(session.hire_request_id, 'needs_review', { reason: String(reason).slice(0, 250) });
+  };
+
+  if (!state.complete) {
+    return { code: 422, body: { error: `لم يكتمل بعد: ${state.missing.join('، ')}. ارفع كل مستند وراجِع بياناته ثم اضغط «تأكيد».`, missing: state.missing, docs: state.docs } };
+  }
+
+  if (!state.idMatches) {
+    await review(`رقم الهوية في المستند (${state.idNumber || 'غير مقروء'}) لا يطابق ما أدخلته لوحة العمليات (${session.gate_national_id})`);
+    return { code: 422, body: { error: 'رقم الهوية في المستند المرفوع لا يطابق رقم هويتك المسجّل عندنا. ارفع هويتك أنت، أو تواصل مع فريق التوظيف.', mismatch: true, docs: state.docs } };
+  }
+
+  // «عبر القراءة الآلية»: رقم كتبه المرشح بيده لا يفتح الباب وحده — يراجعه الفريق ثم يفعّل
+  if (!byStaff && !state.idMachineRead && !state.idApprovedByStaff) {
+    await review('رقم الهوية أُدخل يدوياً لا بالقراءة الآلية — يحتاج مراجعة المستند');
+    return { code: 202, body: { ok: false, review: true, message: 'استلمنا مستنداتك. فريق التوظيف يراجعها الآن وسيُفعَّل حسابك بعد المراجعة.', docs: state.docs } };
+  }
+
+  let r;
+  try {
+    r = await artalsys.fulfillHireRequest(session.hire_request_id, state.idNumber);
+  } catch (e) {
+    return { code: 502, body: { error: 'تعذّر الاتصال بنظام الموظفين الآن — أعد المحاولة بعد قليل.', detail: e.message } };
+  }
+
+  if (!r.ok) {
+    const why = r.json?.error || `HTTP ${r.status}`;
+    // ملغى أو غير موجود هناك: البوابة تُغلق. غير ذلك (جوال لموظف آخر…) يراجعه الفريق.
+    if (r.status === 404 || why === 'الطلب ملغى') {
+      await cancelHireRequest(session.hire_request_id);
+      return { code: 409, body: { error: 'أُلغي طلب إضافتك. تواصل مع فريق التوظيف.' } };
+    }
+    await review(`تعذّر إنشاؤه في نظام الموظفين: ${why}`);
+    return { code: 409, body: { error: 'تعذّر تفعيل حسابك الآن. فريق التوظيف سيتواصل معك.', detail: why } };
+  }
+
+  const employeeId = Number(r.json.employee_id) || null;
+  // البوابة تُغلق والرحلة تتّسع لباقي المستندات الأساسية — يكملها لاحقاً من الرابط نفسه
+  const required = [...new Set([...requiredList(session), ...rules.BASE_KEYS])].join(',');
+  await db.run(
+    `UPDATE onboarding_sessions SET gate_status = 'fulfilled', gate_fulfilled_at = NOW(), gate_employee_id = ?, gate_note = NULL, required_docs = ? WHERE id = ?`,
+    [employeeId, required, session.id]
+  );
+  await recomputeProgress({ ...session, required_docs: required });
+  await setLeadStage(session.hire_request_id, `أُضيف لنظام الموظفين #${employeeId} — بانتظار تسجيل بياناته واستكمال ملفه`, { ext_employee_id: employeeId });
+
+  const line = `اكتملت مرفقاته الأساسية (الهوية، الآيبان، العنوان الوطني) وطابقت هويته — أُضيف إلى نظام الموظفين برقم ${employeeId}${byStaff ? ` بتفعيل ${actor || 'فريق التوظيف'}` : ''} وأُرسلت له بيانات الدخول.`;
+  db.run('INSERT INTO applicant_notes (applicant_id, content, type, user_name) VALUES (?, ?, ?, ?)',
+    [applicant.id, line, 'follow_up', actor || QUICK_ACTOR]).catch(() => {});
+  db.logActivity(applicant.id, 'أُضيف لنظام الموظفين — اكتملت المرفقات الأساسية', null, `موظف #${employeeId}`, actor || QUICK_ACTOR).catch(() => {});
+  db.audit(null, actor || QUICK_ACTOR, 'hire_request_fulfilled', 'applicant', applicant.id, applicant.full_name, line.slice(0, 500), null).catch(() => {});
+
+  return { code: 200, body: { ok: true, employee_id: employeeId } };
+}
+
+// المرشح يضغط «تم» في صفحة المرفقات الثلاثة
+publicRouter.post('/:token/activate', uploadLimiter, resolveToken, async (req, res) => {
+  try {
+    const r = await activateGate(req.obSession);
+    res.status(r.code).json(r.body);
+  } catch (err) {
+    console.error('[Onboarding activate]', err.message);
+    res.status(500).json({ error: 'تعذّر إتمام الطلب — أعد المحاولة بعد قليل.' });
+  }
+});
+
+// فريق التوظيف راجع المستندات (رقم هوية أُدخل يدوياً مثلاً) ويفعّل بنفسه
+adminRouter.post('/activate/:applicantId', sendLimiter, async (req, res) => {
+  if (!featureOn()) return res.status(503).json({ error: 'الميزة غير مفعّلة' });
+  if (!artalsys.isConfigured()) return res.status(409).json({ error: 'تكامل النظام الأساسي غير مهيأ' });
+  try {
+    const session = await db.get('SELECT * FROM onboarding_sessions WHERE applicant_id = ? ORDER BY id DESC LIMIT 1', [req.params.applicantId]);
+    if (!session) return res.status(404).json({ error: 'لا توجد رحلة استكمال لهذا المتقدم' });
+    const r = await activateGate(session, { byStaff: true, actor: req.session?.adminName || req.session?.adminUser || null });
+    res.status(r.code === 202 ? 200 : r.code).json(r.body);
+  } catch (err) {
+    console.error('[Onboarding admin activate]', err.message);
+    res.status(502).json({ error: err.message });
+  }
+});
+
+/**
+ * أُضيف للنظام ولم يسجّل بياناته بعد: دعوة التسجيل برابطه الشخصي من صفحة التوصيات.
+ * توصيته تحمل رقم الموظف، فحين يسجّل يكمل routes/apply.js الطريق (رابط باقي المستندات).
+ */
+async function inviteStubToRegister(applicant, entry, req) {
+  try {
+    const leads = require('./leads');
+    if (!leads.featureOn()) return { status: 'skipped', reason: 'ميزة التوصيات غير مفعّلة' };
+    const r = await leads.quickHireLead({ ...entry, nationalId: applicant.id_number, phone: applicant.phone, fullName: applicant.full_name }, req);
+    return { status: r.link_sent || 'skipped', reason: r.reason || r.error || '' };
+  } catch (e) {
+    return { status: 'failed', reason: e.message || 'خطأ غير معروف' };
+  }
+}
+
+module.exports = {
+  publicRouter, adminRouter, featureOn, quickHire, localPhone, remindQuickAdds, startQuickAddReminders,
+  hireRequest, cancelHireRequest, isStubApplicant, GATE_DOCS,
+};

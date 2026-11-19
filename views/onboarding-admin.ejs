@@ -250,6 +250,31 @@
           <span class="text-[11px] text-[#43474f]">artalsys.com</span>
         </div>
 
+        <% const gateOn = session && session.hire_request_id && (session.gate_status === 'pending' || session.gate_status === 'needs_review'); %>
+        <% if (session && session.hire_request_id && session.gate_status) { %>
+          <!-- طلب إضافة من لوحة العمليات: لا يُضاف لنظام الموظفين حتى تكتمل المرفقات الثلاثة وتطابق الهوية -->
+          <div class="mt-2 mb-3 rounded-xl px-3 py-2 text-xs <%= session.gate_status === 'needs_review' ? 'bg-[#ffdad6] text-[#ba1a1a]' : (session.gate_status === 'fulfilled' ? 'bg-[#dcfce7] text-[#15803d]' : 'bg-[#fef3c7] text-[#a16207]') %>">
+            <% if (session.gate_status === 'fulfilled') { %>
+              <b>طلب إضافة من لوحة العمليات #<%= session.hire_request_id %>:</b> اكتملت مرفقاته الأساسية وأُضيف لنظام الموظفين<%= session.gate_employee_id ? ' برقم ' + session.gate_employee_id : '' %> · <%= fmtDateTime(session.gate_fulfilled_at) %>
+            <% } else if (session.gate_status === 'cancelled') { %>
+              <b>طلب إضافة من لوحة العمليات #<%= session.hire_request_id %>:</b> أُلغي من لوحة العمليات.
+            <% } else { %>
+              <b>طلب إضافة من لوحة العمليات #<%= session.hire_request_id %> — لم يُضف للنظام بعد.</b>
+              يُضاف تلقائياً حين يرفع الهوية والآيبان والعنوان الوطني ويضغط «تم» وهويته في المستند تطابق <span dir="ltr"><%= session.gate_national_id %></span>.
+              <% if (session.gate_note) { %><div class="mt-1"><b>ملاحظة:</b> <%= session.gate_note %></div><% } %>
+              <% if (session.gate_link_status && session.gate_link_status !== 'sent') { %><div class="mt-1">لم يُرسل له رابط المرفقات — أرسله من زر «إرسال بواتساب» أعلاه.</div><% } %>
+              <% if (artalsysReady) { %>
+                <div class="mt-2 flex items-center gap-2 flex-wrap">
+                  <button class="ob-btn p" onclick="gateActivate(this)">
+                    <span class="material-symbols-outlined" style="font-size:18px">how_to_reg</span> راجعتُ المستندات — أضِفه للنظام الآن
+                  </button>
+                  <span id="gate-result"></span>
+                </div>
+              <% } %>
+            <% } %>
+          </div>
+        <% } %>
+
         <% const synced = employment && employment.sync_status === 'created' && employment.ext_employee_id; %>
         <% const dup = employment && employment.sync_status === 'duplicate'; %>
         <% const temp = Boolean(employment && employment.quick_add && employment.ext_employee_id); %>
@@ -308,6 +333,8 @@
 
             <% if (employment.link_status === 'sent') { %>
               <div class="ob-src mt-1">أُرسل له رابط الاستكمال <%= fmtDateTime(employment.link_sent_at) %><%= employment.reminded_at ? ' · ذُكِّر ' + fmtDateTime(employment.reminded_at) : '' %></div>
+            <% } else if (employment.link_status === 'invited') { %>
+              <div class="ob-src mt-1">أُرسلت له دعوة لتسجيل بياناته — رابط باقي المستندات يصله بعد أن يسجّل.</div>
             <% } else if (employment.link_status === 'not_needed') { %>
               <div class="ob-src mt-1">كان قد أكمل مستنداته قبل إضافته — لم يُرسل له رابط.</div>
             <% } else if (employment.link_status) { %>
@@ -1007,6 +1034,24 @@ async function updateAllPreview(btn) {
   } catch (e) {
     updBox(escHtml(e.message), 'bad');
   } finally {
+    btn.disabled = false;
+  }
+}
+
+// طلب إضافة من لوحة العمليات: الفريق راجع المستندات ويفعّل بنفسه (نفس فحوص زر «تم» عند
+// الموظف — المرفقات الثلاثة ومطابقة الهوية — عدا شرط القراءة الآلية لرقم الهوية)
+async function gateActivate(btn) {
+  if (!confirm('إضافته لنظام الموظفين الآن وإرسال بيانات الدخول له؟')) return;
+  const out = document.getElementById('gate-result');
+  btn.disabled = true; out.textContent = 'جارٍ الإضافة…';
+  try {
+    const r = await fetch('/admin/onboarding/activate/' + APPLICANT_ID, { method: 'POST' });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.error || j.message || 'تعذّرت الإضافة');
+    out.textContent = 'أُضيف ✓';
+    setTimeout(() => location.reload(), 800);
+  } catch (e) {
+    out.textContent = e.message;
     btn.disabled = false;
   }
 }

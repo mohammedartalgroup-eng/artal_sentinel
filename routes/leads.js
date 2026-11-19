@@ -405,6 +405,66 @@ async function quickHireLead(entry, req) {
 }
 
 /**
+ * سطر في صفحة التوصيات لطلب إضافة ينتظر مرفقاته الأساسية (يستعمله routes/onboarding.js).
+ * لا دعوة تُرسل هنا: رابط المرفقات يخرج من رحلة الاستكمال، ودعوة التسجيل بعد أن يُضاف.
+ * آمن للتكرار: يجد سطر الطلب نفسه، أو توصية مفتوحة بنفس الجوال فيستعملها.
+ *
+ * @returns {Promise<number|null>} رقم التوصية
+ */
+async function hireRequestLead(entry, req) {
+  if (!validPhone(entry.phone || '')) return null;
+
+  const note = [
+    `طلب إضافة #${entry.requestId} من لوحة العمليات`,
+    entry.addedBy ? `أضافه ${entry.addedBy}` : null,
+    entry.zone ? `الموقع: ${entry.zone}` : null,
+    entry.jobTitle ? `المسمّى: ${entry.jobTitle}` : null,
+  ].filter(Boolean).join(' · ').slice(0, 500);
+
+  let lead = await db.get('SELECT * FROM leads WHERE hire_request_id = ? ORDER BY id DESC LIMIT 1', [entry.requestId]);
+  if (lead) {
+    await db.run('UPDATE leads SET stage = ? WHERE id = ?', [String(entry.stage || '').slice(0, 120) || lead.stage, lead.id]);
+    return lead.id;
+  }
+
+  lead = await db.get(
+    'SELECT * FROM leads WHERE phone = ? AND status IN (?, ?, ?) ORDER BY id DESC LIMIT 1', [entry.phone, ...OPEN]
+  );
+  if (lead) {
+    await db.run(
+      'UPDATE leads SET hire_request_id = ?, ext_national_id = ?, ext_employee_id = NULL, stage = ?, full_name = COALESCE(full_name, ?), note = ? WHERE id = ?',
+      [entry.requestId, entry.nationalId, String(entry.stage || '').slice(0, 120), entry.fullName,
+        [lead.note, note].filter(Boolean).join(' — ').slice(0, 500), lead.id]
+    );
+    return lead.id;
+  }
+
+  const ins = await db.run(
+    `INSERT INTO leads (phone, full_name, referred_by, note, token, created_by, hire_request_id, ext_national_id, stage)
+     VALUES (?, ?, 'لوحة العمليات', ?, ?, ?, ?, ?, ?)`,
+    [entry.phone, entry.fullName, note, newToken(), QUICK_ACTOR, entry.requestId, entry.nationalId, String(entry.stage || '').slice(0, 120)]
+  );
+  db.audit(null, QUICK_ACTOR, 'lead_create', 'lead', ins.insertId, entry.fullName || entry.phone, note, req?.ip || null).catch(() => {});
+  return ins.insertId;
+}
+
+/**
+ * التوصية التي يخصّها طلب تسجيل قادم — قبل إنشاء صفّ المتقدم (routes/apply.js): بالرمز،
+ * ثم بالجوال، ثم بهوية الموظف. تُستعمل لمعرفة هل لصاحبها سجل أساسي يُحدَّث بدل صفّ جديد.
+ */
+async function findForApplication({ token, phone, idNumber }) {
+  if (!featureOn()) return null;
+  let lead = token ? await byToken(token) : null;
+  if (!lead && phone) {
+    lead = await db.get("SELECT * FROM leads WHERE phone = ? AND status <> 'applied' ORDER BY id DESC LIMIT 1", [normPhone(phone)]);
+  }
+  if (!lead && /^\d{10}$/.test(String(idNumber || ''))) {
+    lead = await db.get("SELECT * FROM leads WHERE ext_national_id = ? AND status <> 'applied' ORDER BY id DESC LIMIT 1", [String(idNumber)]);
+  }
+  return lead || null;
+}
+
+/**
  * تذكير واحد للموظف المؤقت الذي وصلته الدعوة ولم يسجّل بعد ثلاثة أيام.
  * «الحجز» قبل الإرسال (reminded_at) يمنع التكرار لو تعدّدت نسخ الخادم.
  */
@@ -432,6 +492,8 @@ async function remindQuickHires() {
 
 module.exports = router;
 module.exports.quickHireLead = quickHireLead;
+module.exports.hireRequestLead = hireRequestLead;
+module.exports.findForApplication = findForApplication;
 module.exports.remindQuickHires = remindQuickHires;
 module.exports.byToken = byToken;
 module.exports.markOpened = markOpened;

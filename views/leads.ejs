@@ -140,6 +140,13 @@
                 <% if (l.ext_employee_id) { %>
                   <span class="inline-block mt-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[#fef3c7] text-[#a16207]"
                         title="أضافته لوحة العمليات في نظام الموظفين — يُدعى ليسجّل بياناته ثم يُستكمل ملفه">موظف مؤقت #<%= l.ext_employee_id %></span>
+                <% } else if (l.hire_request_id) { %>
+                  <span class="inline-block mt-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[#eef2f7] text-[#43474f]"
+                        title="طلبت لوحة العمليات إضافته — لا يُضاف لنظام الموظفين حتى يرفع الهوية والآيبان والعنوان الوطني">طلب إضافة #<%= l.hire_request_id %></span>
+                <% } %>
+                <% if (l.stage) { %><div class="text-[11px] font-semibold text-[#264778] mt-1 max-w-xs"><%= l.stage %></div><% } %>
+                <% if (l.hire_request_id && l.ext_national_id && l.status !== 'applied') { %>
+                  <a href="/admin/applicants?q=<%= l.ext_national_id %>" class="block text-xs text-[#405f91] underline mt-1">ملفه ومرفقاته</a>
                 <% } %>
                 <div class="text-xs text-[#43474f] ltr"><%= l.phone %></div>
                 <% if (l.note) { %><div class="text-[11px] text-[#747780] mt-1 max-w-xs"><%= l.note %></div><% } %>

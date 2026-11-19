@@ -154,6 +154,39 @@ async function completeEmployee(employeeId, nationalId, { dryRun = false } = {})
 }
 
 /**
+ * اكتملت مرفقات الموظف الأساسية (الهوية، الآيبان، العنوان الوطني) وطابقت الهوية:
+ * نظام الموظفين ينشئ الموظف من طلب الإضافة ويرسل له بيانات الدخول. آمن للتكرار.
+ *
+ * @returns {{status:number, ok:boolean, json:object}} 200 مع employee_id، 409 (هوية لا
+ *          تطابق، طلب ملغى، أو جوال/هوية لموظف آخر)، 404 لا طلب.
+ */
+async function fulfillHireRequest(requestId, nationalId) {
+  return call(`/api/hooks/onboarding/hire-request/${requestId}/fulfill`, {
+    method: 'POST',
+    body: { national_id: nationalId },
+    timeout: 45000,
+  });
+}
+
+/**
+ * حدث عن طلب إضافة يراه الجميع هناك: opened | docs | needs_review | link_sent | link_failed.
+ * لا يرمي: إخبار الطرف الآخر لا يصح أن يعطّل رحلة المرشح.
+ */
+async function hireRequestEvent(requestId, type, data = {}) {
+  try {
+    if (!isConfigured() || !requestId) return null;
+    return await call(`/api/hooks/onboarding/hire-request/${requestId}/event`, {
+      method: 'POST',
+      body: { type, ...data },
+      timeout: 10000,
+    });
+  } catch (e) {
+    console.error(`[ArtalSys] hire-request event ${type} #${requestId}: ${e.message}`);
+    return null;
+  }
+}
+
+/**
  * رفع مرفق واحد إلى ملف الموظف.
  *
  * ملف لكل نداء: حدود الرفع في الطرف الآخر معلومة (10MB للملف)، وفشل ملف لا
@@ -216,4 +249,4 @@ async function renderBankChangeForm(body) {
   throw new Error(first || json?.error || json?.message || `تعذّر إصدار النموذج (HTTP ${res.status})`);
 }
 
-module.exports = { isConfigured, baseUrl, options, pushEmployee, uploadAttachment, lookupByNationalId, parseLenient, renderBankChangeForm, updateEmployee, completeEmployee };
+module.exports = { isConfigured, baseUrl, options, pushEmployee, uploadAttachment, lookupByNationalId, parseLenient, renderBankChangeForm, updateEmployee, completeEmployee, fulfillHireRequest, hireRequestEvent };
