@@ -545,6 +545,10 @@ function buildApplicantFilter(src) {
   if (ext_check === 'found')      { conditions.push('ext_check_done = 1 AND ext_found = 1'); }
   else if (ext_check === 'not_found')  { conditions.push('ext_check_done = 1 AND (ext_found = 0 OR ext_found IS NULL)'); }
   else if (ext_check === 'unchecked')  { conditions.push('ext_check_done = 0'); }
+  // موظف أضافته لوحة العمليات مؤقتاً وملفه لم يُعتمد اكتماله بعد — يُستكمل من منصة الاستكمال
+  else if (ext_check === 'temp') {
+    conditions.push('id IN (SELECT applicant_id FROM onboarding_employment WHERE quick_add = 1 AND profile_completed_at IS NULL)');
+  }
   // فلترة بالمصدر (مُفهرس idx_source → سريع). 'غير معروف' = بلا مصدر مسجّل
   if (source === 'غير معروف')  { conditions.push("(source IS NULL OR source = '')"); }
   else if (source)             { conditions.push('source = ?'); params.push(source); }
@@ -608,6 +612,21 @@ router.get('/applicants', async (req, res) => {
       rows.forEach(r => { repeatMap[r.id_number] = Number(r.cnt); });
     }
     applicants.forEach(a => { a.repeatCount = repeatMap[a.id_number] || 1; });
+
+    // الموظفون المؤقتون (من لوحة العمليات) بين المعروضين: منذ كم يوماً، وهل وصلهم الرابط.
+    // داخل catch: جداول الاستكمال ميزة معزولة، وغيابها لا يُسقط القائمة.
+    if (applicants.length) {
+      const tempRows = await db.all(
+        `SELECT applicant_id, link_status, DATEDIFF(NOW(), quick_add_at) AS days
+           FROM onboarding_employment
+          WHERE quick_add = 1 AND profile_completed_at IS NULL
+            AND applicant_id IN (${applicants.map(() => '?').join(',')})`,
+        applicants.map(a => a.id)
+      ).catch(() => []);
+      const tempMap = {};
+      tempRows.forEach(r => { tempMap[r.applicant_id] = { days: Number(r.days) || 0, linkStatus: r.link_status }; });
+      applicants.forEach(a => { a.temp = tempMap[a.id] || null; });
+    }
 
     res.render('applicants', {
       applicants, total, totalPages, pageNum, pageSize: PAGE_SIZE, perPageOptions: PER_PAGE_OPTIONS,

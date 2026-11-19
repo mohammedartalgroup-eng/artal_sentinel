@@ -232,6 +232,44 @@ router.post('/employees-hired', hooksLimiter, requireSecret, async (req, res) =>
   }
 });
 
+
+// ─── POST /api/hooks/quick-hire ──────────────────────────────────────────────
+// موظف أُضيف مؤقتاً من لوحة العمليات: نجد متقدمه أو ننشئه، نفتح رحلة استكماله
+// ونرسل له الرابط من رقمنا. المنطق كله في routes/onboarding.js (يُحمَّل عند الطلب
+// حتى لا يتوقف هذا الملف على ميزة الاستكمال)؛ هنا المصادقة والتحقق فقط.
+//
+// ⚠️ الاستثناء الوحيد لقاعدة «لا يُنشئ أي متقدم» في رأس الملف — بقرار صريح:
+//    من أضافته العمليات ولم يقدّم أصلاً لا طريق آخر لاستكمال ملفه.
+router.post('/quick-hire', hooksLimiter, requireSecret, async (req, res) => {
+  try {
+    const base = normalizeEntry(req.body);
+    if (!base) return res.status(400).json({ ok: false, error: 'invalid_payload' });
+
+    let onboarding;
+    try { onboarding = require('./onboarding'); } catch (e) { onboarding = null; }
+    if (!onboarding || !onboarding.featureOn()) {
+      return res.status(503).json({ ok: false, error: 'onboarding_disabled' });
+    }
+
+    const text = (v, max) => (v ? String(v).trim().slice(0, max) : null) || null;
+    const result = await onboarding.quickHire({
+      employeeId: base.employeeId,
+      nationalId: base.nationalId,
+      fullName: text(req.body.full_name, 200),
+      phone: onboarding.localPhone(req.body.mobile),
+      jobTitle: text(req.body.job_title, 100),
+      zone: text(req.body.zone, 120),
+      addedBy: text(req.body.added_by, 100),
+    }, req);
+
+    if (!result.ok) return res.status(result.code || 422).json({ ok: false, error: result.error });
+    res.json(result);
+  } catch (err) {
+    console.error('[Hooks] quick-hire:', err.message);
+    res.status(500).json({ ok: false, error: 'internal_error' });
+  }
+});
+
 // ─── GET /api/hooks/health ───────────────────────────────────────────────────
 // فحص اتصال بسيط — يستخدمه نظام أرتال للتأكد قبل الترحيل التاريخي.
 router.get('/health', hooksLimiter, requireSecret, async (req, res) => {

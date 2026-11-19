@@ -883,6 +883,14 @@ adminRouter.post('/send/:applicantId', sendLimiter, async (req, res) => {
     db.audit(req.session?.adminId, req.session?.adminUser || 'system', 'onboarding_send',
       'applicant', applicant.id, applicant.full_name, line, req.ip).catch(() => {});
 
+    // موظف مؤقت من لوحة العمليات كان رابطه «لم يُرسل»؟ هذا الإرسال اليدوي يصحّح حالته
+    db.run(
+      `UPDATE onboarding_employment e JOIN onboarding_sessions s ON s.id = e.session_id
+          SET e.link_status = 'sent', e.link_error = NULL, e.link_sent_at = NOW()
+        WHERE s.token = ? AND e.quick_add = 1`,
+      [token]
+    ).catch(() => {});
+
     res.json({ ok: true, link, sentTo: r.target });
   } catch (err) {
     console.error('[Onboarding send]', err.message);
@@ -1054,7 +1062,7 @@ adminRouter.get('/view/:applicantId', async (req, res) => {
     if (!applicant) return res.status(404).send('المتقدم غير موجود');
 
     const s = await db.get('SELECT * FROM onboarding_sessions WHERE applicant_id = ? ORDER BY id DESC LIMIT 1', [applicant.id]);
-    let steps = [], history = [], profile = [], employment = null;
+    let steps = [], history = [], profile = [], employment = null, idMismatch = null;
     if (s) {
       employment = await loadEmployment(s.id);
       const { byType, fieldsByType } = await loadDocs(s.id);
@@ -1065,6 +1073,12 @@ adminRouter.get('/view/:applicantId', async (req, res) => {
       const prog = await syncProgress(s, steps);
       s.progress = prog.progress;
       profile = buildProfile(fieldsByType);
+      // موظف مؤقت: الهوية التي أدخلتها العمليات مقابل الهوية المقروءة من المستند
+      const docId = fieldsByType?.id_iqama?.id_number;
+      if (employment?.quick_add && docId?.valid && String(docId.value || '').trim()
+          && String(docId.value).trim() !== String(applicant.id_number || '').trim()) {
+        idMismatch = { doc: String(docId.value).trim(), ops: String(applicant.id_number || '').trim() };
+      }
       history = await db.all(
         'SELECT id, doc_type, status, review, original_name, created_at FROM onboarding_documents WHERE session_id = ? AND is_current = 0 ORDER BY id DESC',
         [s.id]
@@ -1078,7 +1092,7 @@ adminRouter.get('/view/:applicantId', async (req, res) => {
     }
     res.render('onboarding-admin', {
       applicant, session: s, steps, history, profile,
-      employment,
+      employment, idMismatch,
       SECTION_LABELS, lastSync,
       artalsysReady: artalsys.isConfigured(),
       applicantEditable: Object.entries(APPLICANT_EDITABLE).map(([key, d]) => ({ key, label: d.label, hint: d.hint || null, oneOf: d.oneOf || null })),
@@ -1838,4 +1852,261 @@ adminRouter.post('/doc/:docId/review', async (req, res) => {
   }
 });
 
-module.exports = { publicRouter, adminRouter, featureOn };
+// ═══ الموظف المؤقت من لوحة العمليات ═══════════════════════════════════════
+//
+//  لوحة العمليات تضيف الموظف في نظام الموظفين ببيانات أساسية ليدخل التطبيق ويداوم،
+//  ثم يسلّمه النظام إلينا (POST /api/hooks/quick-hire — routes/hooks.js) لنكمل ملفه:
+//  نجد متقدمه بالهوية أو ننشئه، نستأنف رحلته أو نفتح واحدة، ونرسل له الرابط من رقمنا
+//  (قرار: الرابط لا يدخل رسالة الترحيب هناك — المتابعة كلها مع رقم فريق التوظيف).
+//  بعدها يراجع الفريق ويطبّق الأقسام (القائمة أعلاه) ثم يعتمد اكتمال الملف.
+
+const QUICK_ACTOR = 'النظام (لوحة العمليات)';
+const REMIND_AFTER_DAYS = 3;
+
+// 05XXXXXXXX كما يُخزَّن جوال المتقدم — النظام الآخر يرسله 9665XXXXXXXX
+function localPhone(value) {
+  const m = String(value || '').replace(/\D/g, '').match(/^(?:966|0)?(5\d{8})$/);
+  return m ? `0${m[1]}` : null;
+}
+
+// طلب بلا جلسة موظف (hook أو مؤقِّت): الفاعل «النظام»، والرابط من PUBLIC_BASE_URL
+function systemReq(req) {
+  return {
+    session: { adminId: null, adminName: QUICK_ACTOR, adminUser: QUICK_ACTOR },
+    ip: req?.ip || null,
+    protocol: req?.protocol || 'https',
+    get: (h) => (req?.get ? req.get(h) : 'jobs.artalsecurity.com'),
+  };
+}
+
+/**
+ * إرسال رابط الاستكمال بقالب واتساب المعتمد — نفس قالب زر «إرسال بواتساب» ونفس
+ * تسجيله في ملف المتقدم. لا يرمي: يعود بالحالة ليُحفظ «لم يُرسل» بسببه.
+ *
+ * @returns {Promise<{status:'sent'|'skipped'|'failed', reason:string}>}
+ */
+async function deliverOnboardingLink(applicant, link, label) {
+  try {
+    const WT = require('../utils/waTemplates');
+    const notify = require('../utils/notify');
+    const settings = await db.getSettings();
+    if (!notify.waReady(settings)) return { status: 'skipped', reason: notify.waNotReadyReason(settings) };
+    if (!WT.ready(settings, 'onboarding', true)) return { status: 'skipped', reason: 'لم يُحدَّد اسم قالب الاستكمال في الإعدادات' };
+
+    const r = await notify.sendApplicantTemplate({
+      applicant, tplKey: 'onboarding', kind: 'onboarding', vars: { link }, settings, actor: QUICK_ACTOR,
+    });
+    if (r.status === 'sent') {
+      const line = `${WT.get('onboarding').noteLabel} عبر واتساب (${label}) — ${link}`;
+      db.run('INSERT INTO applicant_notes (applicant_id, content, type, user_name) VALUES (?, ?, ?, ?)',
+        [applicant.id, line, 'follow_up', QUICK_ACTOR]).catch(() => {});
+      db.logActivity(applicant.id, WT.get('onboarding').noteLabel, null, `واتساب — ${label}`.slice(0, 255), QUICK_ACTOR).catch(() => {});
+    }
+    return { status: r.status, reason: r.reason || '' };
+  } catch (e) {
+    return { status: 'failed', reason: e.message || 'خطأ غير معروف' };
+  }
+}
+
+/**
+ * استقبال موظف أُضيف مؤقتاً. آمن للتكرار: إعادة الطلب نفسه (محاولة ثانية من الطرف
+ * الآخر) لا تنشئ متقدماً ثانياً ولا ترسل الرابط مرتين.
+ *
+ * @param {{employeeId:number, nationalId:string, fullName:string, phone:?string,
+ *          jobTitle:?string, zone:?string, addedBy:?string}} entry
+ */
+async function quickHire(entry, req) {
+  const sysReq = systemReq(req);
+
+  // ① المتقدم: صاحب رحلة استكمال أولاً (فيها مستنداته)، وإلا أحدث طلب، وإلا ننشئه
+  const rows = await db.all(
+    `SELECT a.*, (SELECT MAX(s.id) FROM onboarding_sessions s WHERE s.applicant_id = a.id) AS last_session
+       FROM applicants a WHERE a.id_number = ?`,
+    [entry.nationalId]
+  );
+  rows.sort((x, y) => (Number(y.last_session || 0) - Number(x.last_session || 0)) || (y.id - x.id));
+  let applicant = rows[0] || null;
+  let created = false;
+
+  if (!applicant) {
+    if (!entry.phone) return { ok: false, code: 422, error: 'رقم جوال غير صالح — لا يمكن إنشاء المتقدم' };
+    if (!entry.fullName) return { ok: false, code: 422, error: 'الاسم ناقص — لا يمكن إنشاء المتقدم' };
+    // «تم التعيين» لا «جديد»: هو موظف فعلاً، فلا يدخل طابور الفرز ولا يُتواصل معه كمتقدم
+    const ins = await db.run(
+      `INSERT INTO applicants (full_name, id_number, phone, source, status, ext_check_done, ext_found, ext_employee_id, ext_checked_at)
+       VALUES (?, ?, ?, 'لوحة العمليات', 'hired', 1, 1, ?, NOW())`,
+      [entry.fullName.slice(0, 200), entry.nationalId, entry.phone, entry.employeeId]
+    );
+    applicant = await db.get('SELECT * FROM applicants WHERE id = ?', [ins.insertId]);
+    created = true;
+  } else {
+    // كل تقديماته تُعلَّم «موظف» — نفس أعمدة الفحص القائم، وحالته (status) لا تُمسّ
+    await db.run(
+      `UPDATE applicants SET ext_check_done = 1, ext_found = 1, ext_employee_id = ?, ext_checked_at = NOW()
+        WHERE id_number = ? AND (ext_found IS NULL OR ext_found = 0)`,
+      [entry.employeeId, entry.nationalId]
+    );
+  }
+
+  // ② الرحلة: السارية تُستخدم، والميتة تُحيا بمستنداتها، وإلا جديدة
+  const { token, reused, revived, sessionId } = await ensureSession(sysReq, applicant);
+  const sessionState = reused ? 'reused' : (revived ? 'revived' : 'created');
+
+  // ③ الربط بملفه هناك + علامة «مؤقت»
+  const before = await loadEmployment(sessionId);
+  const first = !before || !before.quick_add;
+  await db.run(
+    `INSERT INTO onboarding_employment (session_id, applicant_id, ext_employee_id, sync_status, quick_add, quick_add_at, quick_add_by)
+     VALUES (?, ?, ?, 'duplicate', 1, NOW(), ?)
+     ON DUPLICATE KEY UPDATE
+       ext_employee_id = VALUES(ext_employee_id),
+       sync_status = IF(sync_status = 'created', sync_status, 'duplicate'),
+       sync_error = NULL,
+       quick_add = 1,
+       quick_add_at = COALESCE(quick_add_at, NOW()),
+       quick_add_by = COALESCE(quick_add_by, VALUES(quick_add_by))`,
+    [sessionId, applicant.id, entry.employeeId, entry.addedBy ? String(entry.addedBy).slice(0, 100) : null]
+  );
+
+  if (first) {
+    const details = [
+      entry.addedBy ? `بواسطة ${entry.addedBy}` : null,
+      entry.zone ? `الموقع: ${entry.zone}` : null,
+      entry.jobTitle ? `المسمّى: ${entry.jobTitle}` : null,
+    ].filter(Boolean).join(' · ');
+    const line = `أُضيف مؤقتاً من لوحة العمليات إلى نظام الموظفين — رقم ${entry.employeeId}${details ? ` (${details})` : ''}. يُستكمل ملفه من هنا.`;
+    db.run('INSERT INTO applicant_notes (applicant_id, content, type, user_name) VALUES (?, ?, ?, ?)',
+      [applicant.id, line.slice(0, 2000), 'follow_up', QUICK_ACTOR]).catch(() => {});
+    db.logActivity(applicant.id, 'إضافة مؤقتة من لوحة العمليات', null, `موظف #${entry.employeeId}`, QUICK_ACTOR).catch(() => {});
+    db.audit(null, QUICK_ACTOR, 'quick_hire', 'applicant', applicant.id, applicant.full_name, line.slice(0, 500), req?.ip || null).catch(() => {});
+  }
+
+  // ④ الرابط: لا يُرسل لمن أكمل مستنداته، ولا يُرسل مرتين لنفس الإضافة
+  const session = await db.get('SELECT * FROM onboarding_sessions WHERE id = ?', [sessionId]);
+  let linkSent = before?.link_status || null;
+  let reason = '';
+
+  if (session && (session.status === 'submitted' || Number(session.progress) >= 100)) {
+    linkSent = 'not_needed';
+  } else if (linkSent !== 'sent') {
+    const r = await deliverOnboardingLink(applicant, publicLink(sysReq, token), 'موظف مؤقت من لوحة العمليات');
+    linkSent = r.status;
+    reason = r.reason;
+  }
+
+  await db.run(
+    `UPDATE onboarding_employment
+        SET link_status = ?, link_error = ?, link_sent_at = IF(? = 'sent' AND link_sent_at IS NULL, NOW(), link_sent_at)
+      WHERE session_id = ?`,
+    [linkSent, linkSent === 'sent' || linkSent === 'not_needed' ? null : String(reason || '').slice(0, 250), linkSent, sessionId]
+  );
+
+  return {
+    ok: true,
+    applicant_id: applicant.id,
+    applicant_created: created,
+    session_id: sessionId,
+    session: sessionState,
+    link_sent: linkSent,
+    reason: reason || undefined,
+  };
+}
+
+/**
+ * تذكير واحد لكل موظف مؤقت وصله الرابط ولم يكمل مستنداته بعد ثلاثة أيام.
+ * «الحجز» قبل الإرسال (reminded_at) يمنع تكرار التذكير لو تعدّدت نسخ الخادم.
+ */
+async function remindQuickAdds() {
+  if (!featureOn() || process.env.QUICK_ADD_REMINDER === 'false') return 0;
+
+  // ساعات مقبولة بتوقيت الرياض — لا رسالة منتصف الليل
+  const hour = Number(new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hour12: false, timeZone: 'Asia/Riyadh' }).format(new Date()));
+  if (hour < 9 || hour >= 20) return 0;
+
+  const rows = await db.all(
+    `SELECT e.id, e.applicant_id, s.token
+       FROM onboarding_employment e
+       JOIN onboarding_sessions s ON s.id = e.session_id
+      WHERE e.quick_add = 1 AND e.profile_completed_at IS NULL
+        AND e.link_status = 'sent' AND e.reminded_at IS NULL
+        AND e.link_sent_at < NOW() - INTERVAL ${REMIND_AFTER_DAYS} DAY
+        AND s.revoked_at IS NULL AND (s.expires_at IS NULL OR s.expires_at > NOW())
+        AND s.status <> 'submitted'
+      ORDER BY e.id LIMIT 20`
+  );
+
+  let sent = 0;
+  for (const row of rows) {
+    const claim = await db.run('UPDATE onboarding_employment SET reminded_at = NOW() WHERE id = ? AND reminded_at IS NULL', [row.id]);
+    if (!claim.affectedRows) continue;
+    const applicant = await db.get('SELECT * FROM applicants WHERE id = ?', [row.applicant_id]);
+    if (!applicant) continue;
+    const r = await deliverOnboardingLink(applicant, publicLink(systemReq(null), row.token), 'تذكير للموظف المؤقت');
+    if (r.status === 'sent') sent++;
+    else console.warn(`[Onboarding remind] applicant #${row.applicant_id}: ${r.reason}`);
+  }
+  return sent;
+}
+
+let reminderTimer = null;
+function startQuickAddReminders() {
+  if (reminderTimer) return;
+  reminderTimer = setInterval(() => {
+    remindQuickAdds().catch(e => console.error('[Onboarding remind]', e.message));
+  }, 60 * 60 * 1000);
+  reminderTimer.unref();
+}
+
+// اعتماد اكتمال ملف الموظف المؤقت — النظام الأساسي يفحص الأساسيات ويرفض بقائمة الناقص
+async function completeContext(req, res) {
+  if (!featureOn()) { res.status(503).json({ error: 'الميزة غير مفعّلة' }); return null; }
+  if (!artalsys.isConfigured()) { res.status(409).json({ error: 'تكامل النظام الأساسي غير مهيأ' }); return null; }
+  const ctx = await syncContext(req.params.applicantId, req);
+  if (ctx.error) { res.status(ctx.code).json({ error: ctx.error }); return null; }
+  if (!ctx.employment?.quick_add) { res.status(409).json({ error: 'هذا الملف ليس لموظف مؤقت من لوحة العمليات' }); return null; }
+  const employeeId = await resolveEmployeeId(ctx.applicant, ctx.employment);
+  if (!employeeId) { res.status(422).json({ error: 'الموظف غير موجود في النظام الأساسي' }); return null; }
+  return { ...ctx, employeeId, nationalId: ctx.payload.person.national_id };
+}
+
+adminRouter.get('/complete-preview/:applicantId', async (req, res) => {
+  try {
+    const ctx = await completeContext(req, res);
+    if (!ctx) return;
+    const r = await artalsys.completeEmployee(ctx.employeeId, ctx.nationalId, { dryRun: true });
+    if (r.status === 422 && Array.isArray(r.json?.missing)) return res.json({ ok: true, ready: false, missing: r.json.missing });
+    if (!r.ok) return remoteFailure(res, r);
+    res.json({ ok: true, ready: true, missing: [], completed: Boolean(r.json.completed) });
+  } catch (err) {
+    console.error('[Onboarding complete-preview]', err.message);
+    res.status(502).json({ error: err.message });
+  }
+});
+
+adminRouter.post('/complete/:applicantId', sendLimiter, async (req, res) => {
+  try {
+    const ctx = await completeContext(req, res);
+    if (!ctx) return;
+    const r = await artalsys.completeEmployee(ctx.employeeId, ctx.nationalId);
+    if (!r.ok) return remoteFailure(res, r);
+
+    const actor = req.session?.adminName || req.session?.adminUser || null;
+    await db.run(
+      'UPDATE onboarding_employment SET profile_completed_at = COALESCE(profile_completed_at, NOW()), profile_completed_by = COALESCE(profile_completed_by, ?) WHERE session_id = ?',
+      [actor, ctx.session.id]
+    );
+    const line = `اعتُمد اكتمال ملف الموظف #${ctx.employeeId} — لم يعد «مؤقتاً» في نظام الموظفين`;
+    db.run('INSERT INTO applicant_notes (applicant_id, content, type, user_name) VALUES (?, ?, ?, ?)',
+      [ctx.applicant.id, line, 'follow_up', actor]).catch(() => {});
+    db.logActivity(ctx.applicant.id, 'اعتماد اكتمال ملف الموظف', null, `موظف #${ctx.employeeId}`, actor).catch(() => {});
+    db.audit(req.session?.adminId, req.session?.adminUser || 'system', 'onboarding_complete',
+      'applicant', ctx.applicant.id, ctx.applicant.full_name, line, req.ip).catch(() => {});
+
+    res.json({ ok: true, employeeId: ctx.employeeId });
+  } catch (err) {
+    console.error('[Onboarding complete]', err.message);
+    res.status(502).json({ error: err.message });
+  }
+});
+
+module.exports = { publicRouter, adminRouter, featureOn, quickHire, localPhone, remindQuickAdds, startQuickAddReminders };

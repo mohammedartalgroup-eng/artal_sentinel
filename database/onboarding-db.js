@@ -191,6 +191,29 @@ async function init() {
       console.log('[DB] Migration: added attachments_synced_at to onboarding_employment');
     }
 
+    // الموظف المؤقت من لوحة العمليات: نظام الموظفين يضيفه ببيانات أساسية ليداوم، ثم
+    // يسلّمه إلينا (POST /api/hooks/quick-hire) لنكمل ملفه. الأعمدة هنا تحفظ من أين
+    // جاء، وهل وصله الرابط، وهل ذُكِّر، ومتى اعتُمد اكتمال ملفه.
+    //   link_status: sent | failed | skipped | not_needed (أكمل مستنداته قبل أن يُضاف)
+    const quickAddCols = [
+      ['quick_add',            'TINYINT(1) NOT NULL DEFAULT 0'],
+      ['quick_add_at',         'DATETIME DEFAULT NULL'],
+      ['quick_add_by',         'VARCHAR(100) DEFAULT NULL'],
+      ['link_status',          'VARCHAR(20) DEFAULT NULL'],
+      ['link_error',           'VARCHAR(255) DEFAULT NULL'],
+      ['link_sent_at',         'DATETIME DEFAULT NULL'],
+      ['reminded_at',          'DATETIME DEFAULT NULL'],
+      ['profile_completed_at', 'DATETIME DEFAULT NULL'],
+      ['profile_completed_by', 'VARCHAR(100) DEFAULT NULL'],
+    ];
+    for (const [name, def] of quickAddCols) {
+      const [cols] = await conn.query('SHOW COLUMNS FROM onboarding_employment LIKE ?', [name]);
+      if (cols.length === 0) {
+        await conn.query(`ALTER TABLE onboarding_employment ADD COLUMN ${name} ${def}`);
+        console.log(`[DB] Migration: added ${name} to onboarding_employment`);
+      }
+    }
+
     // تحديثات الأقسام إلى نظام الموظفين بعد الإنشاء: ما تغيّر، في أي قسم، ومن طبّقه.
     // صفّ لكل تطبيق — المعاينة (dry run) لا تُسجَّل لأنها لا تكتب شيئاً هناك.
     await conn.query(`

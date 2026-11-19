@@ -147,6 +147,7 @@
                   <option value="found" <%=filters.ext_check==='found' ? 'selected' : '' %>>موجود</option>
                   <option value="not_found" <%=filters.ext_check==='not_found' ? 'selected' : '' %>>غير موجود</option>
                   <option value="unchecked" <%=filters.ext_check==='unchecked' ? 'selected' : '' %>>لم يُفحص</option>
+                  <option value="temp" <%=filters.ext_check==='temp' ? 'selected' : '' %>>مؤقت بانتظار الاستكمال</option>
                 </select>
               </div>
 
@@ -513,7 +514,13 @@
                               </span>
                             </td>
                             <td class="px-3 py-3.5 text-center">
-                              <% if (!a.ext_check_done) { %>
+                              <% if (a.temp) { %>
+                                <a href="/admin/onboarding/view/<%= a.id %>"
+                                  class="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap <%= a.temp.linkStatus === 'failed' || a.temp.linkStatus === 'skipped' ? 'bg-[#ffdad6] text-[#ba1a1a]' : 'bg-[#fef3c7] text-[#a16207]' %>"
+                                  title="<%= a.temp.linkStatus === 'failed' || a.temp.linkStatus === 'skipped' ? 'موظف مؤقت من لوحة العمليات — لم يُرسل له رابط الاستكمال' : 'موظف مؤقت من لوحة العمليات — ملفه بانتظار الاستكمال' %>">
+                                  مؤقت · <%= a.temp.days %> ي<%= a.temp.linkStatus === 'failed' || a.temp.linkStatus === 'skipped' ? ' · لم يُرسل الرابط' : '' %>
+                                </a>
+                              <% } else if (!a.ext_check_done) { %>
                                 <span class="material-symbols-outlined text-base text-[#d1d5db]"
                                   title="لم يُفحص بعد">circle</span>
                                 <% } else if (a.ext_found) { %>

@@ -252,6 +252,8 @@
 
         <% const synced = employment && employment.sync_status === 'created' && employment.ext_employee_id; %>
         <% const dup = employment && employment.sync_status === 'duplicate'; %>
+        <% const temp = Boolean(employment && employment.quick_add && employment.ext_employee_id); %>
+        <% const tempDone = temp && Boolean(employment.profile_completed_at); %>
 
         <% if (synced) { %>
           <div class="mt-2 flex items-center gap-2 flex-wrap">
@@ -269,6 +271,65 @@
           <% if (employment.attachments_synced_at) { %>
             <div class="ob-src mt-2">آخر مزامنة للمرفقات: <%= fmtDateTime(employment.attachments_synced_at) %></div>
           <% } %>
+          <div id="att-result" class="mt-3 text-xs hidden"></div>
+        <% } else if (temp) { %>
+          <!-- موظف أضافته لوحة العمليات مؤقتاً: هو في نظام الموظفين أصلاً، فلا «إضافة» هنا —
+               نكمل ملفه: تطبيق الأقسام أدناه، مزامنة الوثائق، ثم اعتماد الاكتمال -->
+          <div class="mt-2 flex items-center gap-2 flex-wrap">
+            <% if (tempDone) { %>
+              <span class="ob-chip g">اكتمل ملف الموظف</span>
+            <% } else { %>
+              <span class="ob-chip y">موظف مؤقت من لوحة العمليات</span>
+            <% } %>
+            <span class="text-sm font-bold text-[#001736]">رقم الموظف: <%= employment.ext_employee_id %></span>
+            <a class="ob-btn s" target="_blank" rel="noopener"
+               href="<%= artalsysUrl %>/admin/employees/<%= employment.ext_employee_id %>/edit">
+              <span class="material-symbols-outlined" style="font-size:18px">open_in_new</span> فتح ملفه
+            </a>
+            <% if (artalsysReady) { %>
+              <button class="ob-btn s" id="att-sync" onclick="syncAttachments()">
+                <span class="material-symbols-outlined" style="font-size:18px">cloud_upload</span> مزامنة الوثائق
+              </button>
+              <% if (!tempDone) { %>
+                <button class="ob-btn p" id="complete-btn" onclick="completeProfile(this)">
+                  <span class="material-symbols-outlined" style="font-size:18px">verified</span> اعتماد اكتمال الملف
+                </button>
+              <% } %>
+            <% } %>
+          </div>
+
+          <% if (tempDone) { %>
+            <div class="ob-src mt-2">اعتمد الاكتمال: <%= employment.profile_completed_by || '—' %> · <%= fmtDateTime(employment.profile_completed_at) %></div>
+          <% } else { %>
+            <p class="text-[11px] text-[#43474f] mt-3">
+              أُضيف ببيانات أساسية ليدخل التطبيق ويداوم<%= employment.quick_add_by ? ' — أضافه ' + employment.quick_add_by : '' %><%= employment.quick_add_at ? ' · ' + fmtDateTime(employment.quick_add_at) : '' %>.
+              أكمِل ملفه من هنا: طبّق الأقسام أدناه، زامِن الوثائق، ثم اعتمد اكتمال الملف.
+            </p>
+
+            <% if (employment.link_status === 'sent') { %>
+              <div class="ob-src mt-1">أُرسل له رابط الاستكمال <%= fmtDateTime(employment.link_sent_at) %><%= employment.reminded_at ? ' · ذُكِّر ' + fmtDateTime(employment.reminded_at) : '' %></div>
+            <% } else if (employment.link_status === 'not_needed') { %>
+              <div class="ob-src mt-1">كان قد أكمل مستنداته قبل إضافته — لم يُرسل له رابط.</div>
+            <% } else if (employment.link_status) { %>
+              <div class="mt-2 text-xs bg-[#ffdad6] text-[#ba1a1a] rounded-xl px-3 py-2 flex items-center gap-2 flex-wrap">
+                <span>لم يُرسل له رابط الاستكمال<%= employment.link_error ? ' — ' + employment.link_error : '' %></span>
+                <% if (waReady) { %>
+                  <button class="ob-btn s" onclick="obSend(this)">
+                    <span class="material-symbols-outlined" style="font-size:18px">send</span> إرسال الرابط الآن
+                  </button>
+                <% } %>
+              </div>
+            <% } %>
+          <% } %>
+
+          <% if (idMismatch) { %>
+            <div class="mt-3 text-xs bg-[#ffdad6] text-[#ba1a1a] rounded-xl px-3 py-2">
+              <b>رقم الهوية لا يطابق:</b> لوحة العمليات أدخلت <span dir="ltr"><%= idMismatch.ops %></span> والهوية المرفوعة تقول <span dir="ltr"><%= idMismatch.doc %></span>.
+              لن يُحدَّث ملفه حتى يُصحَّح الرقم في نظام الموظفين — حتى لا تُكتب بيانات شخص في ملف شخص آخر.
+            </div>
+          <% } %>
+
+          <div id="complete-result" class="mt-3 text-xs hidden"></div>
           <div id="att-result" class="mt-3 text-xs hidden"></div>
         <% } else { %>
           <p class="text-[11px] text-[#43474f] mb-3">
@@ -322,6 +383,10 @@
             بيانات التوظيف (الراتب والموقع) للمديرين فقط.
           </p>
           <div class="flex items-center gap-2 flex-wrap">
+            <!-- الشخصي والعنوان والبنك بمعاينة واحدة وضغطة واحدة؛ التوظيف يبقى وحده للمدير -->
+            <button class="ob-btn p" onclick="updateAllPreview(this)">
+              <span class="material-symbols-outlined" style="font-size:18px">done_all</span> تطبيق الكل
+            </button>
             <% Object.keys(SECTION_LABELS).forEach(function (key) { const locked = key === 'employment' && adminRole !== 'manager'; %>
               <button class="ob-btn s" onclick="updatePreview('<%= key %>', this)" <%- locked ? 'disabled title="للمديرين فقط"' : '' %>>
                 <span class="material-symbols-outlined" style="font-size:18px">sync_alt</span> <%= SECTION_LABELS[key] %>
@@ -902,6 +967,86 @@ function updBox(html, tone) {
 }
 const escHtml = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 
+// القيم المؤقتة التي تضعها الإضافة السريعة من لوحة العمليات (— ، 1900-01-01 ، . ، 0)
+// ليست بيانات: تُعرض «فارغ» حتى يُفهم أنها ستُستبدل لا أن بياناً حقيقياً سيُدهس.
+function updFrom(v) {
+  const t = String(v == null ? '' : v).trim();
+  if (t === '') return '—';
+  if (['—', '-', '.', '0'].includes(t) || t.startsWith('1900-01-01')) return '<span title="قيمة مؤقتة من الإضافة السريعة">فارغ</span>';
+  return escHtml(t);
+}
+const updRow = (c) => '<tr><td class="text-[#43474f] whitespace-nowrap">' + escHtml(c.label) + '</td>'
+  + '<td class="ob-src" dir="auto">' + updFrom(c.from) + '</td>'
+  + '<td class="ob-val" dir="auto">' + escHtml(c.to) + '</td></tr>';
+
+// «تطبيق الكل»: معاينة واحدة للشخصي والعنوان والبنك، ثم تطبيق ما فيه فرق فقط
+const UPD_ALL = ['person', 'address', 'bank'];
+async function updateAllPreview(btn) {
+  btn.disabled = true;
+  updBox('جارٍ جلب الفرق من النظام الأساسي…', 'info');
+  try {
+    const parts = [];
+    for (const section of UPD_ALL) {
+      const r = await fetch('/admin/onboarding/update-preview/' + APPLICANT_ID + '?section=' + section);
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || 'تعذّرت المعاينة');
+      if (j.changes.length) parts.push(j);
+    }
+    if (!parts.length) { updBox('لا فرق — ملف الموظف مطابق لما لدينا في الشخصي والعنوان والبنك.', 'ok'); return; }
+    const total = parts.reduce((n, p) => n + p.changes.length, 0);
+    updCurrent = { sections: parts.map(p => p.section), employeeId: parts[0].employeeId };
+    document.getElementById('upd-title').textContent = 'تطبيق الكل — الموظف #' + parts[0].employeeId;
+    document.getElementById('upd-rows').innerHTML = parts.map(p =>
+      '<tr><td colspan="3" style="background:#f8f9fb;font-weight:700;color:#001736">' + escHtml(p.label) + '</td></tr>'
+      + p.changes.map(updRow).join('')).join('');
+    document.getElementById('upd-count').textContent = total + ' حقل سيتغيّر';
+    document.getElementById('upd-err').style.display = 'none';
+    document.getElementById('upd-apply').disabled = false;
+    document.getElementById('upd-modal').showModal();
+    updBox(total + ' حقل مختلف — راجع الفرق في النافذة.', 'warn');
+  } catch (e) {
+    updBox(escHtml(e.message), 'bad');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// اعتماد اكتمال ملف الموظف المؤقت: فحص الأساسيات أولاً، ثم تأكيد، ثم اعتماد
+function completeBox(html, tone) {
+  const box = document.getElementById('complete-result');
+  if (!box) return;
+  const colors = { ok: ['#dcfce7', '#15803d'], bad: ['#ffdad6', '#ba1a1a'], info: ['#eef2f7', '#43474f'] };
+  const [bg, fg] = colors[tone] || colors.info;
+  box.style.background = bg; box.style.color = fg;
+  box.style.borderRadius = '12px'; box.style.padding = '10px 12px';
+  box.innerHTML = html;
+  box.classList.remove('hidden');
+}
+async function completeProfile(btn) {
+  btn.disabled = true;
+  completeBox('جارٍ فحص اكتمال الملف في النظام الأساسي…', 'info');
+  try {
+    const pr = await fetch('/admin/onboarding/complete-preview/' + APPLICANT_ID);
+    const pj = await pr.json().catch(() => ({}));
+    if (!pr.ok) throw new Error(pj.error || 'تعذّر الفحص');
+    if (!pj.ready) {
+      completeBox('<b>لا يُعتمد بعد — ينقص ملفه في نظام الموظفين:</b> ' + pj.missing.map(escHtml).join('، ')
+        + '.<br>طبّق الأقسام أدناه («تطبيق الكل») ثم أعد المحاولة.', 'bad');
+      return;
+    }
+    if (!confirm('اعتماد اكتمال ملف هذا الموظف؟ ستزول عنه علامة «مؤقت» في نظام الموظفين.')) { completeBox('لم يُعتمد.', 'info'); return; }
+    const r = await fetch('/admin/onboarding/complete/' + APPLICANT_ID, { method: 'POST' });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || 'تعذّر الاعتماد');
+    completeBox('<b>اعتُمد اكتمال الملف ✓</b>', 'ok');
+    setTimeout(() => location.reload(), 900);
+  } catch (e) {
+    completeBox(escHtml(e.message), 'bad');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 let updCurrent = null;
 async function updatePreview(section, btn) {
   btn.disabled = true;
@@ -913,10 +1058,7 @@ async function updatePreview(section, btn) {
     if (!j.changes.length) { updBox('<b>' + escHtml(j.label) + ':</b> لا فرق — ملف الموظف #' + j.employeeId + ' مطابق لما لدينا.', 'ok'); return; }
     updCurrent = j;
     document.getElementById('upd-title').textContent = 'تحديث ' + j.label + ' — الموظف #' + j.employeeId;
-    document.getElementById('upd-rows').innerHTML = j.changes.map(c =>
-      '<tr><td class="text-[#43474f] whitespace-nowrap">' + escHtml(c.label) + '</td>'
-      + '<td class="ob-src" dir="auto">' + (c.from == null || c.from === '' ? '—' : escHtml(c.from)) + '</td>'
-      + '<td class="ob-val" dir="auto">' + escHtml(c.to) + '</td></tr>').join('');
+    document.getElementById('upd-rows').innerHTML = j.changes.map(updRow).join('');
     document.getElementById('upd-count').textContent = j.changes.length + ' حقل سيتغيّر';
     document.getElementById('upd-err').style.display = 'none';
     document.getElementById('upd-apply').disabled = false;
@@ -934,6 +1076,28 @@ async function updateApply() {
   const apply = document.getElementById('upd-apply');
   const err = document.getElementById('upd-err');
   apply.disabled = true; err.style.display = 'none';
+  // «تطبيق الكل»: قسماً قسماً بالترتيب — ما طُبّق يبقى ولو تعثّر ما بعده، والخطأ يسمّي قسمه
+  if (updCurrent.sections) {
+    let changed = 0;
+    try {
+      for (const section of updCurrent.sections) {
+        const r = await fetch('/admin/onboarding/update/' + APPLICANT_ID, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ section }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error((j.error || 'تعذّر التحديث') + (changed ? ' — طُبّق ما قبله (' + changed + ' حقل)' : ''));
+        changed += j.changed;
+      }
+      document.getElementById('upd-modal').close();
+      updBox('<b>تم تطبيق الكل ✓</b> — ' + changed + ' حقل في الموظف #' + updCurrent.employeeId + '.', 'ok');
+      setTimeout(() => location.reload(), 900);
+    } catch (e) {
+      err.textContent = e.message; err.style.display = 'block';
+      apply.disabled = false;
+    }
+    return;
+  }
   try {
     const r = await fetch('/admin/onboarding/update/' + APPLICANT_ID, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },

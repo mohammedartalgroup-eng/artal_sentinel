@@ -140,6 +140,20 @@ async function updateEmployee(employeeId, section, payload, { dryRun = false } =
 }
 
 /**
+ * اعتماد اكتمال ملف موظف أُضيف مؤقتاً من لوحة العمليات — يزيل عنه علامة «مؤقت» هناك.
+ * dryRun = يفحص الأساسيات (الاسم، الميلاد، انتهاء الهوية، الآيبان، الجوال) بلا كتابة.
+ *
+ * @returns {{status:number, ok:boolean, json:object}} 200 اعتُمد، 422 مع missing (ما ينقص)،
+ *          409 هوية لا تطابق أو ليس مؤقتاً، 404 لا موظف.
+ */
+async function completeEmployee(employeeId, nationalId, { dryRun = false } = {}) {
+  return call(`/api/hooks/onboarding/employee/${employeeId}/complete${dryRun ? '?dry_run=1' : ''}`, {
+    method: 'POST',
+    body: { national_id: nationalId },
+  });
+}
+
+/**
  * رفع مرفق واحد إلى ملف الموظف.
  *
  * ملف لكل نداء: حدود الرفع في الطرف الآخر معلومة (10MB للملف)، وفشل ملف لا
@@ -202,4 +216,4 @@ async function renderBankChangeForm(body) {
   throw new Error(first || json?.error || json?.message || `تعذّر إصدار النموذج (HTTP ${res.status})`);
 }
 
-module.exports = { isConfigured, baseUrl, options, pushEmployee, uploadAttachment, lookupByNationalId, parseLenient, renderBankChangeForm, updateEmployee };
+module.exports = { isConfigured, baseUrl, options, pushEmployee, uploadAttachment, lookupByNationalId, parseLenient, renderBankChangeForm, updateEmployee, completeEmployee };

@@ -131,6 +131,8 @@ if (hooksRouter) app.use('/api/hooks', hooksRouter);   // إشعارات الت�
 if (onboardingRouter) {
   app.use('/onboarding', onboardingRouter.publicRouter);
   app.use('/admin/onboarding', require('./middleware/auth'), onboardingRouter.adminRouter);
+  // تذكير واحد للموظف المؤقت (من لوحة العمليات) إن لم يكمل مستنداته بعد أيام
+  if (onboardingRouter.startQuickAddReminders) onboardingRouter.startQuickAddReminders();
 }
 if (leadsRouter) {
   app.use('/admin/leads', require('./middleware/auth'), leadsRouter);
