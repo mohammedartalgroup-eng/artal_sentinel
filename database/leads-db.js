@@ -93,6 +93,11 @@ async function init() {
       ['wa_tpl_invite_lang', 'ar'],
       ['wa_tpl_invite_cat',  'UTILITY'],
       ['wa_tpl_invite_vars', 'name,link'],
+      // دعوة الموظف المؤقت (من لوحة العمليات) — فارغ حتى يُعتمد قالبها؛ وحتى ذلك تُرسل «دعوة للتقديم»
+      ['wa_tpl_invite_employee_name', ''],
+      ['wa_tpl_invite_employee_lang', 'ar'],
+      ['wa_tpl_invite_employee_cat',  'UTILITY'],
+      ['wa_tpl_invite_employee_vars', 'name,link'],
     ];
     for (const [k, v] of tplDefaults) {
       await conn.query('INSERT IGNORE INTO settings (`key`, value) VALUES (?, ?)', [k, v]);

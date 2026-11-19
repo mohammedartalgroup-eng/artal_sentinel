@@ -165,15 +165,20 @@ async function deliverInvite(lead, link) {
   const WT       = require('../utils/waTemplates');
   const settings = await db.getSettings();
 
+  // الموظف المؤقت من لوحة العمليات له قالبه (صيغة موظف لا مرشح) متى اعتُمد وكُتب اسمه
+  // في الإعدادات؛ وإلى أن يُعتمد تُرسل له «دعوة للتقديم» نفسها حتى لا ينقطع الطريق.
+  const forEmployee = Boolean(lead.ext_employee_id) && WT.ready(settings, 'invite_employee', true);
+  const tplKey = forEmployee ? 'invite_employee' : 'invite';
+
   let r;
   if (!notify.waReady(settings)) r = { status: 'skipped', reason: notify.waNotReadyReason(settings) };
-  else if (!WT.ready(settings, 'invite', true)) r = { status: 'skipped', reason: 'لم يُحدَّد اسم قالب «دعوة للتقديم» في الإعدادات' };
+  else if (!WT.ready(settings, tplKey, true)) r = { status: 'skipped', reason: 'لم يُحدَّد اسم قالب «دعوة للتقديم» في الإعدادات' };
   else {
     r = await notify.deliverTemplate({
       // اسم جهة الاتصال في Chatwoot حين لا نعرف الاسم: «موصى به + الجوال» لا فراغ
       recipient: { full_name: lead.full_name || `موصى به ${lead.phone}`, phone: lead.phone },
-      tplKey: 'invite', kind: 'invite',
-      vars: { name: lead.full_name || 'عزيزنا المرشح', link },
+      tplKey, kind: tplKey,
+      vars: { name: lead.full_name || (forEmployee ? 'زميلنا العزيز' : 'عزيزنا المرشح'), link },
       settings,
     });
   }

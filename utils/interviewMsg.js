@@ -216,6 +216,18 @@ function buildInviteText(applicant, _interview, opts = {}) {
   ].join('\n');
 }
 
+// نص دعوة الموظف المؤقت (من لوحة العمليات) لتسجيل بياناته — مطابق لقالبه المعتمد
+function buildEmployeeInviteText(applicant, _interview, opts = {}) {
+  const v = messageVars(applicant, null, opts);
+  return [
+    `مرحباً ${v.name} 👋`,
+    'تم تسجيلك موظفاً لدى شركة أرتال للحراسات الأمنية.',
+    'لاستكمال ملفك، سجّل بياناتك من الرابط التالي خلال دقائق من جوالك:',
+    v.link,
+    'بعد التسجيل سيصلك رابط لرفع مستنداتك.',
+  ].join('\n');
+}
+
 const WA_TEXT = {
   scheduled:   buildWhatsAppText,
   rescheduled: buildRescheduleText,
@@ -224,6 +236,7 @@ const WA_TEXT = {
   onboarding:   buildOnboardingText,
   extra_docs:   buildExtraDocsText,
   invite:       buildInviteText,
+  invite_employee: buildEmployeeInviteText,
 };
 
 function buildWaUrl(phone, text) {
@@ -335,6 +348,6 @@ function buildEmailSubject(applicant, interview, opts = {}) {
 module.exports = {
   toIntlPhone, isEmail, deriveJobTitle,
   messageVars, VAR_LABELS, buildProcessedParams, sanitizeParam,
-  buildWhatsAppText, buildRescheduleText, buildCancelText, buildScreeningText, buildOnboardingText, buildExtraDocsText, buildInviteText, WA_TEXT, buildWaUrl,
+  buildWhatsAppText, buildRescheduleText, buildCancelText, buildScreeningText, buildOnboardingText, buildExtraDocsText, buildInviteText, buildEmployeeInviteText, WA_TEXT, buildWaUrl,
   buildEmailHtml, buildEmailText, buildEmailSubject,
 };

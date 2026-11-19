@@ -647,7 +647,7 @@
       const WS = typeof waStats !== 'undefined' ? waStats : null;
       const PROV = { openwa: 'OpenWA', chatwoot: 'Chatwoot' };
       const KIND = { scheduled: 'دعوة مقابلة', rescheduled: 'إعادة جدولة', cancelled: 'إلغاء مقابلة', screening: 'التحقق من الجاهزية',
-                     onboarding: 'رابط الاستكمال', extra_docs: 'بيانات إضافية', invite: 'دعوة توصية', test: 'اختبار' };
+                     onboarding: 'رابط الاستكمال', extra_docs: 'بيانات إضافية', invite: 'دعوة توصية', invite_employee: 'دعوة موظف مؤقت', test: 'اختبار' };
       const secs = (ms) => ms == null ? '—' : (ms / 1000).toFixed(1) + ' ث';
       const fmtWhen = typeof fmtDateTime === 'function' ? fmtDateTime : (d) => String(d);
       const statProviders = WS ? [...new Set(WS.periods.flatMap(p => p.providers.map(x => x.provider)))] : [];
