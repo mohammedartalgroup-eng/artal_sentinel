@@ -153,6 +153,9 @@ function docNotes(session, byType) {
 /**
  * تصنيف الوثيقة في النظام الأساسي لكل مستند عندنا.
  *
+ * كل رمز هنا يجب أن يطابق رمز تصنيف في النظام (صفحة «تصنيفات الوثائق»)، وإلا
+ * حُفظ الملف هناك تحت «أخرى». الرمز المختصر يُقبل أيضًا، لكن الكامل أوضح.
+ *
  * الهوية تتفرّع بحسب أول رقم: 1 مواطن ← «هوية»، 2 مقيم ← «إقامة». وهو تفريعٌ
  * يفهمه أرشيف الموظفين ولا يفهمه اسم مستند واحد عندنا.
  */
@@ -167,8 +170,8 @@ function categoryFor(docType, nationalId) {
     driving_license: 'driving_license',
     cv: 'cv',
     education_certificate: 'educational_certificate',
-    medical_exam: 'medical_exam',
-    criminal_record: 'criminal_record',
+    medical_exam: 'fitness_exam',      // «فحص لياقة» في النظام — لا يوجد تصنيف باسم الفحص الطبي
+    criminal_record: 'criminal_record', // «شهادة خلو السوابق» (رمزها المختصر هناك q)
     bank_change: 'bank_iban',          // شهادة آيبان للحساب الجديد — نفس تصنيف الشهادة الأصلية
     bank_change_form: 'bank_iban',     // نموذج الطلب الموقّع — بجوار الشهادة كما يؤرشفه تطبيق الموظف
   }[docType] || 'other';
