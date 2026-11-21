@@ -50,6 +50,40 @@ function requireSecret(req, res, next) {
   next();
 }
 
+// ─── خطأ داخلي يُفصح عن سببه ─────────────────────────────────────────────────
+// «internal_error» وحدها لا تُشخَّص إلا من سجلّ هذا الخادم، ولا أحد يصل إليه وقت
+// الحاجة (20–21 نوفمبر 2026: عشر محاولات quick-hire فشلت بلا سبب ظاهر في الطرف
+// الآخر). المسار محميّ بالسرّ، فإرجاع نصّ الخطأ ورمزه للنظام المستدعي آمن —
+// وهو يحفظ أول 300 حرف من الردّ في سجلّه.
+function internalError(res, scope, err) {
+  console.error(`[Hooks] ${scope}:`, err?.stack || err?.message || err);
+  return res.status(500).json({
+    ok: false,
+    error: 'internal_error',
+    message: String(err?.message || err || '').slice(0, 200),
+    code: err?.code || undefined,
+  });
+}
+
+// حالة مخطط الميزتين كما يراها هذا الخادم — للتشخيص من بعيد عبر /health.
+// نقرأ الوحدتين إن كانتا محمّلتين فقط؛ لا نحمّلهما من هنا كي لا يبدأ مسارُ فحصٍ تهيئةَ قاعدة.
+function featureStates() {
+  const read = (rel) => {
+    try {
+      const m = require.cache[require.resolve(rel)];
+      if (!m) return { ok: false, error: 'not_loaded' };
+      return { ok: Boolean(m.exports?.state?.ok), error: m.exports?.state?.error || null };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  };
+  return {
+    onboarding: read('../database/onboarding-db'),
+    leads: read('../database/leads-db'),
+    leads_env_off: process.env.LEADS_ENABLED === 'false',
+  };
+}
+
 // ─── تحقّق من صحة صف الموظف ───────────────────────────────────────────────────
 function normalizeEntry(raw) {
   if (!raw || typeof raw !== 'object') return null;
@@ -227,8 +261,7 @@ router.post('/employees-hired', hooksLimiter, requireSecret, async (req, res) =>
     console.log('[Hooks] employees-hired', JSON.stringify(summary));
     return res.json(summary);
   } catch (err) {
-    console.error('[Hooks] خطأ غير متوقع:', err.message);
-    return res.status(500).json({ ok: false, error: 'internal_error' });
+    return internalError(res, 'employees-hired', err);
   }
 });
 
@@ -265,8 +298,7 @@ router.post('/quick-hire', hooksLimiter, requireSecret, async (req, res) => {
     if (!result.ok) return res.status(result.code || 422).json({ ok: false, error: result.error });
     res.json(result);
   } catch (err) {
-    console.error('[Hooks] quick-hire:', err.message);
-    res.status(500).json({ ok: false, error: 'internal_error' });
+    internalError(res, 'quick-hire', err);
   }
 });
 
@@ -308,8 +340,7 @@ router.post('/hire-request', hooksLimiter, requireSecret, async (req, res) => {
     if (!result.ok) return res.status(result.code || 422).json({ ok: false, error: result.error });
     res.json(result);
   } catch (err) {
-    console.error('[Hooks] hire-request:', err.message);
-    res.status(500).json({ ok: false, error: 'internal_error' });
+    internalError(res, 'hire-request', err);
   }
 });
 
@@ -322,8 +353,7 @@ router.post('/hire-request/cancel', hooksLimiter, requireSecret, async (req, res
     if (!onboarding) return;
     res.json(await onboarding.cancelHireRequest(requestId));
   } catch (err) {
-    console.error('[Hooks] hire-request cancel:', err.message);
-    res.status(500).json({ ok: false, error: 'internal_error' });
+    internalError(res, 'hire-request cancel', err);
   }
 });
 
@@ -332,10 +362,9 @@ router.post('/hire-request/cancel', hooksLimiter, requireSecret, async (req, res
 router.get('/health', hooksLimiter, requireSecret, async (req, res) => {
   try {
     const row = await db.get('SELECT COUNT(*) AS c FROM applicants WHERE ext_found = 1');
-    return res.json({ ok: true, flagged_applicants: Number(row?.c) || 0 });
+    return res.json({ ok: true, flagged_applicants: Number(row?.c) || 0, features: featureStates() });
   } catch (err) {
-    console.error('[Hooks] health:', err.message);
-    return res.status(500).json({ ok: false, error: 'internal_error' });
+    return internalError(res, 'health', err);
   }
 });
 
