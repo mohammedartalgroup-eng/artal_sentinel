@@ -137,8 +137,9 @@ async function findSent(chatId, text, since) {
  *          يمرّ كما هو إلى messageStatus — ونفس دور ناتج chatwoot.sendTemplate.
  *          lastError = خطأ محاولة سابقة تجاوزتها الإعادة (للسجل وحده)
  */
-async function sendText({ phone, text }) {
-  const chatId = chatIdFor(phone);
+async function sendText({ phone, chatId: toChat, text }) {
+  // chatId صريح لمجموعة (…@g.us) — وإلا يُبنى من الجوال
+  const chatId = /^\d{10,}@(?:g|c)\.us$/.test(String(toChat || '')) ? String(toChat) : chatIdFor(phone);
   if (!chatId) throw new OpenWaError('رقم جوال غير صالح', 'HTTP');
   const since = Date.now();
   let lastError = null;

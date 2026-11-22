@@ -1892,6 +1892,66 @@ function systemReq(req) {
   };
 }
 
+// ─── نسخة طلب الإضافة إلى مجموعة الإسنادات ─────────────────────────────────
+//  قرار المالك (2026-11-22): حين يصل الموظفَ رابط المرفقات من رقم التوظيف تصل
+//  المجموعةَ نفسها التي تُرسل فيها الإسنادات نسخةٌ من الرقم نفسه، ومعها «بواسطة».
+//  الرابط نفسه لا يُنشر: شخصي يفتح رحلة الموظف ويرفع مستنداته باسمه.
+//  HIRE_GROUP_CHAT_ID يغيّر المجموعة، وقيمة off توقفها.
+const HIRE_GROUP_DEFAULT = '120363385699307538@g.us';
+const hireGroupChat = () => {
+  const v = String(process.env.HIRE_GROUP_CHAT_ID || '').trim();
+  if (/^(off|false|0|none)$/i.test(v)) return '';
+  return /^\d{10,}@g\.us$/.test(v) ? v : HIRE_GROUP_DEFAULT;
+};
+
+function hireGroupText(entry) {
+  return [
+    '📋 *طلب إضافة موظف — لوحة العمليات*',
+    `الاسم: ${entry.fullName || '—'}`,
+    `الهوية: ${entry.nationalId}`,
+    entry.phone ? `الجوال: ${entry.phone}` : null,
+    entry.zone ? `الموقع: ${entry.zone}` : null,
+    entry.jobTitle ? `المسمّى: ${entry.jobTitle}` : null,
+    '',
+    'أُرسل له رابط رفع المرفقات الأساسية (الهوية، الآيبان، العنوان الوطني). لا يُضاف لنظام الموظفين حتى يرفعها.',
+    `بواسطة: ${entry.addedBy || 'لوحة العمليات'}`,
+    `#طلب_${entry.requestId}`,
+  ].filter(v => v !== null).join('\n');
+}
+
+/**
+ * لا يرمي ولا يُنتظر: نسخة داخلية لا يجوز أن تؤخّر ردّ الطلب (مهلة الطرف الآخر 8 ث)
+ * ولا أن تُفشله. الرقم: OpenWA (رقم التوظيف نفسه الذي راسل الموظف) حين يكون هو
+ * المزوّد، وإلا Wappi إن هُيّئ — Chatwoot لا يرسل إلى المجموعات. الفشل ملاحظة في ملفه.
+ */
+async function notifyHireGroup(entry, applicant) {
+  const chatId = hireGroupChat();
+  if (!chatId) return { status: 'skipped', reason: 'off' };
+  const text = hireGroupText(entry);
+  try {
+    const settings = await db.getSettings();
+    const notify = require('../utils/notify');
+    const openwa = require('../utils/openwa');
+    const waGroup = require('../utils/waGroup');
+    if (notify.waProvider(settings) === 'openwa' && openwa.isConfigured()) {
+      await openwa.sendText({ chatId, text });
+    } else if (waGroup.isConfigured()) {
+      await waGroup.sendMessage(chatId, text);
+    } else {
+      return { status: 'skipped', reason: 'لا رقم يرسل إلى المجموعات (OpenWA أو Wappi)' };
+    }
+    return { status: 'sent', reason: '' };
+  } catch (e) {
+    const reason = String(e.message || 'خطأ غير معروف').slice(0, 200);
+    console.error('[Onboarding hire-group]', reason);
+    if (applicant?.id) {
+      db.run('INSERT INTO applicant_notes (applicant_id, content, type, user_name) VALUES (?, ?, ?, ?)',
+        [applicant.id, `⚠️ لم تصل نسخة طلب الإضافة إلى مجموعة الإسنادات — ${reason}`, 'follow_up', QUICK_ACTOR]).catch(() => {});
+    }
+    return { status: 'failed', reason };
+  }
+}
+
 /**
  * إرسال رابط الاستكمال بقالب واتساب المعتمد — نفس قالب زر «إرسال بواتساب» ونفس
  * تسجيله في ملف المتقدم. لا يرمي: يعود بالحالة ليُحفظ «لم يُرسل» بسببه.
@@ -2304,6 +2364,8 @@ async function hireRequest(entry, req) {
     reason = r.reason;
     await db.run('UPDATE onboarding_sessions SET gate_link_status = ?, gate_note = ? WHERE id = ?',
       [linkSent, linkSent === 'sent' ? null : String(reason || '').slice(0, 250), sessionId]);
+    // وصل الموظفَ الرابط ← نسخة للمجموعة، مرة لكل إرسال ناجح
+    if (linkSent === 'sent') notifyHireGroup(entry, applicant).catch(() => {});
   }
 
   const { byType, fieldsByType } = await loadDocs(sessionId);
@@ -2448,5 +2510,5 @@ async function inviteStubToRegister(applicant, entry, req) {
 
 module.exports = {
   publicRouter, adminRouter, featureOn, quickHire, localPhone, remindQuickAdds, startQuickAddReminders,
-  hireRequest, cancelHireRequest, isStubApplicant, GATE_DOCS,
+  hireRequest, cancelHireRequest, isStubApplicant, GATE_DOCS, notifyHireGroup, hireGroupText,
 };
