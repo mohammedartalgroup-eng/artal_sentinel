@@ -34,8 +34,10 @@ function apiKey() {
     || '';
 }
 
+// gemini-2.5-flash أوقفته Google (نوفمبر 2026) وتحوّل طلباته من 1 ديسمبر إلى 3.5-flash-lite
+// بنفس السعر — فنطلبه صراحةً. جرّبناه على الهوية والآيبان والعنوان الوطني: نفس الحقول.
 const DEFAULT_MODEL = {
-  gemini:    'gemini-2.5-flash',
+  gemini:    'gemini-3.5-flash-lite',
   openai:    'gpt-4o-mini',
   anthropic: 'claude-haiku-4-5-20251001',
 };
@@ -89,25 +91,45 @@ function parseJson(raw) {
 
 // ─── المزوّدون ───────────────────────────────────────────────────────────────
 
-async function callGemini(prompt) {
+// «التفكير» يُحاسَب بسعر المخرجات، ونحن ننسخ قيماً لا نستدلّ: قسناه على نداء الصورة
+// (نحو 500 رمز تفكير مقابل 60 رمز جواب) فلم يحسّن حقلاً واحداً وضاعف الزمن. فنطفئه
+// بالصيغة التي يفهمها كل جيل — 2.5 بالميزانية، و3.x بالمستوى (يرفض thinkingBudget: 0).
+function thinkingOff(m) {
+  if (/^gemini-2\.5/.test(m)) return { thinkingBudget: 0 };
+  if (/^gemini-3/.test(m))    return { thinkingLevel: 'minimal' };
+  return null;
+}
+
+/**
+ * نداء Gemini واحد يُرجع نص الرد. إن رفض النموذج إعداد التفكير (400) — نموذج جديد
+ * أو تحويل من Google لنموذج آخر — نعيده مرة بلا الإعداد بدل أن تسقط القراءة كلها.
+ */
+async function geminiGenerate(parts, timeoutMs) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model())}:generateContent?key=${encodeURIComponent(apiKey())}`;
-  const cfg = { temperature: 0, responseMimeType: 'application/json' };
-  // ترتيب نصٍّ قرأه OCR ليس مهمة تفكير — و«التفكير» مفعّل افتراضياً في 2.5
-  // ويُحاسَب عليه. إطفاؤه يقطع أغلب كلفة النداء بلا أثر على الدقة هنا.
-  // مشروط بعائلة 2.5 لأن الموديلات الأقدم ترفض الحقل أصلاً.
-  if (/^gemini-2\.5/.test(model())) cfg.thinkingConfig = { thinkingBudget: 0 };
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: cfg,
-    }),
-    signal: AbortSignal.timeout(TIMEOUT_MS),
-  });
-  const json = await res.json().catch(() => ({}));
+  const thinking = thinkingOff(model());
+  const send = async (withThinking) => {
+    const generationConfig = { temperature: 0, responseMimeType: 'application/json' };
+    if (withThinking && thinking) generationConfig.thinkingConfig = thinking;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts }], generationConfig }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    return { res, json: await res.json().catch(() => ({})) };
+  };
+
+  let { res, json } = await send(true);
+  if (res.status === 400 && thinking) {
+    console.warn(`[AI] ${model()} رفض إعداد التفكير — إعادة بدونه: ${json?.error?.message || ''}`);
+    ({ res, json } = await send(false));
+  }
   if (!res.ok) throw new Error(json?.error?.message || `Gemini HTTP ${res.status}`);
   return json?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '';
+}
+
+async function callGemini(prompt) {
+  return geminiGenerate([{ text: prompt }], TIMEOUT_MS);
 }
 
 async function callOpenAI(prompt) {
@@ -230,27 +252,12 @@ async function extractFromImage(docLabel, fields, filePath, mime) {
   const buf = await fs.readFile(filePath);
   if (buf.length > MAX_IMAGE_BYTES) return null;
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model())}:generateContent?key=${encodeURIComponent(apiKey())}`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{
-        parts: [
-          { inline_data: { mime_type: mime || 'image/jpeg', data: buf.toString('base64') } },
-          { text: buildImagePrompt(docLabel, fields) },
-        ],
-      }],
-      // «التفكير» مفعّل هنا عمداً — قراءة نموذج بخانات مهمة استدلال لا نسخ،
-      // وهذه آخر محاولة قبل أن نطلب من المرشح الإدخال يدوياً.
-      generationConfig: { temperature: 0, responseMimeType: 'application/json' },
-    }),
-    signal: AbortSignal.timeout(45000),
-  });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(json?.error?.message || `Gemini vision HTTP ${res.status}`);
-
-  const raw = json?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '';
+  // التفكير مطفأ هنا أيضاً: قسنا الهوية والعنوان الوطني بالتفكير وبدونه — نفس القيم،
+  // وبدونه أسرع بالضعف وأرخص بنحو ست مرات (رموز التفكير بسعر المخرجات).
+  const raw = await geminiGenerate([
+    { inline_data: { mime_type: mime || 'image/jpeg', data: buf.toString('base64') } },
+    { text: buildImagePrompt(docLabel, fields) },
+  ], 45000);
   const data = parseJson(raw);
   if (!data) throw new Error('رد النموذج (صورة) ليس JSON صالحاً');
 
