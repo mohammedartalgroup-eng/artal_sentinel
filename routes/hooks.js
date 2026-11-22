@@ -62,6 +62,10 @@ function internalError(res, scope, err) {
     error: 'internal_error',
     message: String(err?.message || err || '').slice(0, 200),
     code: err?.code || undefined,
+    // أول سطر من كودنا في الـ stack — يحدد الاستعلام المسبب دون الحاجة لسجل الخادم
+    at: String(err?.stack || '').split('\n')
+      .find(l => /[\\/](routes|utils|database)[\\/]/.test(l) && !l.includes('node_modules'))
+      ?.trim().replace(/^at\s+/, '').replace(/^.*[\\/](routes|utils|database)[\\/]/, '$1/').replace(/\)$/, '').slice(0, 160) || undefined,
   });
 }
 

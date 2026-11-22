@@ -12,7 +12,10 @@ const pool = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 20,
   queueLimit: 0,
-  charset: 'utf8mb4',
+  // ترتيب حروف الاتصال = ترتيب الجداول (كلها utf8mb4_unicode_ci). «utf8mb4» وحدها تعني
+  // general_ci في mysql2، فتختلط في قاعدة الإنتاج المعاملاتُ والنصوصُ الثابتة بترتيبين
+  // ويرفض الخادم المقارنة «Illegal mix of collations» (فشل تسليم موظف مؤقت، 22 نوفمبر 2026).
+  charset: 'UTF8MB4_UNICODE_CI',
   timezone: '+00:00',
   decimalNumbers: true
 });

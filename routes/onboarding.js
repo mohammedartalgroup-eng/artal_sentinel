@@ -2030,11 +2030,14 @@ async function quickHire(entry, req) {
     reason = r.reason;
   }
 
+  // المقارنة تُحسب هنا لا في SQL: «? = 'sent'» تقارن معاملاً مُعَدّاً بنص ثابت، وفي قاعدة
+  // الإنتاج يأخذ كلٌّ منهما ترتيب حروف مختلفاً (general_ci مقابل unicode_ci) فيرفض الخادم
+  // الاستعلام «Illegal mix of collations» — بعد أن يكون الرابط قد أُرسل (22 نوفمبر 2026).
   await db.run(
     `UPDATE onboarding_employment
-        SET link_status = ?, link_error = ?, link_sent_at = IF(? = 'sent' AND link_sent_at IS NULL, NOW(), link_sent_at)
+        SET link_status = ?, link_error = ?, link_sent_at = IF(? = 1 AND link_sent_at IS NULL, NOW(), link_sent_at)
       WHERE session_id = ?`,
-    [linkSent, ['sent', 'not_needed', 'invited'].includes(linkSent) ? null : String(reason || '').slice(0, 250), linkSent, sessionId]
+    [linkSent, ['sent', 'not_needed', 'invited'].includes(linkSent) ? null : String(reason || '').slice(0, 250), linkSent === 'sent' ? 1 : 0, sessionId]
   );
 
   return {
