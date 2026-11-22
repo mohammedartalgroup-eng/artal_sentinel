@@ -474,6 +474,12 @@ function validate(docType, key, raw) {
       if (!h) return { ok: false, value: s, error: 'تاريخ هجري غير مفهوم — مثال: 1414/12/11' };
       return { ok: true, value: h, error: null };
     }
+    case 'place': {
+      // تسمية الخانة ليست قيمة: «اسم الحي» حيٌّ لا يوجد
+      const v = s.replace(/\s+/g, ' ').trim();
+      if (isLabelLine(v)) return { ok: false, value: v, error: 'التُقطت تسمية الخانة لا قيمتها — اكتب القيمة كما في الشهادة' };
+      return { ok: true, value: v.slice(0, 200), error: null };
+    }
     case 'name': {
       const v = s.replace(/\s+/g, ' ').trim();
       if (v.length < 4) return { ok: false, value: v, error: 'الاسم قصير جداً' };
@@ -663,6 +669,10 @@ const LABEL_LINES = [
   'اثبات عنوان', 'إثبات عنوان', 'المملكة العربية السعودية', 'رقم الاثبات', 'رقم الإثبات',
   'تاريخ الاصدار', 'تاريخ الإصدار', 'تاريخ الانتهاء', 'الجنسية', 'تاريخ الميلاد', 'مكان الميلاد',
   'الرقم', 'للتحقق', 'وزارة الداخلية', 'الهوية الوطنية',
+  // شهادة العنوان الوطني (سبل) تسمّي خاناتها «اسم الحي / اسم المدينة / رقم الوحدة»:
+  // الموظف 15625 (2026-11-21) صارت مدينته «رقم الوحدة» وشارعه «اسم الحي — اسم المدينة»
+  'اسم الحي', 'اسم المدينة', 'اسم الشارع', 'رقم الوحدة', 'المنطقة', 'اسم المنطقة', 'الحي السكني',
+  'unit no', 'unit number', 'district name', 'city name', 'street name', 'region',
 ];
 
 const cleanKey = (t) => String(t == null ? '' : t)
