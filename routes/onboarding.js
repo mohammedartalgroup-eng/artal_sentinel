@@ -1894,8 +1894,8 @@ function systemReq(req) {
 
 // ─── نسخة طلب الإضافة إلى مجموعة الإسنادات ─────────────────────────────────
 //  قرار المالك (2026-11-22): حين يصل الموظفَ رابط المرفقات من رقم التوظيف تصل
-//  المجموعةَ نفسها التي تُرسل فيها الإسنادات نسخةٌ من الرقم نفسه، ومعها «بواسطة».
-//  الرابط نفسه لا يُنشر: شخصي يفتح رحلة الموظف ويرفع مستنداته باسمه.
+//  المجموعةَ نفسها التي تُرسل فيها الإسنادات نسخةٌ من الرقم نفسه، ومعها «بواسطة»
+//  ورابط المرفقات نفسه (قرار المالك: ليتابعه المشرف مع الموظف).
 //  HIRE_GROUP_CHAT_ID يغيّر المجموعة، وقيمة off توقفها.
 const HIRE_GROUP_DEFAULT = '120363385699307538@g.us';
 const hireGroupChat = () => {
@@ -1904,18 +1904,24 @@ const hireGroupChat = () => {
   return /^\d{10,}@g\.us$/.test(v) ? v : HIRE_GROUP_DEFAULT;
 };
 
-function hireGroupText(entry) {
+// kind: gate = رابط المرفقات الأساسية (قبل الإضافة) · complete = رابط الاستكمال (بعدها)
+function hireGroupText(entry, link, kind = 'gate') {
+  const complete = kind === 'complete';
   return [
-    '📋 *طلب إضافة موظف — لوحة العمليات*',
+    complete ? '📋 *استكمال ملف موظف — لوحة العمليات*' : '📋 *طلب إضافة موظف — لوحة العمليات*',
     `الاسم: ${entry.fullName || '—'}`,
     `الهوية: ${entry.nationalId}`,
+    complete && entry.employeeId ? `رقم الموظف: ${entry.employeeId}` : null,
     entry.phone ? `الجوال: ${entry.phone}` : null,
     entry.zone ? `الموقع: ${entry.zone}` : null,
     entry.jobTitle ? `المسمّى: ${entry.jobTitle}` : null,
     '',
-    'أُرسل له رابط رفع المرفقات الأساسية (الهوية، الآيبان، العنوان الوطني). لا يُضاف لنظام الموظفين حتى يرفعها.',
+    complete
+      ? 'أُضيف لنظام الموظفين وأُرسل له رابط استكمال باقي بياناته ومستنداته.'
+      : 'أُرسل له رابط رفع المرفقات الأساسية (الهوية، الآيبان، العنوان الوطني). لا يُضاف لنظام الموظفين حتى يرفعها.',
+    link ? `الرابط: ${link}` : null,
     `بواسطة: ${entry.addedBy || 'لوحة العمليات'}`,
-    `#طلب_${entry.requestId}`,
+    complete ? (entry.employeeId ? `#موظف_${entry.employeeId}` : null) : `#طلب_${entry.requestId}`,
   ].filter(v => v !== null).join('\n');
 }
 
@@ -1924,10 +1930,10 @@ function hireGroupText(entry) {
  * ولا أن تُفشله. الرقم: OpenWA (رقم التوظيف نفسه الذي راسل الموظف) حين يكون هو
  * المزوّد، وإلا Wappi إن هُيّئ — Chatwoot لا يرسل إلى المجموعات. الفشل ملاحظة في ملفه.
  */
-async function notifyHireGroup(entry, applicant) {
+async function notifyHireGroup(entry, applicant, link = null, kind = 'gate') {
   const chatId = hireGroupChat();
   if (!chatId) return { status: 'skipped', reason: 'off' };
-  const text = hireGroupText(entry);
+  const text = hireGroupText(entry, link, kind);
   try {
     const settings = await db.getSettings();
     const notify = require('../utils/notify');
@@ -1946,7 +1952,7 @@ async function notifyHireGroup(entry, applicant) {
     console.error('[Onboarding hire-group]', reason);
     if (applicant?.id) {
       db.run('INSERT INTO applicant_notes (applicant_id, content, type, user_name) VALUES (?, ?, ?, ?)',
-        [applicant.id, `⚠️ لم تصل نسخة طلب الإضافة إلى مجموعة الإسنادات — ${reason}`, 'follow_up', QUICK_ACTOR]).catch(() => {});
+        [applicant.id, `⚠️ لم تصل نسخة ${kind === 'complete' ? 'رابط الاستكمال' : 'طلب الإضافة'} إلى مجموعة الإسنادات — ${reason}`, 'follow_up', QUICK_ACTOR]).catch(() => {});
     }
     return { status: 'failed', reason };
   }
@@ -2085,9 +2091,12 @@ async function quickHire(entry, req) {
   } else if (session && (session.status === 'submitted' || Number(session.progress) >= 100)) {
     linkSent = 'not_needed';
   } else if (linkSent !== 'sent') {
-    const r = await deliverOnboardingLink(applicant, publicLink(sysReq, token), 'موظف مؤقت من لوحة العمليات');
+    const completeLink = publicLink(sysReq, token);
+    const r = await deliverOnboardingLink(applicant, completeLink, 'موظف مؤقت من لوحة العمليات');
     linkSent = r.status;
     reason = r.reason;
+    // رابط الاستكمال وصله ← نسخة للمجموعة (التذكير بعد 3 أيام لا يُنسخ)
+    if (linkSent === 'sent') notifyHireGroup(entry, applicant, completeLink, 'complete').catch(() => {});
   }
 
   // المقارنة تُحسب هنا لا في SQL: «? = 'sent'» تقارن معاملاً مُعَدّاً بنص ثابت، وفي قاعدة
@@ -2359,13 +2368,14 @@ async function hireRequest(entry, req) {
   let linkSent = first ? null : (before.gate_link_status || null);
   let reason = '';
   if (linkSent !== 'sent') {
-    const r = await deliverOnboardingLink(applicant, publicLink(sysReq, token), 'المرفقات الأساسية — طلب إضافة من لوحة العمليات');
+    const gateLink = publicLink(sysReq, token);
+    const r = await deliverOnboardingLink(applicant, gateLink, 'المرفقات الأساسية — طلب إضافة من لوحة العمليات');
     linkSent = r.status;
     reason = r.reason;
     await db.run('UPDATE onboarding_sessions SET gate_link_status = ?, gate_note = ? WHERE id = ?',
       [linkSent, linkSent === 'sent' ? null : String(reason || '').slice(0, 250), sessionId]);
     // وصل الموظفَ الرابط ← نسخة للمجموعة، مرة لكل إرسال ناجح
-    if (linkSent === 'sent') notifyHireGroup(entry, applicant).catch(() => {});
+    if (linkSent === 'sent') notifyHireGroup(entry, applicant, gateLink).catch(() => {});
   }
 
   const { byType, fieldsByType } = await loadDocs(sessionId);
