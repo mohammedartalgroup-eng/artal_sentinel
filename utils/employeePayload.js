@@ -174,6 +174,7 @@ function categoryFor(docType, nationalId) {
     criminal_record: 'criminal_record', // «شهادة خلو السوابق» (رمزها المختصر هناك q)
     bank_change: 'bank_iban',          // شهادة آيبان للحساب الجديد — نفس تصنيف الشهادة الأصلية
     bank_change_form: 'bank_iban',     // نموذج الطلب الموقّع — بجوار الشهادة كما يؤرشفه تطبيق الموظف
+    bank_change_holder_id: 'request',  // هوية صاحب الحساب (قريب غالبًا) — «طلبات» لا «هوية» حتى لا تُخلط بهوية الموظف
   }[docType] || 'other';
 }
 
