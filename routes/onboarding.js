@@ -1276,6 +1276,50 @@ adminRouter.post('/doc/:docId/reextract', reextractLimiter, async (req, res) => 
   }
 });
 
+// إعادة نسخة سابقة لتكون المستند الحالي — المرشح رفع ملفاً خاطئاً فوق الصحيح (عنوان وطني
+// مكان شهادة الآيبان مثلاً). الحقول لا تُمسّ: هي غالباً من النسخة الصحيحة أصلاً، وإن لم
+// تكن فـ«إعادة الاستخراج» بعدها تقرؤها من هذه النسخة. فلا يسقط التوقيع (بياناته لم تتغيّر).
+// الملفات المولّدة (التوقيع ونموذجه) لا تُعاد — تصدر من التوقيع وحده.
+adminRouter.post('/doc/:docId/restore', async (req, res) => {
+  if (!featureOn()) return res.status(503).json({ error: 'الميزة غير مفعّلة' });
+  try {
+    const doc = await db.get('SELECT * FROM onboarding_documents WHERE id = ?', [req.params.docId]);
+    if (!doc) return res.status(404).json({ error: 'المستند غير موجود' });
+    if (doc.is_current) return res.status(409).json({ error: 'هذه النسخة هي الحالية أصلاً' });
+    const def = rules.DOC_TYPES[doc.doc_type];
+    if (!def || def.generated) return res.status(400).json({ error: 'هذا الملف يصدر من التوقيع ولا يُعاد يدوياً' });
+
+    const cur = await db.get(
+      'SELECT * FROM onboarding_documents WHERE session_id = ? AND doc_type = ? AND is_current = 1 ORDER BY id DESC LIMIT 1',
+      [doc.session_id, doc.doc_type]
+    );
+    await db.run('UPDATE onboarding_documents SET is_current = 0 WHERE session_id = ? AND doc_type = ?', [doc.session_id, doc.doc_type]);
+    // يرث «أكّده المرشح» من النسخة التي يحلّ محلها — التأكيد كان على البيانات لا على الصورة.
+    // واعتماد الفريق لا يُورَّث: النسخة المعادة تُعتمد بقرار جديد بعد النظر فيها.
+    const status = cur?.status === 'confirmed' ? 'confirmed' : (doc.status === 'uploaded' ? 'extracted' : doc.status);
+    await db.run(
+      'UPDATE onboarding_documents SET is_current = 1, status = ?, hr_decided_at = NULL, hr_decided_by = NULL WHERE id = ?',
+      [status, doc.id]
+    );
+
+    const session = await db.get('SELECT * FROM onboarding_sessions WHERE id = ?', [doc.session_id]);
+    if (session) await recomputeProgress(session);
+
+    const actor = req.session?.adminName || req.session?.adminUser || 'system';
+    const line = `أُعيدت نسخة سابقة من «${def.label}» (${doc.original_name || doc.file_name}) لتكون المستند الحالي`
+      + (cur ? ` بدل «${cur.original_name || cur.file_name}»` : '') + ` — بواسطة ${actor}.`;
+    db.run('INSERT INTO applicant_notes (applicant_id, content, type, user_name) VALUES (?, ?, ?, ?)',
+      [doc.applicant_id, line.slice(0, 2000), 'follow_up', actor]).catch(() => {});
+    db.audit(req.session?.adminId, req.session?.adminUser || 'system', 'onboarding_restore_doc',
+      'applicant', doc.applicant_id, null, line.slice(0, 500), req.ip).catch(() => {});
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[Onboarding restore]', err.message);
+    res.status(500).json({ error: 'تعذّرت إعادة النسخة' });
+  }
+});
+
 // حفظ بيانات التوظيف — الحفظ جزئي دائماً: يملأ الموظف ما لديه اليوم ويكمل غداً،
 // ولا تُشترط الحقول المطلوبة إلا عند المزامنة مع النظام الأساسي.
 adminRouter.post('/employment/:applicantId', async (req, res) => {

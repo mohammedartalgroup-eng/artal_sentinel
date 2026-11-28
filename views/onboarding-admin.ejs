@@ -640,8 +640,15 @@
             <% history.forEach(function (h) { %>
               <tr>
                 <td class="whitespace-nowrap"><%= DOC_TYPES[h.doc_type] ? DOC_TYPES[h.doc_type].label : h.doc_type %></td>
+                <td class="ob-src" dir="auto"><%= h.original_name || '' %></td>
                 <td class="ob-src"><%= fmtDateTime(h.created_at) %></td>
-                <td><a class="text-[#405f91] underline" target="_blank" rel="noopener" href="/admin/onboarding/file/<%= h.id %>">عرض</a></td>
+                <td class="whitespace-nowrap">
+                  <a class="text-[#405f91] underline" target="_blank" rel="noopener" href="/admin/onboarding/file/<%= h.id %>">عرض</a>
+                  <% if (DOC_TYPES[h.doc_type] && !DOC_TYPES[h.doc_type].generated) { %>
+                    <button class="ob-btn s" style="padding:4px 10px;margin-inline-start:8px" onclick="restoreDoc(<%= h.id %>, this)"
+                            title="المرشح رفع ملفاً خاطئاً فوق هذه النسخة؟ أعدها لتكون المستند الحالي">اعتمادها كالحالية</button>
+                  <% } %>
+                </td>
               </tr>
             <% }) %>
             </tbody>
@@ -654,6 +661,21 @@
 
 <script>
 const APPLICANT_ID = <%= applicant.id %>;
+
+// نسخة سابقة تعود مستنداً حالياً (رُفع فوقها ملف خاطئ) — الحالية تنزل للسجل ولا تُحذف
+async function restoreDoc(docId, btn) {
+  if (!confirm('اعتماد هذه النسخة كمستند حالي؟\nالنسخة الحالية تنتقل إلى السجل ولا تُحذف، والبيانات المستخرجة لا تتغيّر.\nراجعها بعدها واعتمدها، واستعمل «إعادة الاستخراج» إن احتجت قراءة بياناتها من جديد.')) return;
+  btn.disabled = true;
+  try {
+    const r = await fetch('/admin/onboarding/doc/' + docId + '/restore', { method: 'POST' });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || 'تعذّرت إعادة النسخة');
+    location.reload();
+  } catch (e) {
+    alert(e.message);
+    btn.disabled = false;
+  }
+}
 
 async function reextract(docId, btn) {
   if (!confirm('إعادة قراءة المستند بالقواعد الحالية؟\nالقيم التي صحّحها المرشح بنفسه لن تتغيّر.')) return;
